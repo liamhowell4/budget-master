@@ -1,85 +1,217 @@
+"""
+Expense Parser - Parse expenses from text, images, or voice transcriptions.
+
+Supports:
+- Text-only parsing (SMS, voice transcription)
+- Image-only parsing (receipt photos)
+- Combined text + image parsing
+- Natural language date processing
+"""
+
 import base64
 import json
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from endpoints import Endpoints
-from output_schemas import Expense, ExpenseType, Date, Name
+from output_schemas import Expense, ExpenseType, Date
 
 
-def parse_receipt(image_bytes: bytes, context: str) -> Expense:
+def _parse_natural_language_date(date_str: str) -> Date:
     """
-    Parse a receipt image and context string to extract expense data.
-    
+    Parse natural language dates like "yesterday", "last Tuesday", etc.
+
     Args:
-        image_bytes: Raw bytes of the receipt image
-        context: Context string with category, participants, project info
-        
+        date_str: Natural language date string
+
     Returns:
-        Expense: Populated Expense object
+        Date object
     """
-    # Initialize the OpenAI client
+    today = date.today()
+    date_str_lower = date_str.lower().strip()
+
+    # Handle "today"
+    if date_str_lower in ["today", "now"]:
+        return Date(day=today.day, month=today.month, year=today.year)
+
+    # Handle "yesterday"
+    if date_str_lower == "yesterday":
+        yesterday = today - timedelta(days=1)
+        return Date(day=yesterday.day, month=yesterday.month, year=yesterday.year)
+
+    # Handle "last [day of week]" - e.g., "last Tuesday"
+    weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    for i, weekday in enumerate(weekdays):
+        if weekday in date_str_lower:
+            # Calculate days back to that weekday
+            days_back = (today.weekday() - i) % 7
+            if days_back == 0:
+                days_back = 7  # If it's today, assume they mean last week
+            target_date = today - timedelta(days=days_back)
+            return Date(day=target_date.day, month=target_date.month, year=target_date.year)
+
+    # If we can't parse it, return today
+    return Date(day=today.day, month=today.month, year=today.year)
+
+
+def parse_text(text: str, context: Optional[str] = None) -> Expense:
+    """
+    Parse a text description of an expense.
+
+    Args:
+        text: Text description (e.g., "Coffee $5", "Chipotle lunch $15")
+        context: Optional additional context
+
+    Returns:
+        Expense object
+    """
     endpoints = Endpoints()
     client = endpoints.openai_client
-    
-    # Encode image as base64
-    base64_image = base64.b64encode(image_bytes).decode('utf-8')
-    
-    # Get today's date for fallback
-    today = date.today()
-    
-    # Build the prompt
-    prompt = f"""Analyze this receipt image and extract expense information.
 
-Additional context provided by the user:
-{context}
+    today = date.today()
+
+    # Build the prompt for personal expenses
+    prompt = f"""Parse this personal expense from the text description.
+
+Text: {text}
+{f"Additional context: {context}" if context else ""}
 
 Extract the following information and return as JSON:
 
-1. **expense_name**: A brief descriptive name for this expense (e.g., "Team lunch at Olive Garden", "Uber to airport"). If unclear, use "UNCLEAR".
+1. **expense_name**: A brief descriptive name for this expense (e.g., "Chipotle lunch", "Starbucks coffee", "Uber to airport"). Generate a clear name based on the description.
 
-2. **amount**: The total amount from the receipt as a number. If unclear or missing, use 0.
+2. **amount**: The dollar amount as a number. If no amount is mentioned, use 0.
 
 3. **date**: The date of the expense with day, month, and year as integers.
-   - If the date is visible on the receipt, use that.
-   - If no date is found on the receipt or in the context, use today's date: day={today.day}, month={today.month}, year={today.year}
+   - Parse natural language like "yesterday", "last Tuesday", etc.
+   - If no date is mentioned, use today's date: day={today.day}, month={today.month}, year={today.year}
+   - Return the actual calendar date (not the natural language string)
 
-4. **category**: One of these exact values based on what the expense is for:
-   - "dinner" - dinner meals
-   - "lunch" - lunch meals  
-   - "breakfast" - breakfast meals 
-   - "taxi/lyft/uber" - taxi or rideshare services
-   - "hotel" - hotel accommodations
-   - "technology (ie software subscription, ai subscriptions, etc.)" - tech/software
-   - "airfare (airline tickets)" - airline tickets
-   - "airport services (airport wifi, plane wifi, plane snacks, etc.)" - airport/plane services
-   - "travel fees - usually from CWT, Wagonlit, or other travel agencies. DOES NOT INCLUDE AIRFARE or HOTEL." - travel agency fees
-   - "other" - anything else or if unclear
-   
-   Use the context provided to help determine the category. If still unclear, use "other". Sort any food related
-   expenses into either "dinner", "lunch", or "breakfast".
-
-5. **participants**: List of people who participated (for meals). Extract from the context string.
-   Each participant should have: first (string), last (string), company (string or null)
-   If no participants are mentioned, return null for this field.
-
-6. **project_name**: The project to charge this expense to. Extract from context. If not mentioned, return null.
+4. **category**: One of these exact category keys based on what the expense is for:
+   - "FOOD_OUT" - dining out at restaurants (breakfast/lunch/dinner/snacks). Does NOT include coffee shops.
+   - "RENT" - apartment rent
+   - "UTILITIES" - utilities (electricity, water, internet, etc.)
+   - "MEDICAL" - medical (doctor, dentist) and prescription costs
+   - "GAS" - gasoline/diesel for car
+   - "GROCERIES" - grocery shopping (food, household items)
+   - "RIDE_SHARE" - taxi/Uber/Lyft rides
+   - "COFFEE" - coffee shops and buying coffee
+   - "HOTEL" - hotel accommodations
+   - "TECH" - technology (software subscriptions, AI tools, etc.)
+   - "TRAVEL" - airfare/airline tickets/rental car/travel agency fees
+   - "OTHER" - anything else or if unclear
 
 Return ONLY valid JSON in this exact format:
 {{
     "expense_name": "string",
     "amount": number,
     "date": {{"day": number, "month": number, "year": number}},
-    "category": "category string from list above",
-    "participants": [
-        {{"first": "string", "last": "string", "company": "string or null"}}
-    ] or null,
-    "project_name": "string or null"
-}}"""
+    "category": "CATEGORY_KEY"
+}}
 
-    # Call GPT-5.2 with vision
+IMPORTANT: Return the category KEY (like "FOOD_OUT"), not the description."""
+
+    # Call GPT-4 for text parsing
     response = client.chat.completions.create(
-        model="gpt-5.2-doc-parser",
+        model="gpt-4o",
+        messages=[{
+            "role": "user",
+            "content": prompt
+        }],
+        response_format={"type": "json_object"}
+    )
+
+    # Parse the response
+    response_text = response.choices[0].message.content
+    data = json.loads(response_text)
+
+    # Map category string to ExpenseType enum
+    category_str = data.get("category", "OTHER")
+    try:
+        category = ExpenseType[category_str]
+    except KeyError:
+        category = ExpenseType.OTHER
+
+    # Parse date
+    date_data = data.get("date", {})
+    expense_date = Date(
+        day=date_data.get("day", today.day),
+        month=date_data.get("month", today.month),
+        year=date_data.get("year", today.year)
+    )
+
+    # Build and return the Expense object
+    expense = Expense(
+        expense_name=data.get("expense_name", "Unknown expense"),
+        amount=data.get("amount", 0),
+        date=expense_date,
+        category=category
+    )
+
+    return expense
+
+
+def parse_image(image_bytes: bytes, context: Optional[str] = None) -> Expense:
+    """
+    Parse a receipt image to extract expense data.
+
+    Args:
+        image_bytes: Raw bytes of the receipt image
+        context: Optional context string with additional info
+
+    Returns:
+        Expense object
+    """
+    endpoints = Endpoints()
+    client = endpoints.openai_client
+
+    # Encode image as base64
+    base64_image = base64.b64encode(image_bytes).decode('utf-8')
+
+    today = date.today()
+
+    # Build the prompt for personal expenses
+    prompt = f"""Analyze this receipt image and extract personal expense information.
+
+{f"Additional context: {context}" if context else ""}
+
+Extract the following information and return as JSON:
+
+1. **expense_name**: A brief descriptive name for this expense based on the merchant/vendor name (e.g., "Whole Foods groceries", "Shell gas station", "Walgreens pharmacy").
+
+2. **amount**: The total amount from the receipt as a number. Look for "Total", "Amount Due", or similar. If unclear, use 0.
+
+3. **date**: The date of the expense with day, month, and year as integers.
+   - If the date is visible on the receipt, use that.
+   - If no date is found, use today's date: day={today.day}, month={today.month}, year={today.year}
+
+4. **category**: One of these exact category keys based on what the expense is for:
+   - "FOOD_OUT" - dining out at restaurants (breakfast/lunch/dinner/snacks). Does NOT include coffee shops.
+   - "RENT" - apartment rent
+   - "UTILITIES" - utilities (electricity, water, internet, etc.)
+   - "MEDICAL" - medical (doctor, dentist) and prescription costs
+   - "GAS" - gasoline/diesel for car
+   - "GROCERIES" - grocery shopping (food, household items)
+   - "RIDE_SHARE" - taxi/Uber/Lyft rides
+   - "COFFEE" - coffee shops and buying coffee
+   - "HOTEL" - hotel accommodations
+   - "TECH" - technology (software subscriptions, AI tools, etc.)
+   - "TRAVEL" - airfare/airline tickets/rental car/travel agency fees
+   - "OTHER" - anything else or if unclear
+
+Return ONLY valid JSON in this exact format:
+{{
+    "expense_name": "string",
+    "amount": number,
+    "date": {{"day": number, "month": number, "year": number}},
+    "category": "CATEGORY_KEY"
+}}
+
+IMPORTANT: Return the category KEY (like "GROCERIES"), not the description."""
+
+    # Call GPT-4 Vision
+    response = client.chat.completions.create(
+        model="gpt-4o",
         messages=[{
             "role": "user",
             "content": [
@@ -89,29 +221,18 @@ Return ONLY valid JSON in this exact format:
         }],
         response_format={"type": "json_object"}
     )
-    
+
     # Parse the response
     response_text = response.choices[0].message.content
     data = json.loads(response_text)
-    
+
     # Map category string to ExpenseType enum
-    category_map = {
-        "dinner": ExpenseType.DINNER,
-        "lunch": ExpenseType.LUNCH,
-        "breakfast": ExpenseType.BREAKFAST,
-        "taxi/lyft/uber": ExpenseType.TAXI,
-        "hotel": ExpenseType.HOTEL,
-        "technology (ie software subscription, ai subscriptions, etc.)": ExpenseType.TECH,
-        "airfare (airline tickets)": ExpenseType.AIRFARE,
-        "airport services (airport wifi, plane wifi, plane snacks, etc.)": ExpenseType.AIRPORT_SERVICES,
-        "travel fees - usually from CWT, Wagonlit, or other travel agencies. DOES NOT INCLUDE AIRFARE or HOTEL.": ExpenseType.TRAVEL_FEES_CWT,
-        "other": ExpenseType.OTHER
-    }
-    
-    # Get category, default to OTHER if not found
-    category_str = data.get("category", "other").lower()
-    category = category_map.get(category_str, ExpenseType.OTHER)
-    
+    category_str = data.get("category", "OTHER")
+    try:
+        category = ExpenseType[category_str]
+    except KeyError:
+        category = ExpenseType.OTHER
+
     # Parse date
     date_data = data.get("date", {})
     expense_date = Date(
@@ -119,30 +240,48 @@ Return ONLY valid JSON in this exact format:
         month=date_data.get("month", today.month),
         year=date_data.get("year", today.year)
     )
-    
-    # Parse participants
-    participants = None
-    if data.get("participants"):
-        participants = [
-            Name(
-                first=p.get("first", "UNCLEAR"),
-                last=p.get("last", "UNCLEAR"),
-                company=p.get("company")
-            )
-            for p in data["participants"]
-        ]
-    
+
     # Build and return the Expense object
     expense = Expense(
-        expense_name=data.get("expense_name", "UNCLEAR"),
+        expense_name=data.get("expense_name", "Unknown expense"),
         amount=data.get("amount", 0),
         date=expense_date,
-        category=category,
-        participants=participants,
-        project_name=data.get("project_name")
+        category=category
     )
-    
+
     return expense
 
 
+def parse_receipt(
+    image_bytes: Optional[bytes] = None,
+    text: Optional[str] = None,
+    context: Optional[str] = None
+) -> Expense:
+    """
+    Universal expense parser - handles text, images, or both.
 
+    Args:
+        image_bytes: Optional receipt image bytes
+        text: Optional text description
+        context: Optional additional context
+
+    Returns:
+        Expense object
+
+    Raises:
+        ValueError: If neither image_bytes nor text is provided
+    """
+    if not image_bytes and not text:
+        raise ValueError("Must provide either image_bytes, text, or both")
+
+    # If both are provided, use image parsing with text as context
+    if image_bytes and text:
+        combined_context = f"{context}\n{text}" if context else text
+        return parse_image(image_bytes, context=combined_context)
+
+    # Image only
+    if image_bytes:
+        return parse_image(image_bytes, context=context)
+
+    # Text only
+    return parse_text(text, context=context)
