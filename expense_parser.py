@@ -113,7 +113,7 @@ IMPORTANT: Return the category KEY (like "FOOD_OUT"), not the description."""
 
     # Call GPT-4 for text parsing
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5.1",
         messages=[{
             "role": "user",
             "content": prompt
@@ -211,7 +211,7 @@ IMPORTANT: Return the category KEY (like "GROCERIES"), not the description."""
 
     # Call GPT-4 Vision
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-5.1",
         messages=[{
             "role": "user",
             "content": [

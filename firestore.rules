@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Expenses collection - allow authenticated users to read/write their own expenses
+    match /expenses/{expenseId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Budget caps - allow authenticated users to read/write
+    match /budget_caps/{capId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Categories - allow authenticated users to read
+    match /categories/{categoryId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
