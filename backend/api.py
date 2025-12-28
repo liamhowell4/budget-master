@@ -15,7 +15,7 @@ from typing import Optional, List
 import pytz
 
 from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Header
-from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 

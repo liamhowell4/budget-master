@@ -1,4 +1,5 @@
 .env
+*.pyc
 
 # Firebase build and deployment files
 /firebase-debug.log
