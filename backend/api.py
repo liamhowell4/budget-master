@@ -19,11 +19,11 @@ from fastapi.responses import PlainTextResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from twilio_handler import TwilioHandler
-from firebase_client import FirebaseClient
-from budget_manager import BudgetManager
-from expense_parser import parse_receipt
-from output_schemas import ExpenseType
+from .twilio_handler import TwilioHandler
+from .firebase_client import FirebaseClient
+from .budget_manager import BudgetManager
+from .expense_parser import parse_receipt
+from .output_schemas import ExpenseType
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -155,8 +155,9 @@ async def streamlit_process(
     - Receipt image
     - Text description
     - Any combination of the above
+    - Commands: "status", "total"
 
-    Returns expense data and budget warning.
+    Returns expense data and budget warning, or command response.
     """
     try:
         # Must have at least one input
@@ -165,6 +166,26 @@ async def streamlit_process(
                 status_code=400,
                 detail="Must provide at least one input: audio, image, or text"
             )
+
+        # Check for command keywords (status, total) - only if text-only (no images/audio)
+        if text and not image and not audio:
+            text_lower = text.lower().strip()
+            if text_lower in ["status", "total", "summary"]:
+                twilio_handler = get_twilio_handler()
+                if text_lower in ["status", "summary"]:
+                    response_message = twilio_handler.handle_status_command()
+                else:  # total
+                    response_message = twilio_handler.handle_total_command()
+
+                return ExpenseResponse(
+                    success=True,
+                    message=response_message,
+                    expense_id=None,
+                    expense_name=None,
+                    amount=None,
+                    category=None,
+                    budget_warning=None
+                )
 
         # Process audio if provided (TODO: Implement Whisper transcription in Phase 4)
         transcription = None

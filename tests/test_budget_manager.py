@@ -2,9 +2,13 @@
 Test script for BudgetManager to verify budget calculations and warnings.
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from datetime import datetime
-from budget_manager import BudgetManager
-from output_schemas import ExpenseType
+from backend.budget_manager import BudgetManager
+from backend.output_schemas import ExpenseType
 
 def test_budget_warnings():
     """Test budget warning generation at different thresholds."""

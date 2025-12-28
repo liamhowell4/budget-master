@@ -2,6 +2,7 @@
 Personal Expense Tracker - Streamlit UI
 
 Features:
+- Chat: SMS-like interface for quick expense entry
 - Dashboard: Budget status with progress bars
 - Add Expense: Manual entry form (text + optional image)
 - History: Expense table with filters and CSV download
@@ -12,6 +13,7 @@ import requests
 import pandas as pd
 from datetime import datetime
 import io
+import json
 
 # API Configuration
 API_URL = "http://localhost:8000"
@@ -110,6 +112,149 @@ def submit_expense(text: str = None, image_file=None):
         return False, "Could not connect to API. Make sure the server is running."
     except Exception as e:
         return False, str(e)
+
+
+def escape_markdown_dollars(text: str) -> str:
+    """Escape dollar signs for Streamlit markdown display."""
+    return text.replace("$", "\\$")
+
+
+def process_chat_message(text: str = None, image_file=None):
+    """
+    Process a chat message (text and/or image) and return a formatted SMS-like response.
+
+    Args:
+        text: Optional text message
+        image_file: Optional uploaded image file
+
+    Returns:
+        tuple: (success: bool, response_message: str, expense_data: dict or None)
+    """
+    success, result = submit_expense(text, image_file)
+
+    if not success:
+        return False, f"❌ Error: {result}", None
+
+    # Check if this is a command response (no expense data)
+    if result.get('amount') is None and result.get('expense_name') is None:
+        # This is a command response (status/total)
+        response_message = escape_markdown_dollars(result['message'])
+        return True, response_message, result
+
+    # Format regular expense response to match SMS style
+    response_parts = []
+
+    # Success message with emoji (escape dollar signs for markdown)
+    response_parts.append(f"✅ Saved \\${result['amount']:.2f} {result['expense_name']} ({result['category']})")
+
+    # Add budget warning if present (escape dollar signs)
+    if result.get('budget_warning'):
+        response_parts.append(escape_markdown_dollars(result['budget_warning']))
+
+    response_message = "\n".join(response_parts)
+
+    return True, response_message, result
+
+
+def render_chat():
+    """Render the chat interface tab (SMS-like experience)."""
+    # Header with clear button
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.header("💬 Chat")
+        st.caption("Text or send images just like SMS - your personal expense assistant")
+    with col2:
+        if st.button("🗑️ Clear Chat", use_container_width=True):
+            st.session_state.chat_history = []
+            st.rerun()
+
+    # Initialize chat history in session state
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+
+    # Show welcome message if chat is empty
+    if len(st.session_state.chat_history) == 0:
+        st.session_state.chat_history = [
+            {
+                "role": "assistant",
+                "content": "👋 Hey! Send me your expenses and I'll track them for you.\n\nJust text me like:\n• \"Coffee \\$5\"\n• \"Chipotle lunch \\$15 yesterday\"\n• Or upload a receipt photo!"
+            }
+        ]
+
+    # Initialize processing state
+    if 'processing_message' not in st.session_state:
+        st.session_state.processing_message = None
+
+    # Create a container for chat messages with a specific height and border
+    with st.container(height=700, border=True):
+        # Display chat history
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                # Display image if present
+                if "image" in message:
+                    st.image(message["image"], width=300)
+
+        # If we're processing a message, show it in the container
+        if st.session_state.processing_message:
+            with st.chat_message("assistant"):
+                with st.spinner("Processing..."):
+                    # Process the message
+                    msg_data = st.session_state.processing_message
+                    success, response, expense_data = process_chat_message(
+                        msg_data.get("text"),
+                        msg_data.get("image")
+                    )
+
+                    # Add assistant response to history
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": response
+                    })
+
+                    # Clear processing flag
+                    st.session_state.processing_message = None
+
+                    # Rerun to show the response
+                    st.rerun()
+
+    # Chat input with image upload option
+    col1, col2 = st.columns([4, 1])
+
+    with col2:
+        uploaded_image = st.file_uploader(
+            "📎",
+            type=["jpg", "jpeg", "png"],
+            help="Attach a receipt image",
+            label_visibility="collapsed",
+            key=f"chat_image_{len(st.session_state.chat_history)}"
+        )
+
+    with col1:
+        user_input = st.chat_input("Type an expense or attach a receipt...")
+
+    # Handle new user input
+    if user_input or uploaded_image:
+        # Create user message
+        user_message = {
+            "role": "user",
+            "content": user_input if user_input else "📎 [Receipt Image]"
+        }
+
+        if uploaded_image:
+            user_message["image"] = uploaded_image
+
+        # Add user message to history
+        st.session_state.chat_history.append(user_message)
+
+        # Set processing flag with the message data
+        st.session_state.processing_message = {
+            "text": user_input,
+            "image": uploaded_image
+        }
+
+        # Trigger a rerun to show user message and process response
+        st.rerun()
 
 
 def render_dashboard():
@@ -422,18 +567,21 @@ def main():
 
     # Title
     st.title("💰 Personal Expense Tracker")
-    st.caption("Track expenses via SMS or web UI with real-time budget monitoring")
+    st.caption("Track expenses via chat, SMS, or web UI with real-time budget monitoring")
 
-    # Tabs
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "➕ Add Expense", "📜 History"])
+    # Tabs - Chat is first (default)
+    tab1, tab2, tab3, tab4 = st.tabs(["💬 Chat", "📊 Dashboard", "➕ Add Expense", "📜 History"])
 
     with tab1:
-        render_dashboard()
+        render_chat()
 
     with tab2:
-        render_add_expense()
+        render_dashboard()
 
     with tab3:
+        render_add_expense()
+
+    with tab4:
         render_history()
 
 

@@ -12,10 +12,10 @@ import pytz
 from twilio.rest import Client
 from twilio.request_validator import RequestValidator
 
-from firebase_client import FirebaseClient
-from budget_manager import BudgetManager
-from expense_parser import parse_receipt
-from output_schemas import Expense, ExpenseType
+from .firebase_client import FirebaseClient
+from .budget_manager import BudgetManager
+from .expense_parser import parse_receipt
+from .output_schemas import Expense, ExpenseType
 
 load_dotenv(override=True)
 
@@ -155,6 +155,9 @@ class TwilioHandler:
         """
         Handle 'status' command - show budget status.
 
+        OPTIMIZED: Uses batch query to fetch all expenses in one Firestore call
+        instead of one query per category (12+ queries -> 1 query).
+
         Returns:
             Formatted status message
         """
@@ -163,18 +166,25 @@ class TwilioHandler:
 
         response_lines = [f"📊 Budget Status ({month_name})"]
 
+        # OPTIMIZATION: Get ALL spending in one query
+        category_spending = self.budget_manager.get_monthly_spending_by_category(year, month)
+
+        # OPTIMIZATION: Get ALL budget caps in one query
+        all_caps = self.firebase.get_all_budget_caps()
+
         # Categories above 50% threshold
         above_threshold = []
         below_threshold = []
 
         for expense_type in ExpenseType:
-            # Get spending and cap
-            spending = self.budget_manager.calculate_monthly_spending(expense_type, year, month)
+            # Get spending (from batch query result)
+            spending = category_spending.get(expense_type.name, 0)
 
             if spending == 0:
                 continue  # Skip categories with no spending
 
-            cap = self.firebase.get_budget_cap(expense_type.name)
+            # Get cap (from batch query result)
+            cap = all_caps.get(expense_type.name, 0)
             if not cap or cap == 0:
                 continue
 
@@ -206,9 +216,9 @@ class TwilioHandler:
         if below_threshold:
             response_lines.append(f"<50%: {', '.join(below_threshold)}")
 
-        # Add total budget
-        total_spending = self.budget_manager.calculate_total_monthly_spending(year, month)
-        total_cap = self.firebase.get_budget_cap("TOTAL")
+        # Add total budget (calculate from category_spending)
+        total_spending = sum(category_spending.values())
+        total_cap = all_caps.get("TOTAL", 0)
         if total_cap and total_cap > 0:
             total_percentage = (total_spending / total_cap) * 100
             total_remaining = total_cap - total_spending

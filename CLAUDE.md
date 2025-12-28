@@ -27,54 +27,91 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
+## Project Structure
+
+The codebase is organized into the following directories:
+
+```
+finance_bot/
+├── backend/              # FastAPI backend and core logic
+│   ├── api.py           # FastAPI app with endpoints
+│   ├── expense_parser.py # Expense parsing logic
+│   ├── firebase_client.py # Firestore/Storage operations
+│   ├── twilio_handler.py # Twilio webhook handling
+│   ├── budget_manager.py # Budget calculations & warnings
+│   ├── endpoints.py     # OpenAI client configuration
+│   └── output_schemas.py # Pydantic data models
+│
+├── frontend/            # Streamlit UI
+│   └── app.py          # Streamlit dashboard
+│
+├── tests/              # Test suite
+│   └── test_budget_manager.py
+│
+├── scripts/            # Utility scripts
+│   └── seed_firestore.py # Initialize Firestore collections
+│
+├── legacy/             # Deprecated files (can be removed)
+│   ├── bot_handler.py
+│   ├── adaptive_cards.py
+│   └── function_app.py
+│
+└── [config files]      # .env, firebase.json, requirements.txt, etc.
+```
+
+**Note**: Backend files use relative imports (e.g., `from .firebase_client import FirebaseClient`). External scripts/tests import using `from backend.module import ...`.
+
 ## Architecture
 
 ### Core Components
 
-**FastAPI Backend** (`api.py` - to be expanded)
+**FastAPI Backend** (`backend/api.py`)
 - `/twilio/webhook` - Receives SMS/MMS from Twilio, processes expense, saves to Firestore, responds via SMS
 - `/streamlit/process` - Receives voice/image from Streamlit UI, processes and saves
 - `/health` - Health check endpoint
 
-**Streamlit Frontend** (`app.py` - to be updated)
+**Streamlit Frontend** (`frontend/app.py`)
+- **Chat Interface (Default)**: SMS-like chat for quick expense entry with text and/or images
 - Voice recording interface with audio upload to Firebase Storage
-- Optional image upload for receipts
-- Displays expense history and budget status
+- Manual expense entry form with optional receipt image upload
+- Budget dashboard with real-time progress bars and category breakdown
+- Expense history table with filters and CSV export
 - Runs on localhost (eventually web-deployed)
 
-**Expense Parser** (`expense_parser.py`)
+**Expense Parser** (`backend/expense_parser.py`)
 - Handles three input types: text, images, voice transcriptions
 - Uses OpenAI GPT-4 Vision for receipt images
 - Uses OpenAI GPT for text/transcription parsing
 - Extracts: expense_name, amount, date, category
-- **Note**: Remove `participants` and `project_name` fields - not needed for personal expenses
 
-**Data Schemas** (`output_schemas.py`)
+**Data Schemas** (`backend/output_schemas.py`)
 - `Expense`: Main expense model with fields:
   - `expense_name` (str) - Auto-generated descriptive name
   - `amount` (float)
   - `date` (Date) - Supports natural language like "yesterday", "last Tuesday"
   - `category` (ExpenseType enum)
-  - **REMOVE**: `participants`, `project_name` (business expense fields, not needed)
 - `ExpenseType` enum: FOOD_OUT, RENT, UTILITIES, MEDICAL, GAS, GROCERIES, RIDE_SHARE, COFFEE, HOTEL, TECH, TRAVEL, OTHER
 - `Date`: day, month, year
 
-**Firebase Integration** (new module needed)
+**Firebase Integration** (`backend/firebase_client.py`)
 - Firestore collections:
   - `expenses/` - Flat structure with timestamp filters
   - `budget_caps/` - Per-category monthly caps + total monthly cap
   - `categories/` - Enum key and value for each category
 - Firebase Storage: Audio recordings from Streamlit UI
 
-**Twilio Integration** (new module needed)
+**Twilio Integration** (`backend/twilio_handler.py`)
 - Webhook handler for incoming SMS/MMS
 - Image download from Twilio
 - SMS response sender with budget warnings
 
-**OpenAI Clients** (`endpoints.py` - to be updated)
-- Currently uses Azure OpenAI endpoints - **UPDATE** to use standard OpenAI API
-- Remove Anthropic clients (not needed)
-- Add Whisper transcription client
+**Budget Manager** (`backend/budget_manager.py`)
+- Budget calculation logic
+- Warning message generation at 50%, 90%, 95%, 100%+ thresholds
+
+**OpenAI Clients** (`backend/endpoints.py`)
+- Standard OpenAI API configuration
+- Supports GPT-4 Vision, GPT text processing, and Whisper transcription
 
 ### Data Flow
 
@@ -106,14 +143,22 @@ pip install -r requirements.txt
 ### Local Development
 ```bash
 # Start FastAPI backend
-uvicorn api:app --reload --port 8000
+uvicorn backend.api:app --reload --port 8000
 
 # Start Streamlit UI (separate terminal)
-streamlit run app.py
+streamlit run frontend/app.py
 ```
 
 ### Testing
-Currently no test suite. Manual testing via:
+```bash
+# Run budget manager tests
+python tests/test_budget_manager.py
+
+# Seed Firestore with categories and budget caps
+python scripts/seed_firestore.py
+```
+
+Manual testing via:
 - Twilio webhook testing (use ngrok for local testing)
 - Streamlit UI on localhost
 
@@ -215,26 +260,28 @@ When receiving multiple inputs (e.g., text caption + image):
 - Prioritize image data for amount/merchant if both present
 - Merge information intelligently (don't duplicate)
 
-## Current State vs. Target State
+## Development Status
 
-### Files to Remove/Replace:
-- `function_app.py` - Azure Functions entry point (not needed)
-- `bot_handler.py` - Teams Bot Framework handler (not needed)
-- `adaptive_cards.py` - Teams Adaptive Cards (not needed)
-- Most of current `endpoints.py` - Azure OpenAI + Anthropic (replace with standard OpenAI)
+### Completed
+- ✅ Backend directory structure with all core modules
+- ✅ Firebase integration (Firestore + Storage)
+- ✅ Twilio webhook handling and SMS responses
+- ✅ Budget management with threshold warnings
+- ✅ Expense parsing (text and image support)
+- ✅ Streamlit UI with chat interface, dashboard, and history
+- ✅ Chat interface mirrors SMS experience (supports text and images)
+- ✅ Test suite for budget manager
 
-### Files to Keep/Modify:
-- `output_schemas.py` - Keep, but **remove** `participants` and `project_name` fields
-- `expense_parser.py` - Keep core logic, update to handle text/voice/image inputs
-- `app.py` - Update for voice recording + expense history UI
-- `api.py` - Expand with Twilio and Streamlit endpoints
+### Legacy Files (can be deleted)
+- `legacy/function_app.py` - Azure Functions entry point (not needed)
+- `legacy/bot_handler.py` - Teams Bot Framework handler (not needed)
+- `legacy/adaptive_cards.py` - Teams Adaptive Cards (not needed)
 
-### Files to Create:
-- `firebase_client.py` - Firestore operations, Storage uploads
-- `twilio_handler.py` - SMS/MMS webhook handling, response sending
-- `budget_manager.py` - Budget calculation, warning generation
-- `whisper_client.py` - Audio transcription with OpenAI Whisper
-- `voice_processor.py` - Handle Streamlit audio upload + transcription
+### Future Enhancements
+- Voice transcription with Whisper API
+- Enhanced Streamlit UI features
+- Additional test coverage
+- Deployment automation
 
 ## Testing Considerations
 

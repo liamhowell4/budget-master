@@ -2,11 +2,15 @@
 Seed Firestore Script - Initialize categories and budget_caps collections.
 
 Run this script once during initial setup:
-    python seed_firestore.py
+    python scripts/seed_firestore.py
 """
 
-from firebase_client import FirebaseClient
-from output_schemas import ExpenseType
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from backend.firebase_client import FirebaseClient
+from backend.output_schemas import ExpenseType
 
 
 def seed_categories(client: FirebaseClient):

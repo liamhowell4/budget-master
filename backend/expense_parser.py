@@ -13,9 +13,13 @@ import json
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from endpoints import Endpoints
-from output_schemas import Expense, ExpenseType, Date
+from dotenv import load_dotenv
+import os
 
+from .endpoints import Endpoints
+from .output_schemas import Expense, ExpenseType, Date
+
+load_dotenv(override=True)
 
 def _parse_natural_language_date(date_str: str) -> Date:
     """
@@ -113,7 +117,7 @@ IMPORTANT: Return the category KEY (like "FOOD_OUT"), not the description."""
 
     # Call GPT-4 for text parsing
     response = client.chat.completions.create(
-        model="gpt-5.1",
+        model=os.getenv("PROCESSING_MODEL"),
         messages=[{
             "role": "user",
             "content": prompt
@@ -211,7 +215,7 @@ IMPORTANT: Return the category KEY (like "GROCERIES"), not the description."""
 
     # Call GPT-4 Vision
     response = client.chat.completions.create(
-        model="gpt-5.1",
+        model=os.getenv("PROCESSING_MODEL"),
         messages=[{
             "role": "user",
             "content": [

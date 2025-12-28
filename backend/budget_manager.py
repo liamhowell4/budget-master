@@ -2,11 +2,11 @@
 Budget Manager - Handles budget calculations and warning generation.
 """
 
-from typing import Optional
+from typing import Optional, Dict
 from datetime import datetime
 
-from firebase_client import FirebaseClient
-from output_schemas import ExpenseType
+from .firebase_client import FirebaseClient
+from .output_schemas import ExpenseType
 
 
 class BudgetManager:
@@ -47,6 +47,33 @@ class BudgetManager:
             Total amount spent across all categories for the month
         """
         return self.firebase.calculate_monthly_total(year, month, category=None)
+
+    def get_monthly_spending_by_category(self, year: int, month: int) -> Dict[str, float]:
+        """
+        OPTIMIZED: Get spending totals for ALL categories in a single query.
+
+        Instead of querying Firestore once per category (12+ queries),
+        this fetches all expenses for the month in ONE query and groups them in memory.
+
+        Args:
+            year: Year (e.g., 2025)
+            month: Month (1-12)
+
+        Returns:
+            Dictionary mapping category names to spending amounts
+            Example: {"FOOD_OUT": 450.00, "COFFEE": 24.50, ...}
+        """
+        # Fetch ALL expenses for the month in one query (no category filter)
+        all_expenses = self.firebase.get_monthly_expenses(year, month, category=None)
+
+        # Group by category and sum amounts in memory
+        category_totals = {}
+        for expense in all_expenses:
+            category = expense.get("category", "OTHER")
+            amount = expense.get("amount", 0)
+            category_totals[category] = category_totals.get(category, 0) + amount
+
+        return category_totals
 
     def get_budget_warning(
         self,

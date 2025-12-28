@@ -12,7 +12,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore, storage
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from output_schemas import Expense, ExpenseType, Date
+from .output_schemas import Expense, ExpenseType, Date
 
 load_dotenv(override=True)
 
