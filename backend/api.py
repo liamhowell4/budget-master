@@ -23,7 +23,8 @@ from .twilio_handler import TwilioHandler
 from .firebase_client import FirebaseClient
 from .budget_manager import BudgetManager
 from .expense_parser import parse_receipt
-from .output_schemas import ExpenseType
+from .output_schemas import ExpenseType, Date
+from .recurring_manager import RecurringManager
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -53,6 +54,12 @@ budget_manager = BudgetManager(firebase_client)
 # Lazy initialization for Twilio handler (only when needed)
 _twilio_handler = None
 
+# MCP Backend Feature Flag (Phase 4.1)
+USE_MCP_BACKEND = os.getenv("USE_MCP_BACKEND", "false").lower() == "true"
+
+# MCP Client (lazy initialization on startup if feature flag enabled)
+_mcp_client = None
+
 def get_twilio_handler():
     """Get or create Twilio handler instance (lazy initialization)."""
     global _twilio_handler
@@ -62,6 +69,158 @@ def get_twilio_handler():
 
 # Get user timezone
 USER_TIMEZONE = pytz.timezone(os.getenv("USER_TIMEZONE", "America/Chicago"))
+
+
+# ==================== Shared MCP Processing Function ====================
+
+async def process_expense_with_mcp(text: str, image_base64: Optional[str] = None) -> dict:
+    """
+    Shared MCP processing function for expense parsing.
+
+    This function is called by both /twilio/webhook-mcp and /mcp/process_expense.
+    It handles text and/or image inputs, processes them via MCP client,
+    and returns structured expense data.
+
+    Args:
+        text: Text description of expense (can be empty if image provided)
+        image_base64: Optional base64-encoded image with data URL prefix
+
+    Returns:
+        dict with keys: success, expense_id, expense_name, amount, category,
+        budget_warning, message
+
+    Raises:
+        RuntimeError: If MCP client is not initialized
+    """
+    if not _mcp_client:
+        raise RuntimeError("MCP client not initialized. Set USE_MCP_BACKEND=true")
+
+    print(f"🤖 Processing with MCP: text='{text}', has_image={image_base64 is not None}")
+
+    # Call MCP client
+    result = await _mcp_client.process_expense_message(
+        text=text or "",  # Ensure text is never None
+        image_base64=image_base64
+    )
+
+    # Ensure message is populated for consistency
+    if not result.get("message"):
+        # Fallback: construct message from result data
+        if result.get("success"):
+            name = result.get("expense_name", "expense")
+            amount = result.get("amount", 0)
+            category = result.get("category", "")
+            warning = result.get("budget_warning", "")
+
+            message = f"✅ Saved ${amount:.2f} {name} ({category})"
+            if warning:
+                message += f"\n{warning}"
+            result["message"] = message
+        else:
+            result["message"] = "❌ Could not parse expense. Please try again."
+
+    return result
+
+
+# ==================== Startup Events ====================
+
+@app.on_event("startup")
+async def check_recurring_expenses():
+    """
+    Check for due recurring expenses on API startup.
+
+    This runs every time the API starts. It checks all active recurring expenses
+    and creates pending expenses if they're due.
+
+    NOTE: This is a temporary implementation for pre-Cloud Functions deployment.
+    When deployed to Cloud Functions, this logic will move to a daily Cloud Scheduler
+    job that calls /admin/check-recurring endpoint.
+
+    See RECURRING_IMPLEMENTATION_PLAN.md for migration details.
+    """
+    try:
+        print("🔄 Checking for due recurring expenses...")
+
+        # Get all active recurring expenses
+        recurring_expenses = firebase_client.get_all_recurring_expenses(active_only=True)
+
+        if not recurring_expenses:
+            print("✅ No active recurring expenses found")
+            return
+
+        print(f"📋 Found {len(recurring_expenses)} active recurring expenses")
+
+        from datetime import date
+        today = date.today()
+        today_date = Date(day=today.day, month=today.month, year=today.year)
+
+        created_count = 0
+
+        for recurring in recurring_expenses:
+            # Check if we should create a pending expense
+            should_create, trigger_date = RecurringManager.should_create_pending(recurring)
+
+            if should_create and trigger_date:
+                # Check if pending already exists for this template
+                existing_pending = firebase_client.get_pending_by_template(recurring.template_id)
+
+                if existing_pending:
+                    print(f"⏭️  Skipping {recurring.expense_name} - pending already exists")
+                    continue
+
+                # Create pending expense
+                pending = RecurringManager.create_pending_expense_from_recurring(recurring, trigger_date)
+                pending_id = firebase_client.save_pending_expense(pending)
+
+                # Update last_reminded
+                firebase_client.update_recurring_expense(
+                    recurring.template_id,
+                    {"last_reminded": {
+                        "day": today_date.day,
+                        "month": today_date.month,
+                        "year": today_date.year
+                    }}
+                )
+
+                created_count += 1
+                print(f"✅ Created pending expense for {recurring.expense_name} (due {trigger_date.month}/{trigger_date.day})")
+
+        if created_count > 0:
+            print(f"🎉 Created {created_count} pending expense(s)")
+        else:
+            print("✅ All recurring expenses up to date")
+
+    except Exception as e:
+        print(f"❌ Error checking recurring expenses: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+@app.on_event("startup")
+async def startup_mcp():
+    """
+    Initialize MCP client if feature flag is enabled.
+
+    This spawns the expense_server.py subprocess and connects via stdio.
+    Only runs if USE_MCP_BACKEND=true in environment.
+    """
+    global _mcp_client
+
+    if USE_MCP_BACKEND:
+        try:
+            print("🔄 MCP backend enabled - initializing MCP client...")
+            from .mcp.client import ExpenseMCPClient
+
+            _mcp_client = ExpenseMCPClient()
+            await _mcp_client.startup()
+            print("✅ MCP backend ready")
+        except Exception as e:
+            print(f"❌ Error initializing MCP backend: {e}")
+            import traceback
+            traceback.print_exc()
+            # Don't fail startup - allow OpenAI backend to still work
+    else:
+        print("ℹ️  MCP backend disabled (USE_MCP_BACKEND=false)")
 
 
 # ==================== Pydantic Models ====================
@@ -141,6 +300,170 @@ async def twilio_webhook(request: Request, x_twilio_signature: str = Header(None
         return "❌ Error processing your message. Please try again."
 
 
+@app.post("/twilio/webhook-mcp", response_class=PlainTextResponse)
+async def twilio_webhook_mcp(request: Request, x_twilio_signature: str = Header(None)):
+    """
+    Twilio SMS/MMS webhook handler using MCP backend.
+
+    This endpoint uses Claude + MCP architecture instead of OpenAI.
+    Maintains same signature validation and response format as /twilio/webhook.
+
+    Only active if USE_MCP_BACKEND=true in environment.
+    """
+    try:
+        # Check if MCP backend is enabled
+        if not USE_MCP_BACKEND or not _mcp_client:
+            return "❌ MCP backend not enabled. Please use /twilio/webhook endpoint."
+
+        # Get Twilio handler for signature validation and image download
+        handler = get_twilio_handler()
+
+        # Get form data and URL for signature validation
+        form_data = await request.form()
+        url = str(request.url)
+
+        # Validate Twilio signature
+        if x_twilio_signature:
+            is_valid = handler.validate_request(
+                url=url,
+                post_data=dict(form_data),
+                signature=x_twilio_signature
+            )
+            if not is_valid:
+                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+
+        # Get message body
+        message_body = form_data.get("Body", "").strip()
+
+        # Check for images (MMS)
+        num_media = int(form_data.get("NumMedia", 0))
+        image_base64 = None
+
+        if num_media > 0:
+            # Download first image and convert to base64
+            media_url = form_data.get("MediaUrl0")
+            media_type = form_data.get("MediaContentType0", "image/jpeg")
+
+            if media_url:
+                import requests
+                import base64
+
+                print(f"📸 Downloading image from: {media_url}")
+                response = requests.get(media_url, auth=(
+                    os.getenv("TWILIO_ACCOUNT_SID"),
+                    os.getenv("TWILIO_ACCOUNT_TOKEN")
+                ))
+
+                if response.status_code == 200:
+                    # Convert to base64
+                    image_bytes = response.content
+                    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                    # Add data URL prefix
+                    image_base64 = f"data:{media_type};base64,{image_base64}"
+                    print(f"✅ Image downloaded and encoded ({len(image_bytes)} bytes)")
+
+        # Process with shared MCP function
+        result = await process_expense_with_mcp(
+            text=message_body,
+            image_base64=image_base64
+        )
+
+        # Get response message (already formatted by shared function)
+        response_message = result.get("message", "❌ Error processing expense")
+
+        print(f"📤 Sending response: {response_message}")
+        return response_message
+
+    except Exception as e:
+        print(f"Error in MCP Twilio webhook: {e}")
+        import traceback
+        traceback.print_exc()
+        return "❌ Error processing your message. Please try again."
+
+
+@app.post("/mcp/process_expense", response_model=ExpenseResponse)
+async def mcp_process_expense(
+    text: Optional[str] = Form(None, description="Text description of expense"),
+    image: Optional[UploadFile] = File(None, description="Receipt image")
+):
+    """
+    Generic MCP endpoint for processing expenses.
+
+    This endpoint is used by Streamlit and can be used by other clients.
+    It accepts text and/or image inputs and processes them via MCP backend.
+
+    Args:
+        text: Optional text description of expense
+        image: Optional receipt image file
+
+    Returns:
+        ExpenseResponse with structured expense data
+
+    Note: This endpoint requires USE_MCP_BACKEND=true to be set.
+    """
+    try:
+        # Check if MCP backend is enabled
+        if not USE_MCP_BACKEND or not _mcp_client:
+            raise HTTPException(
+                status_code=503,
+                detail="MCP backend not enabled. Set USE_MCP_BACKEND=true"
+            )
+
+        # Must have at least one input
+        if not text and not image:
+            raise HTTPException(
+                status_code=400,
+                detail="Must provide at least one input: text or image"
+            )
+
+        # Process image if provided
+        image_base64 = None
+        if image:
+            # Validate image type
+            allowed_types = ["image/jpeg", "image/jpg", "image/png"]
+            if image.content_type not in allowed_types:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid image type. Allowed: {allowed_types}"
+                )
+
+            # Read image bytes
+            image_bytes = await image.read()
+
+            # Convert to base64 with data URL prefix
+            import base64
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+            # Use the image content type from upload
+            image_base64 = f"data:{image.content_type};base64,{image_base64}"
+
+            print(f"📸 Image uploaded: {len(image_bytes)} bytes, type: {image.content_type}")
+
+        # Call shared MCP processing function
+        result = await process_expense_with_mcp(
+            text=text or "",
+            image_base64=image_base64
+        )
+
+        # Return as structured JSON response
+        return ExpenseResponse(
+            success=result.get("success", False),
+            message=result.get("message", ""),
+            expense_id=result.get("expense_id"),
+            expense_name=result.get("expense_name"),
+            amount=result.get("amount"),
+            category=result.get("category"),
+            budget_warning=result.get("budget_warning")
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in /mcp/process_expense: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/streamlit/process", response_model=ExpenseResponse)
 async def streamlit_process(
     audio: Optional[UploadFile] = File(None, description="Audio file for transcription"),
@@ -215,7 +538,80 @@ async def streamlit_process(
         elif transcription:
             text_input = transcription
 
-        # Parse expense
+        # Check if this is a recurring expense (text-only, no images)
+        if text_input and not image_bytes:
+            from .expense_parser import detect_recurring
+            from datetime import date
+
+            print(f"\n🔍 Checking if text is recurring (Streamlit)...")
+            print(f"   Text: '{text_input}'")
+
+            detection = detect_recurring(text_input)
+
+            print(f"   is_recurring: {detection.is_recurring}")
+            print(f"   confidence: {detection.confidence}")
+            print(f"   explanation: {detection.explanation}")
+
+            if detection.is_recurring and detection.recurring_expense:
+                print(f"   ✅ Detected as recurring! Creating recurring expense...")
+
+                # Save recurring expense template
+                recurring = detection.recurring_expense
+                template_id = firebase_client.save_recurring_expense(recurring)
+
+                print(f"   ✅ Created recurring template: {template_id}")
+
+                # Check if we should create a pending expense retroactively
+                recurring.template_id = template_id
+                should_create, trigger_date = RecurringManager.should_create_pending(recurring)
+
+                if trigger_date:
+                    today = date.today()
+                    if trigger_date <= today:
+                        # Create pending expense
+                        pending = RecurringManager.create_pending_expense_from_recurring(recurring, trigger_date)
+                        pending_id = firebase_client.save_pending_expense(pending)
+
+                        # Update last_reminded
+                        today_date = Date(day=today.day, month=today.month, year=today.year)
+                        firebase_client.update_recurring_expense(
+                            template_id,
+                            {"last_reminded": {
+                                "day": today_date.day,
+                                "month": today_date.month,
+                                "year": today_date.year
+                            }}
+                        )
+
+                        print(f"   ✅ Created pending expense (retroactive): {pending_id}")
+
+                        response = ExpenseResponse(
+                            success=True,
+                            message=f"✅ Created recurring {recurring.expense_name} expense. Pending confirmation for {trigger_date.month}/{trigger_date.day}/{trigger_date.year} - check Dashboard!",
+                            expense_id=template_id,
+                            expense_name=recurring.expense_name,
+                            amount=recurring.amount,
+                            category=recurring.category.name,
+                            budget_warning=None
+                        )
+                        print(f"   🎯 Returning response with pending expense")
+                        return response
+
+                response = ExpenseResponse(
+                    success=True,
+                    message=f"✅ Created recurring {recurring.expense_name} expense (${recurring.amount:.2f} {recurring.frequency.value})",
+                    expense_id=template_id,
+                    expense_name=recurring.expense_name,
+                    amount=recurring.amount,
+                    category=recurring.category.name,
+                    budget_warning=None
+                )
+                print(f"   🎯 Returning response (future date)")
+                return response
+            else:
+                print(f"   ℹ️  Not recurring (confidence too low or no parsed expense)")
+
+        # Parse expense (regular, one-time expense)
         expense = parse_receipt(
             image_bytes=image_bytes,
             text=text_input,
@@ -407,6 +803,150 @@ async def get_budget_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/recurring")
+async def get_recurring_expenses():
+    """Get all recurring expense templates."""
+    try:
+        recurring_expenses = firebase_client.get_all_recurring_expenses(active_only=False)
+
+        # Convert to dict format for JSON response
+        result = []
+        for rec in recurring_expenses:
+            result.append({
+                "template_id": rec.template_id,
+                "expense_name": rec.expense_name,
+                "amount": rec.amount,
+                "category": rec.category.name,
+                "frequency": rec.frequency.value,
+                "day_of_month": rec.day_of_month,
+                "day_of_week": rec.day_of_week,
+                "last_of_month": rec.last_of_month,
+                "active": rec.active,
+                "last_reminded": {
+                    "day": rec.last_reminded.day,
+                    "month": rec.last_reminded.month,
+                    "year": rec.last_reminded.year
+                } if rec.last_reminded else None,
+                "last_user_action": {
+                    "day": rec.last_user_action.day,
+                    "month": rec.last_user_action.month,
+                    "year": rec.last_user_action.year
+                } if rec.last_user_action else None
+            })
+
+        return {"recurring_expenses": result}
+    except Exception as e:
+        print(f"Error in /recurring: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/pending")
+async def get_pending_expenses():
+    """Get all pending expenses awaiting confirmation."""
+    try:
+        pending_expenses = firebase_client.get_all_pending_expenses(awaiting_only=True)
+        return {"pending_expenses": pending_expenses}
+    except Exception as e:
+        print(f"Error in /pending: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/pending/{pending_id}/confirm")
+async def confirm_pending_expense(pending_id: str, adjusted_amount: Optional[float] = None):
+    """Confirm a pending expense and save it as a regular expense."""
+    try:
+        from datetime import date as date_type
+
+        # Get pending expense
+        pending = firebase_client.get_pending_expense(pending_id)
+        if not pending:
+            raise HTTPException(status_code=404, detail="Pending expense not found")
+
+        # Convert to expense
+        expense = RecurringManager.pending_to_expense(pending, adjusted_amount)
+
+        # Save expense
+        doc_id = firebase_client.save_expense(expense, input_type="recurring")
+
+        # Update recurring template's last_user_action
+        today = date_type.today()
+        today_date = Date(day=today.day, month=today.month, year=today.year)
+
+        pending_dict = firebase_client.get_all_pending_expenses(awaiting_only=False)
+        template_id = None
+        for p in pending_dict:
+            if p.get("pending_id") == pending_id:
+                template_id = p.get("template_id")
+                break
+
+        if template_id:
+            firebase_client.update_recurring_expense(
+                template_id,
+                {"last_user_action": {
+                    "day": today_date.day,
+                    "month": today_date.month,
+                    "year": today_date.year
+                }}
+            )
+
+        # Delete pending expense
+        firebase_client.delete_pending_expense(pending_id)
+
+        return {"success": True, "expense_id": doc_id, "message": "Expense confirmed"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in /pending/{pending_id}/confirm: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/pending/{pending_id}")
+async def delete_pending_expense(pending_id: str):
+    """Skip/delete a pending expense."""
+    try:
+        from datetime import date as date_type
+
+        # Get pending to find template_id
+        pending_dict = firebase_client.get_all_pending_expenses(awaiting_only=False)
+        template_id = None
+        for p in pending_dict:
+            if p.get("pending_id") == pending_id:
+                template_id = p.get("template_id")
+                break
+
+        if template_id:
+            # Update last_user_action
+            today = date_type.today()
+            today_date = Date(day=today.day, month=today.month, year=today.year)
+            firebase_client.update_recurring_expense(
+                template_id,
+                {"last_user_action": {
+                    "day": today_date.day,
+                    "month": today_date.month,
+                    "year": today_date.year
+                }}
+            )
+
+        # Delete pending expense
+        firebase_client.delete_pending_expense(pending_id)
+
+        return {"success": True, "message": "Pending expense deleted"}
+    except Exception as e:
+        print(f"Error in /pending/{pending_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/recurring/{template_id}")
+async def delete_recurring_template(template_id: str):
+    """Delete/deactivate a recurring expense template."""
+    try:
+        firebase_client.delete_recurring_expense(template_id)
+        return {"success": True, "message": "Recurring expense deleted"}
+    except Exception as e:
+        print(f"Error in /recurring/{template_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -418,6 +958,11 @@ async def health_check():
             "POST /streamlit/process",
             "GET /expenses",
             "GET /budget",
+            "GET /recurring",
+            "GET /pending",
+            "POST /pending/{id}/confirm",
+            "DELETE /pending/{id}",
+            "DELETE /recurring/{id}",
             "GET /health"
         ]
     }

@@ -11,11 +11,14 @@ import pytz
 
 from twilio.rest import Client
 from twilio.request_validator import RequestValidator
+from firebase_admin import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 from .firebase_client import FirebaseClient
 from .budget_manager import BudgetManager
-from .expense_parser import parse_receipt
-from .output_schemas import Expense, ExpenseType
+from .expense_parser import parse_receipt, detect_recurring
+from .output_schemas import Expense, ExpenseType, Date
+from .recurring_manager import RecurringManager
 
 load_dotenv(override=True)
 
@@ -267,7 +270,173 @@ class TwilioHandler:
 
         return response
 
-    def process_expense(self, text: Optional[str], images: List[bytes]) -> str:
+    def handle_confirmation_response(self, text: str, pending: Dict) -> Tuple[str, bool]:
+        """
+        Handle user response to pending expense confirmation.
+
+        Args:
+            text: User's SMS response
+            pending: Pending expense dict from Firestore
+
+        Returns:
+            Tuple of (response_message, should_send_next_pending)
+        """
+        action, adjusted_amount = RecurringManager.parse_confirmation_response(text)
+
+        year, month = self.get_current_date()
+        today = datetime.now(self.timezone).date()
+        today_date = Date(day=today.day, month=today.month, year=today.year)
+
+        if action == "YES":
+            # Confirm expense - move to expenses collection
+            pending_obj = self.firebase._dict_to_pending_expense(pending, pending["pending_id"])
+            expense = RecurringManager.pending_to_expense(pending_obj, adjusted_amount)
+
+            # Save expense
+            doc_id = self.firebase.save_expense(expense, input_type="recurring")
+
+            # Update recurring template's last_user_action
+            self.firebase.update_recurring_expense(
+                pending["template_id"],
+                {"last_user_action": {
+                    "day": today_date.day,
+                    "month": today_date.month,
+                    "year": today_date.year
+                }}
+            )
+
+            # Delete pending expense
+            self.firebase.delete_pending_expense(pending["pending_id"])
+
+            # Get budget warning
+            warning = self.budget_manager.get_budget_warning(
+                category=expense.category,
+                amount=expense.amount,
+                year=year,
+                month=month
+            )
+
+            # Format confirmation
+            amount_to_show = adjusted_amount if adjusted_amount else expense.amount
+            response = f"✅ Saved ${amount_to_show:.2f} {expense.expense_name} ({expense.category.name})"
+
+            if warning:
+                response += f"\n{warning}"
+
+            return response, True  # Send next pending
+
+        elif action == "SKIP":
+            # Skip this occurrence
+            # Update recurring template's last_user_action
+            self.firebase.update_recurring_expense(
+                pending["template_id"],
+                {"last_user_action": {
+                    "day": today_date.day,
+                    "month": today_date.month,
+                    "year": today_date.year
+                }}
+            )
+
+            # Delete pending expense
+            self.firebase.delete_pending_expense(pending["pending_id"])
+
+            response = f"⏭️ Skipped {pending['expense_name']} for this month"
+
+            return response, True  # Send next pending
+
+        elif action == "CANCEL":
+            # Ask for double confirmation
+            response = f"This will delete your {pending['expense_name']} recurring expense. Reply DELETE to confirm."
+            return response, False  # Don't send next pending yet
+
+        elif action == "DELETE":
+            # Confirmed deletion - delete recurring template
+            self.firebase.delete_recurring_expense(pending["template_id"])
+
+            # Delete pending expense
+            self.firebase.delete_pending_expense(pending["pending_id"])
+
+            response = f"🗑️ Deleted recurring {pending['expense_name']} expense"
+
+            return response, True  # Send next pending
+
+        else:
+            # Unknown response - treat as new message
+            return None, False
+
+    def handle_recurring_creation(self, text: str) -> str:
+        """
+        Handle creation of a new recurring expense via SMS.
+
+        Args:
+            text: User's SMS text
+
+        Returns:
+            Response message (confirmation request)
+        """
+        # Detect if recurring
+        detection = detect_recurring(text)
+
+        # DEBUG: Log what AI detected
+        print(f"🔍 RECURRING DETECTION DEBUG:")
+        print(f"   Text: {text}")
+        print(f"   is_recurring: {detection.is_recurring}")
+        print(f"   confidence: {detection.confidence}")
+        print(f"   explanation: {detection.explanation}")
+        if detection.recurring_expense:
+            print(f"   Parsed expense: {detection.recurring_expense}")
+        else:
+            print(f"   recurring_expense: None")
+
+        if not detection.is_recurring or not detection.recurring_expense:
+            # Not recurring, process as regular expense
+            print(f"   ❌ Not processing as recurring")
+            return None
+
+        recurring = detection.recurring_expense
+
+        # Format confirmation message
+        freq_display = recurring.frequency.value.capitalize()
+
+        if recurring.frequency.value == "monthly":
+            if recurring.last_of_month:
+                day_display = "last day of month"
+            else:
+                day_display = f"{recurring.day_of_month}"
+        else:
+            # Weekly/Biweekly
+            weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            day_display = weekdays[recurring.day_of_week] if recurring.day_of_week is not None else "Unknown"
+
+        response = f"Create recurring expense: {recurring.expense_name}, ${recurring.amount:.2f}, {freq_display}"
+        if recurring.frequency.value == "monthly":
+            response += f" on {day_display}"
+        else:
+            response += f" on {day_display}s"
+
+        response += f", Category: {recurring.category.name}? Reply YES to create or NO to cancel"
+
+        # Store in a temporary collection or use a simple state tracker
+        # For now, we'll save to a special "pending_recurring_creation" collection
+        # Actually, let's use a simpler approach - we'll handle this in handle_webhook by checking if the previous message was a creation request
+
+        # Save to Firestore temporarily (we'll handle YES/NO in handle_webhook)
+        temp_data = {
+            "expense_name": recurring.expense_name,
+            "amount": recurring.amount,
+            "category": recurring.category.name,
+            "frequency": recurring.frequency.value,
+            "day_of_month": recurring.day_of_month,
+            "day_of_week": recurring.day_of_week,
+            "last_of_month": recurring.last_of_month,
+            "awaiting_confirmation": True,
+            "created_at": firestore.SERVER_TIMESTAMP
+        }
+        self.firebase.db.collection("pending_recurring_creation").add(temp_data)
+
+        return response
+
+    def process_expense(self, text: Optional[str], images: List[bytes]) -> Tuple[str, bool]:
         """
         Process an expense from text and/or images.
 
@@ -276,23 +445,127 @@ class TwilioHandler:
             images: List of image bytes (0-3 images)
 
         Returns:
-            SMS response message
+            Tuple of (SMS response message, should_check_next_pending)
         """
+        print(f"\n{'='*60}")
+        print(f"🔍 PROCESS_EXPENSE DEBUG START")
+        print(f"   Text: '{text}'")
+        print(f"   Images: {len(images)} image(s)")
+        print(f"{'='*60}\n")
+
         year, month = self.get_current_date()
 
         # Check for commands first
         if text:
             text_lower = text.lower().strip()
+            print(f"📝 Checking commands... text_lower='{text_lower}'")
             if text_lower == "status":
-                return self.handle_status_command()
+                print(f"   ✅ Command detected: status")
+                return self.handle_status_command(), False
             elif text_lower == "total":
-                return self.handle_total_command()
+                print(f"   ✅ Command detected: total")
+                return self.handle_total_command(), False
+            print(f"   ❌ Not a command")
 
         # Must have text or images
         if not text and not images:
-            return "❌ Please send an expense (text or receipt image)"
+            print(f"❌ No text or images provided")
+            return "❌ Please send an expense (text or receipt image)", False
 
         try:
+            # Check if this is a response to pending recurring creation
+            if text and text.lower().strip() in ["yes", "no"]:
+                # Check for pending creation
+                pending_creation_query = self.firebase.db.collection("pending_recurring_creation").where(
+                    filter=FieldFilter("awaiting_confirmation", "==", True)
+                ).order_by("created_at", direction=firestore.Query.DESCENDING).limit(1)
+
+                pending_creation_docs = list(pending_creation_query.stream())
+
+                if pending_creation_docs:
+                    doc = pending_creation_docs[0]
+                    data = doc.to_dict()
+
+                    if text.lower().strip() == "yes":
+                        # Create recurring expense
+                        from .output_schemas import RecurringExpense, ExpenseType, FrequencyType
+
+                        category = ExpenseType[data["category"]]
+                        frequency = FrequencyType[data["frequency"].upper()]
+
+                        recurring = RecurringExpense(
+                            expense_name=data["expense_name"],
+                            amount=data["amount"],
+                            category=category,
+                            frequency=frequency,
+                            day_of_month=data.get("day_of_month"),
+                            day_of_week=data.get("day_of_week"),
+                            last_of_month=data.get("last_of_month", False),
+                            last_reminded=None,
+                            last_user_action=None,
+                            active=True
+                        )
+
+                        template_id = self.firebase.save_recurring_expense(recurring)
+
+                        # Delete pending creation
+                        self.firebase.db.collection("pending_recurring_creation").document(doc.id).delete()
+
+                        # Check if we need to create a pending expense retroactively
+                        from datetime import date
+                        should_create, trigger_date = RecurringManager.should_create_pending(recurring)
+
+                        if trigger_date:
+                            # Trigger date is in the past, create pending immediately
+                            today = date.today()
+                            if trigger_date <= today:
+                                # Update recurring with template_id
+                                recurring.template_id = template_id
+
+                                # Create pending expense
+                                pending = RecurringManager.create_pending_expense_from_recurring(recurring, trigger_date)
+                                pending_id = self.firebase.save_pending_expense(pending)
+
+                                # Update last_reminded
+                                today_date = Date(day=today.day, month=today.month, year=today.year)
+                                self.firebase.update_recurring_expense(
+                                    template_id,
+                                    {"last_reminded": {
+                                        "day": today_date.day,
+                                        "month": today_date.month,
+                                        "year": today_date.year
+                                    }}
+                                )
+
+                                # Send combined confirmation
+                                response = f"✅ Created recurring {recurring.expense_name} expense. Since {trigger_date.month}/{trigger_date.day}/{trigger_date.year} already passed, confirm now: {recurring.expense_name} ${recurring.amount:.2f} due {trigger_date.month}/{trigger_date.day}/{trigger_date.year}. Reply YES to confirm, SKIP to skip, or CANCEL to stop recurring"
+
+                                # Update pending to mark SMS as sent
+                                self.firebase.update_pending_expense(pending_id, {"sms_sent": True})
+
+                                return response, False
+                            else:
+                                return f"✅ Created recurring {recurring.expense_name} expense", False
+                        else:
+                            return f"✅ Created recurring {recurring.expense_name} expense", False
+
+                    else:  # "no"
+                        # Cancel creation
+                        self.firebase.db.collection("pending_recurring_creation").document(doc.id).delete()
+                        return "❌ Canceled recurring expense creation", False
+
+            # Check if this is text-only (might be recurring)
+            if text and not images:
+                print(f"\n🔍 Checking if text is recurring...")
+                print(f"   text='{text}', images={len(images)}")
+                recurring_response = self.handle_recurring_creation(text)
+                print(f"   recurring_response returned: {recurring_response[:100] if recurring_response else 'None'}...")
+                if recurring_response:
+                    print(f"   ✅ Processing as recurring creation")
+                    return recurring_response, False
+                else:
+                    print(f"   ❌ Not recurring, continuing to regular expense processing")
+
             # Parse expense (handles text, images, or both)
             # For multiple images, use the first one for now
             image_bytes = images[0] if images else None
@@ -305,7 +578,7 @@ class TwilioHandler:
 
             # Validate amount
             if expense.amount == 0:
-                return "❌ Couldn't find an amount. Please send a complete expense with an amount.\n\nExample: 'Coffee $5' or a clear receipt photo.\n\n(Note: I only process one message at a time, not previous messages)"
+                return "❌ Couldn't find an amount. Please send a complete expense with an amount.\n\nExample: 'Coffee $5' or a clear receipt photo.\n\n(Note: I only process one message at a time, not previous messages)", False
 
             # Get budget warning BEFORE saving
             warning = self.budget_manager.get_budget_warning(
@@ -330,7 +603,7 @@ class TwilioHandler:
                         raise
 
             if not saved:
-                return "❌ Failed to save expense. Please try again."
+                return "❌ Failed to save expense. Please try again.", False
 
             # Format confirmation message (Option B - Detailed)
             date_str = f"{expense.date.month}/{expense.date.day}/{expense.date.year}"
@@ -340,15 +613,23 @@ class TwilioHandler:
             if warning:
                 response += f"\n{warning}"
 
-            return response
+            return response, True  # Check for next pending
 
         except Exception as e:
             print(f"Error processing expense: {e}")
-            return "❌ Sorry, I couldn't parse that expense. Please try again with format: 'Description $amount' or a clear receipt photo"
+            import traceback
+            traceback.print_exc()
+            return "❌ Sorry, I couldn't parse that expense. Please try again with format: 'Description $amount' or a clear receipt photo", False
 
     def handle_webhook(self, from_number: str, form_data: dict) -> str:
         """
         Main webhook handler - processes incoming message and returns response.
+
+        Flow:
+        1. Check for pending expenses awaiting confirmation
+        2. If pending exists, handle as confirmation response
+        3. Otherwise, process as regular expense or recurring creation
+        4. After processing, check for next pending and send if exists
 
         Args:
             from_number: Phone number message came from
@@ -357,14 +638,86 @@ class TwilioHandler:
         Returns:
             Response message to send back
         """
+        print(f"\n{'='*80}")
+        print(f"📨 WEBHOOK RECEIVED")
+        print(f"   From: {from_number}")
+        print(f"   Body: {form_data.get('Body', '')}")
+        print(f"   NumMedia: {form_data.get('NumMedia', 0)}")
+        print(f"{'='*80}\n")
+
         # Verify it's from the authorized user
         if from_number != self.user_phone:
+            print(f"❌ Unauthorized number: {from_number} (expected {self.user_phone})")
             return "❌ Unauthorized number"
 
         # Parse incoming message
         text, images = self.parse_incoming_message(form_data)
+        print(f"📝 Parsed message:")
+        print(f"   Text: '{text}'")
+        print(f"   Images: {len(images)}")
 
-        # Process the expense
-        response = self.process_expense(text, images)
+        # Check for pending expenses first
+        pending_expenses = self.firebase.get_all_pending_expenses(awaiting_only=True)
+
+        if pending_expenses and text:
+            # User might be responding to pending confirmation
+            # Check if text matches confirmation patterns
+            action, _ = RecurringManager.parse_confirmation_response(text)
+
+            if action in ["YES", "SKIP", "CANCEL", "DELETE"]:
+                # This is likely a confirmation response
+                first_pending = pending_expenses[0]
+
+                # Handle confirmation
+                response, should_send_next = self.handle_confirmation_response(text, first_pending)
+
+                if response:
+                    # Valid confirmation response
+                    if should_send_next:
+                        # Check for next pending expense
+                        remaining_pending = self.firebase.get_all_pending_expenses(awaiting_only=True)
+
+                        if remaining_pending:
+                            # Send next pending confirmation
+                            next_pending = remaining_pending[0]
+                            pending_obj = self.firebase._dict_to_pending_expense(next_pending, next_pending["pending_id"])
+
+                            total_pending = len(remaining_pending)
+                            confirmation_msg = RecurringManager.format_confirmation_sms(
+                                pending_obj,
+                                pending_count=0,
+                                total_pending=total_pending
+                            )
+
+                            # Mark as SMS sent
+                            self.firebase.update_pending_expense(next_pending["pending_id"], {"sms_sent": True})
+
+                            response += f"\n\n{confirmation_msg}"
+
+                    return response
+
+        # Not a confirmation response (or no pending) - process as regular expense
+        response, should_check_next = self.process_expense(text, images)
+
+        # After processing, check if there are pending expenses to send
+        if should_check_next:
+            pending_expenses = self.firebase.get_all_pending_expenses(awaiting_only=True)
+
+            if pending_expenses:
+                # Send first pending confirmation
+                first_pending = pending_expenses[0]
+                pending_obj = self.firebase._dict_to_pending_expense(first_pending, first_pending["pending_id"])
+
+                total_pending = len(pending_expenses)
+                confirmation_msg = RecurringManager.format_confirmation_sms(
+                    pending_obj,
+                    pending_count=0,
+                    total_pending=total_pending
+                )
+
+                # Mark as SMS sent
+                self.firebase.update_pending_expense(first_pending["pending_id"], {"sms_sent": True})
+
+                response += f"\n\n{confirmation_msg}"
 
         return response

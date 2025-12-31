@@ -84,6 +84,66 @@ def fetch_expenses(year: int = None, month: int = None, category: str = None):
         return None
 
 
+def fetch_pending_expenses():
+    """Fetch pending expenses awaiting confirmation."""
+    try:
+        response = requests.get(f"{API_URL}/pending", timeout=10)
+        response.raise_for_status()
+        return response.json().get("pending_expenses", [])
+    except Exception as e:
+        st.error(f"Error fetching pending expenses: {e}")
+        return []
+
+
+def fetch_recurring_expenses():
+    """Fetch recurring expense templates."""
+    try:
+        response = requests.get(f"{API_URL}/recurring", timeout=10)
+        response.raise_for_status()
+        return response.json().get("recurring_expenses", [])
+    except Exception as e:
+        st.error(f"Error fetching recurring expenses: {e}")
+        return []
+
+
+def confirm_pending_expense(pending_id: str, adjusted_amount: float = None):
+    """Confirm a pending expense."""
+    try:
+        params = {}
+        if adjusted_amount:
+            params["adjusted_amount"] = adjusted_amount
+
+        response = requests.post(
+            f"{API_URL}/pending/{pending_id}/confirm",
+            params=params,
+            timeout=10
+        )
+        response.raise_for_status()
+        return True, "Expense confirmed"
+    except Exception as e:
+        return False, str(e)
+
+
+def delete_pending_expense(pending_id: str):
+    """Delete/skip a pending expense."""
+    try:
+        response = requests.delete(f"{API_URL}/pending/{pending_id}", timeout=10)
+        response.raise_for_status()
+        return True, "Pending expense deleted"
+    except Exception as e:
+        return False, str(e)
+
+
+def delete_recurring_template(template_id: str):
+    """Delete a recurring expense template."""
+    try:
+        response = requests.delete(f"{API_URL}/recurring/{template_id}", timeout=10)
+        response.raise_for_status()
+        return True, "Recurring expense deleted"
+    except Exception as e:
+        return False, str(e)
+
+
 def submit_expense(text: str = None, image_file=None):
     """Submit expense to API."""
     try:
@@ -97,7 +157,7 @@ def submit_expense(text: str = None, image_file=None):
             files["image"] = (image_file.name, image_file.getvalue(), image_file.type)
 
         response = requests.post(
-            f"{API_URL}/streamlit/process",
+            f"{API_URL}/mcp/process_expense",
             files=files if files else None,
             data=data if data else None,
             timeout=30
@@ -139,6 +199,13 @@ def process_chat_message(text: str = None, image_file=None):
     if result.get('amount') is None and result.get('expense_name') is None:
         # This is a command response (status/total)
         response_message = escape_markdown_dollars(result['message'])
+        return True, response_message, result
+
+    # Check if this is a recurring expense (message contains "recurring" or "Pending confirmation")
+    api_message = result.get('message', '')
+    if 'recurring' in api_message.lower() or 'pending confirmation' in api_message.lower():
+        # Use the API's message directly for recurring expenses
+        response_message = escape_markdown_dollars(api_message)
         return True, response_message, result
 
     # Format regular expense response to match SMS style
@@ -261,6 +328,49 @@ def render_dashboard():
     """Render the budget dashboard tab."""
     st.header("📊 Budget Dashboard")
 
+    # Fetch pending expenses first
+    pending_expenses = fetch_pending_expenses()
+
+    # Show pending expenses section if any exist
+    if pending_expenses:
+        st.markdown("### ⏳ Pending Confirmations")
+        st.markdown(f"**{len(pending_expenses)} recurring expense(s) awaiting confirmation**")
+
+        for pending in pending_expenses:
+            with st.container():
+                col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 1, 1])
+
+                with col1:
+                    st.markdown(f"**{pending['expense_name']}**")
+                    date_obj = pending['date']
+                    st.caption(f"Due: {date_obj['month']}/{date_obj['day']}/{date_obj['year']}")
+
+                with col2:
+                    st.markdown(f"**\\${pending['amount']:.2f}**")
+
+                with col3:
+                    st.markdown(f"`{pending['category']}`")
+
+                with col4:
+                    if st.button("✅ Confirm", key=f"confirm_{pending['pending_id']}", use_container_width=True):
+                        success, msg = confirm_pending_expense(pending['pending_id'])
+                        if success:
+                            st.success("✅ Confirmed!")
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {msg}")
+
+                with col5:
+                    if st.button("⏭️ Skip", key=f"skip_{pending['pending_id']}", use_container_width=True):
+                        success, msg = delete_pending_expense(pending['pending_id'])
+                        if success:
+                            st.info("Skipped")
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {msg}")
+
+                st.markdown("---")
+
     # Date selector
     col1, col2 = st.columns([1, 3])
     with col1:
@@ -371,6 +481,164 @@ def render_dashboard():
             )
 
         st.markdown("")  # Spacing
+
+    # Projected budget (includes recurring expenses)
+    st.markdown("---")
+    st.subheader("📈 Projected Budget")
+    st.markdown("Includes all active recurring expenses assuming they'll be paid this month")
+
+    # Fetch recurring expenses
+    recurring_expenses = fetch_recurring_expenses()
+    active_recurring = [r for r in recurring_expenses if r.get('active', True)]
+
+    if active_recurring:
+        # Calculate projected spending by category
+        projected_spending_by_cat = {}
+        for cat_data in categories:
+            projected_spending_by_cat[cat_data['category']] = cat_data['spending']
+
+        # Add recurring expenses to projected totals
+        total_recurring = 0
+        for rec in active_recurring:
+            cat = rec['category']
+            amount = rec['amount']
+            if cat in projected_spending_by_cat:
+                projected_spending_by_cat[cat] += amount
+            else:
+                projected_spending_by_cat[cat] = amount
+            total_recurring += amount
+
+        # Show projected total
+        projected_total = budget_data['total_spending'] + total_recurring
+        projected_percentage = (projected_total / budget_data['total_cap']) * 100 if budget_data['total_cap'] > 0 else 0
+        projected_color = get_budget_color(projected_percentage)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**Current Spending**")
+            st.metric(
+                "Confirmed",
+                f"${budget_data['total_spending']:.2f}",
+                f"{total_percentage:.1f}%"
+            )
+
+        with col2:
+            st.markdown("**Projected Spending**")
+            st.metric(
+                "With Recurring",
+                f"${projected_total:.2f}",
+                f"{projected_percentage:.1f}%",
+                delta_color="inverse"
+            )
+
+        # Show projection for each category with active recurring
+        st.markdown("**Categories with Recurring Expenses:**")
+        for cat_data in categories:
+            cat_name = cat_data["category"]
+            current = cat_data["spending"]
+            projected = projected_spending_by_cat.get(cat_name, current)
+
+            if projected > current:  # Only show if there's a projected increase
+                emoji = cat_data["emoji"]
+                cap = cat_data["cap"]
+                if cap > 0:
+                    projected_pct = (projected / cap) * 100
+                    color = get_budget_color(projected_pct)
+
+                    col1, col2, col3 = st.columns([2, 2, 2])
+                    with col1:
+                        st.markdown(f"{emoji} **{cat_name}**")
+                    with col2:
+                        st.markdown(f"Current: \\${current:.0f} → Projected: \\${projected:.0f}")
+                    with col3:
+                        st.markdown(
+                            f"<div style='text-align: right; color: {color};'>{projected_pct:.1f}%</div>",
+                            unsafe_allow_html=True
+                        )
+
+    else:
+        st.info("No active recurring expenses")
+
+    st.markdown("")  # Spacing
+
+
+def render_recurring():
+    """Render the recurring expenses management tab."""
+    st.header("🔄 Recurring Expenses")
+
+    st.markdown("""
+    Manage your recurring expenses like rent, subscriptions, and bills.
+    These will automatically create pending confirmations each period.
+    """)
+
+    # Fetch recurring expenses
+    recurring_expenses = fetch_recurring_expenses()
+
+    if not recurring_expenses:
+        st.info("No recurring expenses yet. Create one in the Chat tab!")
+        return
+
+    # Filter buttons
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown(f"**{len(recurring_expenses)} recurring expense(s)**")
+    with col2:
+        show_inactive = st.checkbox("Show Inactive", value=False)
+
+    # Filter recurring expenses
+    if not show_inactive:
+        recurring_expenses = [r for r in recurring_expenses if r.get('active', True)]
+
+    # Display recurring expenses
+    for rec in recurring_expenses:
+        with st.container():
+            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
+
+            with col1:
+                status_emoji = "✅" if rec.get('active', True) else "⏸️"
+                st.markdown(f"{status_emoji} **{rec['expense_name']}**")
+
+                # Show frequency details
+                freq = rec['frequency']
+                if freq == "monthly":
+                    if rec.get('last_of_month'):
+                        st.caption("Monthly on last day")
+                    else:
+                        st.caption(f"Monthly on day {rec.get('day_of_month', '?')}")
+                elif freq == "weekly":
+                    weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                    day_idx = rec.get('day_of_week', 0)
+                    st.caption(f"Weekly on {weekdays[day_idx]}s")
+                elif freq == "biweekly":
+                    weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                    day_idx = rec.get('day_of_week', 0)
+                    st.caption(f"Biweekly on {weekdays[day_idx]}s")
+
+            with col2:
+                st.markdown(f"**\\${rec['amount']:.2f}**")
+
+            with col3:
+                st.markdown(f"`{rec['category']}`")
+
+            with col4:
+                # Show next due date
+                if rec.get('last_reminded'):
+                    lr = rec['last_reminded']
+                    st.caption(f"Last: {lr['month']}/{lr['day']}")
+                else:
+                    st.caption("Not triggered yet")
+
+            with col5:
+                if st.button("🗑️", key=f"delete_rec_{rec['template_id']}", help="Delete recurring", use_container_width=True):
+                    success, msg = delete_recurring_template(rec['template_id'])
+                    if success:
+                        st.success("Deleted!")
+                        st.rerun()
+                    else:
+                        st.error(f"Error: {msg}")
+
+            st.markdown("---")
 
 
 def render_add_expense():
@@ -569,8 +837,18 @@ def main():
     st.title("💰 Personal Expense Tracker")
     st.caption("Track expenses via chat, SMS, or web UI with real-time budget monitoring")
 
+    # Check for pending expenses to show badge
+    pending_count = len(fetch_pending_expenses())
+    dashboard_label = f"📊 Dashboard ! ({pending_count})" if pending_count > 0 else "📊 Dashboard"
+
     # Tabs - Chat is first (default)
-    tab1, tab2, tab3, tab4 = st.tabs(["💬 Chat", "📊 Dashboard", "➕ Add Expense", "📜 History"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "💬 Chat",
+        dashboard_label,
+        "🔄 Recurring",
+        "➕ Add Expense",
+        "📜 History"
+    ])
 
     with tab1:
         render_chat()
@@ -579,9 +857,12 @@ def main():
         render_dashboard()
 
     with tab3:
-        render_add_expense()
+        render_recurring()
 
     with tab4:
+        render_add_expense()
+
+    with tab5:
         render_history()
 
 

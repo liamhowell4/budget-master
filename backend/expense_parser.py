@@ -17,7 +17,14 @@ from dotenv import load_dotenv
 import os
 
 from .endpoints import Endpoints
-from .output_schemas import Expense, ExpenseType, Date
+from .output_schemas import (
+    Expense,
+    ExpenseType,
+    Date,
+    RecurringExpense,
+    RecurringDetectionResult,
+    FrequencyType
+)
 
 load_dotenv(override=True)
 
@@ -289,3 +296,137 @@ def parse_receipt(
 
     # Text only
     return parse_text(text, context=context)
+
+
+def detect_recurring(text: str) -> RecurringDetectionResult:
+    """
+    Detect if text describes a recurring expense and parse its details.
+
+    Keywords to look for: recurring, recur, subscription, monthly, weekly, daily
+
+    Args:
+        text: Text description (e.g., "recurring rent $1000 monthly on the 1st")
+
+    Returns:
+        RecurringDetectionResult with is_recurring flag and parsed data
+    """
+    endpoints = Endpoints()
+    client = endpoints.openai_client
+
+    today = date.today()
+    weekday_name = today.strftime("%A")  # e.g., "Monday"
+
+    # Build prompt for recurring detection
+    prompt = f"""Analyze this text to determine if it describes a RECURRING expense (not a one-time expense).
+
+Text: {text}
+
+IMPORTANT: This is recurring if it contains ANY of these keywords: recurring, recur, subscription, monthly, weekly, daily, biweekly, every week, every month, etc.
+
+Today is {today.strftime("%A, %B %d, %Y")}.
+
+Return a JSON response with:
+
+1. **is_recurring**: true if this describes a recurring expense, false otherwise
+2. **confidence**: A number between 0 and 1 indicating confidence (1.0 = definitely recurring, 0.0 = definitely not)
+3. **explanation**: Brief explanation of why you think it is or isn't recurring
+4. **recurring_expense**: If is_recurring is true, parse the following fields:
+   - **expense_name**: Descriptive name (e.g., "Rent", "Netflix subscription")
+   - **amount**: Dollar amount as a number (extract from text even if no $ sign)
+   - **category**: One of these exact category keys:
+     - "FOOD_OUT", "RENT", "UTILITIES", "MEDICAL", "GAS", "GROCERIES", "RIDE_SHARE", "COFFEE", "HOTEL", "TECH", "TRAVEL", "OTHER"
+   - **frequency**: One of: "monthly", "weekly", "biweekly"
+   - **day_of_month**: (for monthly only) Integer 1-31, or null. If user says "last day", set this to 31 and set last_of_month to true. Parse from phrases like "on the 1st", "on the 15th", "1st of the month", etc.
+   - **day_of_week**: (for weekly/biweekly only) Integer 0-6 where 0=Monday, 6=Sunday. If no day specified, infer from today ({weekday_name} = {today.weekday()})
+   - **last_of_month**: (for monthly only) Boolean - true ONLY if user explicitly said "last day of month"
+   - **active**: Always true for new recurring expenses
+
+PARSING RULES:
+- Amount can be with or without $: "$1000" or "1000" both work
+- Day can be in any format: "1st", "the 1st", "on the 1st", "1st of month", "first", etc.
+- Order doesn't matter: amount can be at beginning, middle, or end
+- Frequency words: monthly, weekly, biweekly, every month, every week, etc.
+
+Return ONLY valid JSON in this format:
+{{
+    "is_recurring": boolean,
+    "confidence": number,
+    "explanation": "string",
+    "recurring_expense": {{
+        "expense_name": "string",
+        "amount": number,
+        "category": "CATEGORY_KEY",
+        "frequency": "monthly" | "weekly" | "biweekly",
+        "day_of_month": number | null,
+        "day_of_week": number | null,
+        "last_of_month": boolean,
+        "active": true
+    }} | null
+}}
+
+Examples:
+- "recurring rent $1000 monthly on the 1st" → is_recurring=true, amount=1000, frequency="monthly", day_of_month=1
+- "Recurring: rent monthly on the 1st, 1400" → is_recurring=true, amount=1400, frequency="monthly", day_of_month=1
+- "coffee $5" → is_recurring=false (one-time expense)
+- "netflix subscription $15 monthly" → is_recurring=true, frequency="monthly", infer day_of_month from today
+- "gym membership $50 every month on the 15th" → is_recurring=true, frequency="monthly", day_of_month=15
+- "recurring groceries $200 weekly on mondays" → is_recurring=true, frequency="weekly", day_of_week=0
+- "spotify $10 monthly last day" → is_recurring=true, frequency="monthly", day_of_month=31, last_of_month=true
+- "rent 1500 monthly 1st" → is_recurring=true, amount=1500, frequency="monthly", day_of_month=1
+"""
+
+    # Call GPT for detection
+    response = client.chat.completions.create(
+        model=os.getenv("PROCESSING_MODEL"),
+        messages=[{
+            "role": "user",
+            "content": prompt
+        }],
+        response_format={"type": "json_object"}
+    )
+
+    # Parse response
+    response_text = response.choices[0].message.content
+    data = json.loads(response_text)
+
+    is_recurring = data.get("is_recurring", False)
+    confidence = data.get("confidence", 0.0)
+    explanation = data.get("explanation", "")
+
+    recurring_expense = None
+    if is_recurring and data.get("recurring_expense"):
+        rec_data = data["recurring_expense"]
+
+        # Map category string to ExpenseType enum
+        category_str = rec_data.get("category", "OTHER")
+        try:
+            category = ExpenseType[category_str]
+        except KeyError:
+            category = ExpenseType.OTHER
+
+        # Map frequency string to FrequencyType enum
+        freq_str = rec_data.get("frequency", "monthly").lower()
+        try:
+            frequency = FrequencyType[freq_str.upper()]
+        except KeyError:
+            frequency = FrequencyType.MONTHLY
+
+        recurring_expense = RecurringExpense(
+            expense_name=rec_data.get("expense_name", "Unknown recurring expense"),
+            amount=rec_data.get("amount", 0),
+            category=category,
+            frequency=frequency,
+            day_of_month=rec_data.get("day_of_month"),
+            day_of_week=rec_data.get("day_of_week"),
+            last_of_month=rec_data.get("last_of_month", False),
+            last_reminded=None,
+            last_user_action=None,
+            active=True
+        )
+
+    return RecurringDetectionResult(
+        is_recurring=is_recurring,
+        confidence=confidence,
+        recurring_expense=recurring_expense,
+        explanation=explanation
+    )
