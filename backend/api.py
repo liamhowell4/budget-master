@@ -73,7 +73,7 @@ USER_TIMEZONE = pytz.timezone(os.getenv("USER_TIMEZONE", "America/Chicago"))
 
 # ==================== Shared MCP Processing Function ====================
 
-async def process_expense_with_mcp(text: str, image_base64: Optional[str] = None) -> dict:
+async def process_expense_with_mcp(text: str, image_base64: Optional[str] = None, user_id: Optional[str] = None) -> dict:
     """
     Shared MCP processing function for expense parsing.
 
@@ -84,6 +84,7 @@ async def process_expense_with_mcp(text: str, image_base64: Optional[str] = None
     Args:
         text: Text description of expense (can be empty if image provided)
         image_base64: Optional base64-encoded image with data URL prefix
+        user_id: Phone number or session ID for conversation tracking
 
     Returns:
         dict with keys: success, expense_id, expense_name, amount, category,
@@ -95,12 +96,13 @@ async def process_expense_with_mcp(text: str, image_base64: Optional[str] = None
     if not _mcp_client:
         raise RuntimeError("MCP client not initialized. Set USE_MCP_BACKEND=true")
 
-    print(f"🤖 Processing with MCP: text='{text}', has_image={image_base64 is not None}")
+    print(f"🤖 Processing with MCP: user_id='{user_id}', text='{text}', has_image={image_base64 is not None}")
 
     # Call MCP client
     result = await _mcp_client.process_expense_message(
         text=text or "",  # Ensure text is never None
-        image_base64=image_base64
+        image_base64=image_base64,
+        user_id=user_id
     )
 
     # Ensure message is populated for consistency
@@ -333,8 +335,9 @@ async def twilio_webhook_mcp(request: Request, x_twilio_signature: str = Header(
             if not is_valid:
                 raise HTTPException(status_code=403, detail="Invalid Twilio signature")
 
-        # Get message body
+        # Get message body and phone number
         message_body = form_data.get("Body", "").strip()
+        from_number = form_data.get("From", "")  # Phone number for conversation tracking
 
         # Check for images (MMS)
         num_media = int(form_data.get("NumMedia", 0))
@@ -366,7 +369,8 @@ async def twilio_webhook_mcp(request: Request, x_twilio_signature: str = Header(
         # Process with shared MCP function
         result = await process_expense_with_mcp(
             text=message_body,
-            image_base64=image_base64
+            image_base64=image_base64,
+            user_id=from_number  # Pass phone number for conversation tracking
         )
 
         # Get response message (already formatted by shared function)
@@ -385,7 +389,8 @@ async def twilio_webhook_mcp(request: Request, x_twilio_signature: str = Header(
 @app.post("/mcp/process_expense", response_model=ExpenseResponse)
 async def mcp_process_expense(
     text: Optional[str] = Form(None, description="Text description of expense"),
-    image: Optional[UploadFile] = File(None, description="Receipt image")
+    image: Optional[UploadFile] = File(None, description="Receipt image"),
+    user_id: Optional[str] = Form(None, description="User/session ID for conversation tracking")
 ):
     """
     Generic MCP endpoint for processing expenses.
@@ -396,6 +401,7 @@ async def mcp_process_expense(
     Args:
         text: Optional text description of expense
         image: Optional receipt image file
+        user_id: Optional user/session ID for conversation tracking
 
     Returns:
         ExpenseResponse with structured expense data
@@ -442,7 +448,8 @@ async def mcp_process_expense(
         # Call shared MCP processing function
         result = await process_expense_with_mcp(
             text=text or "",
-            image_base64=image_base64
+            image_base64=image_base64,
+            user_id=user_id
         )
 
         # Return as structured JSON response

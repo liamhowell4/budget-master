@@ -91,6 +91,8 @@ When a user sends you an expense (as text and/or a receipt image), you should:
 
 **Important**: Always use the MCP tools (`save_expense`, `get_budget_status`) to complete the task. Don't just describe what you would do - actually call the tools to save the expense and check the budget.
 
+**Context-Aware Edits**: If the user references a previous expense (e.g., "actually that was $6", "delete that", "the last one"), you will receive the user's recent expense history as context. Use this to identify which expense they're referring to.
+
 **Timezone**: User is in {user_timezone} timezone.
 Today's date for reference: {today.month}/{today.day}/{today.year} ({user_timezone})
 """

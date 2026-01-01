@@ -3,10 +3,14 @@
 MCP Expense Server - Exposes expense tracking tools via Model Context Protocol.
 
 This server runs as a subprocess and communicates via stdio (stdin/stdout).
-It provides three tools for Claude to use:
+It provides tools for Claude to use:
 1. save_expense - Save a parsed expense to Firebase
 2. get_budget_status - Check budget status and get warnings
 3. get_categories - List all valid expense categories
+4. update_expense - Update an existing expense
+5. delete_expense - Delete an expense
+6. get_recent_expenses - Get recent expenses from Firebase
+7. search_expenses - Search expenses by name
 
 Usage:
     python backend/mcp/expense_server.py
@@ -131,6 +135,113 @@ async def handle_list_tools() -> list[Tool]:
                 "properties": {},
                 "required": []
             }
+        ),
+        Tool(
+            name="update_expense",
+            description=(
+                "Update an existing expense's fields. "
+                "Use this when the user wants to correct or modify a previous expense. "
+                "You can update name, amount, date, and/or category."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "expense_id": {
+                        "type": "string",
+                        "description": "The Firebase document ID of the expense to update"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "New expense name (optional)"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "New amount (optional)"
+                    },
+                    "date": {
+                        "type": "object",
+                        "description": "New date (optional)",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "New category (optional)",
+                        "enum": [e.name for e in ExpenseType]
+                    }
+                },
+                "required": ["expense_id"]
+            }
+        ),
+        Tool(
+            name="delete_expense",
+            description=(
+                "Delete an expense from Firebase. "
+                "Use this when the user confirms they want to remove an expense. "
+                "Always confirm with the user before calling this tool."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "expense_id": {
+                        "type": "string",
+                        "description": "The Firebase document ID of the expense to delete"
+                    }
+                },
+                "required": ["expense_id"]
+            }
+        ),
+        Tool(
+            name="get_recent_expenses",
+            description=(
+                "Get recent expenses from Firebase (last 7 days or 20 expenses, whichever is fewer). "
+                "Use this when the user asks to see their recent purchases or recent activity. "
+                "Returns expenses sorted by most recent first."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of expenses to return (default 20)",
+                        "minimum": 1,
+                        "maximum": 50
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filter by category (optional)",
+                        "enum": [e.name for e in ExpenseType]
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="search_expenses",
+            description=(
+                "Search for expenses by name using substring matching. "
+                "Searches current month by default, or specify a date range. "
+                "Also supports filtering by category."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Text to search for in expense names (case-insensitive)"
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filter by category (optional)",
+                        "enum": [e.name for e in ExpenseType]
+                    }
+                },
+                "required": ["query"]
+            }
         )
     ]
 
@@ -154,6 +265,14 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_budget_status(arguments)
         elif name == "get_categories":
             return await _get_categories(arguments)
+        elif name == "update_expense":
+            return await _update_expense(arguments)
+        elif name == "delete_expense":
+            return await _delete_expense(arguments)
+        elif name == "get_recent_expenses":
+            return await _get_recent_expenses(arguments)
+        elif name == "search_expenses":
+            return await _search_expenses(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
     except Exception as e:
@@ -289,6 +408,233 @@ async def _get_categories(arguments: dict) -> list[TextContent]:
 
     import json
     return [TextContent(type="text", text=json.dumps({"categories": categories}))]
+
+
+async def _update_expense(arguments: dict) -> list[TextContent]:
+    """
+    Update an existing expense.
+
+    Args:
+        arguments: {
+            "expense_id": str,
+            "name": str (optional),
+            "amount": float (optional),
+            "date": dict (optional),
+            "category": str (optional)
+        }
+
+    Returns:
+        TextContent with success/error message
+    """
+    expense_id = arguments["expense_id"]
+
+    # Prepare optional fields
+    expense_name = arguments.get("name")
+    amount = arguments.get("amount")
+    date_dict = arguments.get("date")
+    category_str = arguments.get("category")
+
+    # Convert date dict to Date object if provided
+    date_obj = None
+    if date_dict:
+        date_obj = Date(
+            day=date_dict["day"],
+            month=date_dict["month"],
+            year=date_dict["year"]
+        )
+
+    # Convert category string to ExpenseType if provided
+    category_obj = None
+    if category_str:
+        try:
+            category_obj = ExpenseType[category_str]
+        except KeyError:
+            return [TextContent(
+                type="text",
+                text=f"Error: Invalid category '{category_str}'"
+            )]
+
+    # Update expense
+    success = firebase_client.update_expense(
+        expense_id=expense_id,
+        expense_name=expense_name,
+        amount=amount,
+        date=date_obj,
+        category=category_obj
+    )
+
+    if not success:
+        return [TextContent(
+            type="text",
+            text=f"Error: Expense {expense_id} not found"
+        )]
+
+    # Get updated expense to return details
+    updated_expense = firebase_client.get_expense_by_id(expense_id)
+
+    result = {
+        "success": True,
+        "expense_id": expense_id,
+        "expense_name": updated_expense.get("expense_name"),
+        "amount": updated_expense.get("amount"),
+        "category": updated_expense.get("category")
+    }
+
+    import json
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _delete_expense(arguments: dict) -> list[TextContent]:
+    """
+    Delete an expense.
+
+    Args:
+        arguments: {
+            "expense_id": str
+        }
+
+    Returns:
+        TextContent with success/error message
+    """
+    expense_id = arguments["expense_id"]
+
+    # Get expense details before deleting (for confirmation message)
+    expense = firebase_client.get_expense_by_id(expense_id)
+
+    if not expense:
+        return [TextContent(
+            type="text",
+            text=f"Error: Expense {expense_id} not found"
+        )]
+
+    # Delete expense
+    success = firebase_client.delete_expense(expense_id)
+
+    if not success:
+        return [TextContent(
+            type="text",
+            text=f"Error: Failed to delete expense {expense_id}"
+        )]
+
+    result = {
+        "success": True,
+        "expense_id": expense_id,
+        "deleted_expense": {
+            "name": expense.get("expense_name"),
+            "amount": expense.get("amount"),
+            "category": expense.get("category")
+        }
+    }
+
+    import json
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _get_recent_expenses(arguments: dict) -> list[TextContent]:
+    """
+    Get recent expenses from Firebase.
+
+    Args:
+        arguments: {
+            "limit": int (optional, default 20),
+            "category": str (optional)
+        }
+
+    Returns:
+        TextContent with list of recent expenses
+    """
+    limit = arguments.get("limit", 20)
+    category_str = arguments.get("category")
+
+    # Parse category if provided
+    category_obj = None
+    if category_str:
+        try:
+            category_obj = ExpenseType[category_str]
+        except KeyError:
+            return [TextContent(
+                type="text",
+                text=f"Error: Invalid category '{category_str}'"
+            )]
+
+    # Get recent expenses
+    expenses = firebase_client.get_recent_expenses_from_db(
+        limit=limit,
+        category=category_obj
+    )
+
+    # Format expenses for response
+    formatted_expenses = []
+    for exp in expenses:
+        formatted_expenses.append({
+            "id": exp.get("id"),
+            "name": exp.get("expense_name"),
+            "amount": exp.get("amount"),
+            "category": exp.get("category"),
+            "date": exp.get("date")
+        })
+
+    result = {
+        "count": len(formatted_expenses),
+        "expenses": formatted_expenses
+    }
+
+    import json
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _search_expenses(arguments: dict) -> list[TextContent]:
+    """
+    Search expenses by name.
+
+    Args:
+        arguments: {
+            "query": str,
+            "category": str (optional)
+        }
+
+    Returns:
+        TextContent with list of matching expenses
+    """
+    query = arguments["query"]
+    category_str = arguments.get("category")
+
+    # Parse category if provided
+    category_obj = None
+    if category_str:
+        try:
+            category_obj = ExpenseType[category_str]
+        except KeyError:
+            return [TextContent(
+                type="text",
+                text=f"Error: Invalid category '{category_str}'"
+            )]
+
+    # Search expenses (defaults to current month)
+    expenses = firebase_client.search_expenses_in_db(
+        text_query=query,
+        category=category_obj
+    )
+
+    # Format expenses for response
+    formatted_expenses = []
+    for exp in expenses:
+        formatted_expenses.append({
+            "id": exp.get("id"),
+            "name": exp.get("expense_name"),
+            "amount": exp.get("amount"),
+            "category": exp.get("category"),
+            "date": exp.get("date")
+        })
+
+    result = {
+        "query": query,
+        "count": len(formatted_expenses),
+        "expenses": formatted_expenses
+    }
+
+    import json
+    return [TextContent(type="text", text=json.dumps(result))]
 
 
 async def main():

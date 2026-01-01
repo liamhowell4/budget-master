@@ -161,6 +161,189 @@ class FirebaseClient:
         expenses = self.get_monthly_expenses(year, month, category)
         return sum(exp.get("amount", 0) for exp in expenses)
 
+    def get_expense_by_id(self, expense_id: str) -> Optional[Dict]:
+        """
+        Get a single expense by its document ID.
+
+        Args:
+            expense_id: Firestore document ID
+
+        Returns:
+            Expense dict with 'id' field, or None if not found
+        """
+        doc_ref = self.db.collection("expenses").document(expense_id)
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            return None
+
+        expense_data = doc.to_dict()
+        expense_data["id"] = doc.id
+        return expense_data
+
+    def update_expense(
+        self,
+        expense_id: str,
+        expense_name: Optional[str] = None,
+        amount: Optional[float] = None,
+        date: Optional[Date] = None,
+        category: Optional[ExpenseType] = None
+    ) -> bool:
+        """
+        Update an expense's fields (partial update).
+
+        Args:
+            expense_id: Firestore document ID
+            expense_name: New expense name (optional)
+            amount: New amount (optional)
+            date: New date (optional)
+            category: New category (optional)
+
+        Returns:
+            True if updated, False if expense not found
+        """
+        doc_ref = self.db.collection("expenses").document(expense_id)
+
+        # Check if expense exists
+        if not doc_ref.get().exists:
+            return False
+
+        # Build update dict (only include provided fields)
+        updates = {}
+        if expense_name is not None:
+            updates["expense_name"] = expense_name
+        if amount is not None:
+            updates["amount"] = amount
+        if date is not None:
+            updates["date"] = {
+                "day": date.day,
+                "month": date.month,
+                "year": date.year
+            }
+        if category is not None:
+            updates["category"] = category.name
+
+        # Perform update (keep original timestamp)
+        if updates:
+            doc_ref.update(updates)
+
+        return True
+
+    def delete_expense(self, expense_id: str) -> bool:
+        """
+        Delete an expense by its document ID.
+
+        Args:
+            expense_id: Firestore document ID
+
+        Returns:
+            True if deleted, False if expense not found
+        """
+        doc_ref = self.db.collection("expenses").document(expense_id)
+
+        # Check if expense exists
+        if not doc_ref.get().exists:
+            return False
+
+        doc_ref.delete()
+        return True
+
+    def get_recent_expenses_from_db(
+        self,
+        limit: int = 20,
+        category: Optional[ExpenseType] = None,
+        days_back: int = 7
+    ) -> List[Dict]:
+        """
+        Get recent expenses (last N days or limit, whichever is fewer).
+
+        Args:
+            limit: Maximum number of expenses to return (default 20)
+            category: Optional category filter
+            days_back: Number of days to look back (default 7)
+
+        Returns:
+            List of expense dicts sorted by most recent first
+        """
+        from datetime import datetime, timedelta
+        import pytz
+
+        # Calculate date range (last N days in user's timezone)
+        user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
+        tz = pytz.timezone(user_timezone)
+        now = datetime.now(tz)
+        start_date = now - timedelta(days=days_back)
+
+        # Build query
+        query = self.db.collection("expenses")
+        query = query.where(filter=FieldFilter("timestamp", ">=", start_date))
+
+        if category:
+            query = query.where(filter=FieldFilter("category", "==", category.name))
+
+        # Order by most recent first and limit
+        query = query.order_by("timestamp", direction=firestore.Query.DESCENDING)
+        query = query.limit(limit)
+
+        # Execute query
+        docs = query.stream()
+
+        expenses = []
+        for doc in docs:
+            expense_data = doc.to_dict()
+            expense_data["id"] = doc.id
+            expenses.append(expense_data)
+
+        return expenses
+
+    def search_expenses_in_db(
+        self,
+        text_query: str,
+        category: Optional[ExpenseType] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[Dict]:
+        """
+        Search expenses by name (substring match).
+
+        Note: Firestore doesn't support full-text search natively,
+        so we fetch all expenses in the date range and filter in Python.
+
+        Args:
+            text_query: Search string (case-insensitive substring match)
+            category: Optional category filter
+            start_date: Optional start date (defaults to first day of current month)
+            end_date: Optional end date (defaults to today)
+
+        Returns:
+            List of matching expense dicts
+        """
+        from datetime import datetime
+        import pytz
+
+        # Default to current month if no date range specified
+        if not start_date or not end_date:
+            user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
+            tz = pytz.timezone(user_timezone)
+            now = datetime.now(tz)
+
+            if not start_date:
+                start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            if not end_date:
+                end_date = now
+
+        # Get expenses in date range
+        expenses = self.get_expenses(start_date, end_date, category)
+
+        # Filter by text query (case-insensitive substring match)
+        query_lower = text_query.lower()
+        results = [
+            exp for exp in expenses
+            if query_lower in exp.get("expense_name", "").lower()
+        ]
+
+        return results
+
     # ==================== Budget Cap Operations ====================
 
     def get_budget_cap(self, category: str) -> Optional[float]:

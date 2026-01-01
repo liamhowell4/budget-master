@@ -118,20 +118,24 @@ class ExpenseMCPClient:
     async def process_expense_message(
         self,
         text: str,
-        image_base64: Optional[str] = None
+        image_base64: Optional[str] = None,
+        user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Process an expense message using Claude + MCP tools.
 
         This method:
-        1. Builds a message with text and/or image
-        2. Calls Claude API with system prompt and MCP tools
-        3. Orchestrates tool calls (save_expense, get_budget_status)
-        4. Returns structured response
+        1. Gets recent expense context from conversation cache
+        2. Builds a message with text and/or image
+        3. Calls Claude API with system prompt, context, and MCP tools
+        4. Orchestrates tool calls (save_expense, update_expense, delete_expense, etc.)
+        5. Updates conversation cache after saving/updating
+        6. Returns structured response
 
         Args:
-            text: Text description of expense (e.g., "Starbucks $5")
+            text: Text description of expense (e.g., "Starbucks $5", "Actually make that $6")
             image_base64: Optional base64-encoded image (receipt photo)
+            user_id: Phone number or session ID for conversation tracking
 
         Returns:
             {
@@ -150,8 +154,30 @@ class ExpenseMCPClient:
         if not self.client:
             raise RuntimeError("MCP client not initialized. Call startup() first.")
 
+        # Get conversation cache
+        from .conversation_cache import get_conversation_cache
+        cache = get_conversation_cache()
+
+        # Get recent expenses for context (if user_id provided)
+        recent_expenses = []
+        if user_id:
+            recent_expenses = cache.get_recent_expenses(user_id, limit=5)
+
         # Build message content
         message_content = []
+
+        # Add recent expense context if available
+        if recent_expenses:
+            context_text = "**Recent Expenses (for context):**\n"
+            for i, exp in enumerate(recent_expenses, 1):
+                date_obj = exp.get("date", {})
+                date_str = f"{date_obj.get('month')}/{date_obj.get('day')}/{date_obj.get('year')}" if date_obj else "Unknown"
+                context_text += f"{i}. ${exp['amount']:.2f} {exp['expense_name']} ({exp['category']}) - {date_str} [ID: {exp['expense_id']}]\n"
+
+            message_content.append({
+                "type": "text",
+                "text": context_text.strip()
+            })
 
         # Add text
         if text:
@@ -257,6 +283,37 @@ class ExpenseMCPClient:
                             expense_data["expense_name"] = result_data.get("expense_name")
                             expense_data["amount"] = result_data.get("amount")
                             expense_data["category"] = result_data.get("category")
+
+                            # Update conversation cache with new expense
+                            if user_id and expense_data["expense_id"]:
+                                cache.update_last_expense(
+                                    user_id=user_id,
+                                    expense_id=expense_data["expense_id"],
+                                    expense_name=expense_data["expense_name"],
+                                    amount=expense_data["amount"],
+                                    category=expense_data["category"]
+                                )
+
+                        elif tool_name == "update_expense":
+                            expense_data["success"] = result_data.get("success", False)
+                            expense_data["expense_id"] = result_data.get("expense_id")
+                            expense_data["expense_name"] = result_data.get("expense_name")
+                            expense_data["amount"] = result_data.get("amount")
+                            expense_data["category"] = result_data.get("category")
+
+                            # Update cache with updated expense details
+                            if user_id and expense_data["expense_id"]:
+                                cache.update_last_expense(
+                                    user_id=user_id,
+                                    expense_id=expense_data["expense_id"],
+                                    expense_name=expense_data["expense_name"],
+                                    amount=expense_data["amount"],
+                                    category=expense_data["category"]
+                                )
+
+                        elif tool_name == "delete_expense":
+                            expense_data["success"] = result_data.get("success", False)
+                            # Note: For deletes, we don't update cache since expense is gone
 
                         elif tool_name == "get_budget_status":
                             expense_data["budget_warning"] = result_data.get("budget_warning", "")

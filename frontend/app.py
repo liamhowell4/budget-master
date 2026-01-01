@@ -15,6 +15,7 @@ from datetime import datetime
 import io
 import json
 import os
+import uuid
 
 # API Configuration
 # Default to Cloud Run, but allow override with BACKEND_URL env var
@@ -146,7 +147,7 @@ def delete_recurring_template(template_id: str):
         return False, str(e)
 
 
-def submit_expense(text: str = None, image_file=None):
+def submit_expense(text: str = None, image_file=None, session_id: str = None):
     """Submit expense to API."""
     try:
         files = {}
@@ -154,6 +155,9 @@ def submit_expense(text: str = None, image_file=None):
 
         if text:
             data["text"] = text
+
+        if session_id:
+            data["user_id"] = session_id  # Pass session_id as user_id for conversation tracking
 
         if image_file:
             files["image"] = (image_file.name, image_file.getvalue(), image_file.type)
@@ -181,18 +185,19 @@ def escape_markdown_dollars(text: str) -> str:
     return text.replace("$", "\\$")
 
 
-def process_chat_message(text: str = None, image_file=None):
+def process_chat_message(text: str = None, image_file=None, session_id: str = None):
     """
     Process a chat message (text and/or image) and return a formatted SMS-like response.
 
     Args:
         text: Optional text message
         image_file: Optional uploaded image file
+        session_id: Optional session ID for conversation tracking
 
     Returns:
         tuple: (success: bool, response_message: str, expense_data: dict or None)
     """
-    success, result = submit_expense(text, image_file)
+    success, result = submit_expense(text, image_file, session_id)
 
     if not success:
         return False, f"❌ Error: {result}", None
@@ -241,6 +246,10 @@ def render_chat():
     if 'chat_history' not in st.session_state:
         st.session_state.chat_history = []
 
+    # Initialize session_id for conversation tracking
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
+
     # Show welcome message if chat is empty
     if len(st.session_state.chat_history) == 0:
         st.session_state.chat_history = [
@@ -272,7 +281,8 @@ def render_chat():
                     msg_data = st.session_state.processing_message
                     success, response, expense_data = process_chat_message(
                         msg_data.get("text"),
-                        msg_data.get("image")
+                        msg_data.get("image"),
+                        st.session_state.session_id
                     )
 
                     # Add assistant response to history
@@ -647,6 +657,10 @@ def render_add_expense():
     """Render the add expense form tab."""
     st.header("➕ Add Expense")
 
+    # Initialize session_id for conversation tracking
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
+
     st.markdown("""
     Enter an expense description or upload a receipt image. The AI will automatically:
     - Extract the amount
@@ -678,7 +692,7 @@ def render_add_expense():
             st.error("Please provide either a text description or upload a receipt image.")
         else:
             with st.spinner("Processing expense..."):
-                success, result = submit_expense(expense_text, uploaded_image)
+                success, result = submit_expense(expense_text, uploaded_image, st.session_state.session_id)
 
                 if success:
                     # Display success message
