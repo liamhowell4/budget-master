@@ -34,7 +34,7 @@ from mcp.types import Tool, TextContent
 # Import backend modules
 from backend.firebase_client import FirebaseClient
 from backend.budget_manager import BudgetManager
-from backend.output_schemas import Expense, ExpenseType, Date
+from backend.output_schemas import Expense, ExpenseType, Date, RecurringExpense, FrequencyType
 
 
 # Initialize Firebase and Budget Manager
@@ -242,6 +242,91 @@ async def handle_list_tools() -> list[Tool]:
                 },
                 "required": ["query"]
             }
+        ),
+        Tool(
+            name="create_recurring_expense",
+            description=(
+                "Create a recurring expense template for subscriptions, rent, bills, etc. "
+                "The system will automatically create pending expenses on the specified schedule. "
+                "Supports monthly (on specific day), weekly (on specific weekday), and biweekly frequencies."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the recurring expense (e.g., 'Libro.fm subscription', 'Rent', 'Netflix')"
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "Amount of the recurring expense"
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Expense category",
+                        "enum": [e.name for e in ExpenseType]
+                    },
+                    "frequency": {
+                        "type": "string",
+                        "description": "How often the expense recurs",
+                        "enum": ["monthly", "weekly", "biweekly"]
+                    },
+                    "day_of_month": {
+                        "type": "integer",
+                        "description": "Day of month (1-31) for monthly recurring expenses. Required if frequency is 'monthly'.",
+                        "minimum": 1,
+                        "maximum": 31
+                    },
+                    "day_of_week": {
+                        "type": "integer",
+                        "description": "Day of week (0=Monday, 6=Sunday) for weekly/biweekly expenses. Required if frequency is 'weekly' or 'biweekly'.",
+                        "minimum": 0,
+                        "maximum": 6
+                    },
+                    "last_of_month": {
+                        "type": "boolean",
+                        "description": "Set to true if user wants last day of month (ignores day_of_month)",
+                        "default": False
+                    }
+                },
+                "required": ["name", "amount", "category", "frequency"]
+            }
+        ),
+        Tool(
+            name="list_recurring_expenses",
+            description=(
+                "Get all active recurring expense templates. "
+                "Use this when the user asks to see their subscriptions, recurring bills, etc."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "active_only": {
+                        "type": "boolean",
+                        "description": "Only show active recurring expenses (default true)",
+                        "default": True
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="delete_recurring_expense",
+            description=(
+                "Delete/deactivate a recurring expense template. "
+                "This will stop future pending expenses from being created. "
+                "Always confirm with the user before calling this tool."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "template_id": {
+                        "type": "string",
+                        "description": "The Firebase document ID of the recurring expense template to delete"
+                    }
+                },
+                "required": ["template_id"]
+            }
         )
     ]
 
@@ -273,6 +358,12 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _get_recent_expenses(arguments)
         elif name == "search_expenses":
             return await _search_expenses(arguments)
+        elif name == "create_recurring_expense":
+            return await _create_recurring_expense(arguments)
+        elif name == "list_recurring_expenses":
+            return await _list_recurring_expenses(arguments)
+        elif name == "delete_recurring_expense":
+            return await _delete_recurring_expense(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
     except Exception as e:
@@ -634,6 +725,191 @@ async def _search_expenses(arguments: dict) -> list[TextContent]:
     }
 
     import json
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
+    """
+    Create a recurring expense template.
+
+    Args:
+        arguments: {
+            "name": str,
+            "amount": float,
+            "category": str,
+            "frequency": str ("monthly", "weekly", "biweekly"),
+            "day_of_month": int (optional, for monthly),
+            "day_of_week": int (optional, for weekly/biweekly),
+            "last_of_month": bool (optional)
+        }
+
+    Returns:
+        TextContent with template_id and confirmation
+    """
+    import json
+    from backend.recurring_manager import get_today_in_user_timezone
+
+    name = arguments["name"]
+    amount = arguments["amount"]
+    category_str = arguments["category"]
+    frequency_str = arguments["frequency"]
+    day_of_month = arguments.get("day_of_month")
+    day_of_week = arguments.get("day_of_week")
+    last_of_month = arguments.get("last_of_month", False)
+
+    # Convert category string to ExpenseType enum
+    try:
+        category = ExpenseType[category_str]
+    except KeyError:
+        return [TextContent(type="text", text=json.dumps({
+            "success": False,
+            "error": f"Invalid category: {category_str}"
+        }))]
+
+    # Convert frequency string to FrequencyType enum
+    try:
+        frequency = FrequencyType(frequency_str)
+    except ValueError:
+        return [TextContent(type="text", text=json.dumps({
+            "success": False,
+            "error": f"Invalid frequency: {frequency_str}"
+        }))]
+
+    # Validate day_of_month for monthly frequency
+    if frequency == FrequencyType.MONTHLY and not last_of_month and day_of_month is None:
+        return [TextContent(type="text", text=json.dumps({
+            "success": False,
+            "error": "day_of_month is required for monthly recurring expenses"
+        }))]
+
+    # Validate day_of_week for weekly/biweekly
+    if frequency in [FrequencyType.WEEKLY, FrequencyType.BIWEEKLY] and day_of_week is None:
+        return [TextContent(type="text", text=json.dumps({
+            "success": False,
+            "error": "day_of_week is required for weekly/biweekly recurring expenses"
+        }))]
+
+    # Get today's date for last_reminded (will check if we need to create pending expense)
+    today = get_today_in_user_timezone()
+    today_date = Date(day=today.day, month=today.month, year=today.year)
+
+    # Create recurring expense object
+    recurring = RecurringExpense(
+        expense_name=name,
+        amount=amount,
+        category=category,
+        frequency=frequency,
+        day_of_month=day_of_month,
+        day_of_week=day_of_week,
+        last_of_month=last_of_month,
+        last_reminded=None,  # Will be set when first pending expense is created
+        last_user_action=today_date,  # Set to today to avoid immediate retroactive pending
+        active=True
+    )
+
+    # Save to Firebase
+    template_id = firebase_client.save_recurring_expense(recurring)
+
+    result = {
+        "success": True,
+        "template_id": template_id,
+        "expense_name": name,
+        "amount": amount,
+        "category": category_str,
+        "frequency": frequency_str,
+        "message": f"✅ Created recurring expense: {name} (${amount:.2f} {frequency_str})"
+    }
+
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _list_recurring_expenses(arguments: dict) -> list[TextContent]:
+    """
+    List all recurring expense templates.
+
+    Args:
+        arguments: {
+            "active_only": bool (optional, default True)
+        }
+
+    Returns:
+        TextContent with list of recurring expenses
+    """
+    import json
+
+    active_only = arguments.get("active_only", True)
+
+    # Get recurring expenses from Firebase
+    recurring_list = firebase_client.get_all_recurring_expenses(active_only=active_only)
+
+    # Format for response
+    formatted_expenses = []
+    for recurring in recurring_list:
+        exp_dict = {
+            "template_id": recurring.template_id,
+            "expense_name": recurring.expense_name,
+            "amount": recurring.amount,
+            "category": recurring.category.name,
+            "frequency": recurring.frequency.value,
+            "active": recurring.active
+        }
+
+        if recurring.frequency == FrequencyType.MONTHLY:
+            if recurring.last_of_month:
+                exp_dict["schedule"] = "last day of month"
+            else:
+                exp_dict["schedule"] = f"day {recurring.day_of_month} of month"
+        elif recurring.frequency in [FrequencyType.WEEKLY, FrequencyType.BIWEEKLY]:
+            days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            day_name = days[recurring.day_of_week] if recurring.day_of_week is not None else "Unknown"
+            exp_dict["schedule"] = day_name
+
+        formatted_expenses.append(exp_dict)
+
+    result = {
+        "count": len(formatted_expenses),
+        "recurring_expenses": formatted_expenses
+    }
+
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _delete_recurring_expense(arguments: dict) -> list[TextContent]:
+    """
+    Delete/deactivate a recurring expense template.
+
+    Args:
+        arguments: {
+            "template_id": str
+        }
+
+    Returns:
+        TextContent with confirmation
+    """
+    import json
+
+    template_id = arguments["template_id"]
+
+    # Get the expense first to return details
+    recurring = firebase_client.get_recurring_expense(template_id)
+
+    if not recurring:
+        return [TextContent(type="text", text=json.dumps({
+            "success": False,
+            "error": f"Recurring expense {template_id} not found"
+        }))]
+
+    # Delete the recurring expense
+    firebase_client.delete_recurring_expense(template_id)
+
+    result = {
+        "success": True,
+        "template_id": template_id,
+        "expense_name": recurring.expense_name,
+        "amount": recurring.amount,
+        "message": f"✅ Deleted recurring expense: {recurring.expense_name} (${recurring.amount:.2f})"
+    }
+
     return [TextContent(type="text", text=json.dumps(result))]
 
 
