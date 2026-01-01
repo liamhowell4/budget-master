@@ -150,8 +150,9 @@ async def check_recurring_expenses():
 
         print(f"📋 Found {len(recurring_expenses)} active recurring expenses")
 
-        from datetime import date
-        today = date.today()
+        # Use timezone-aware today (not UTC)
+        from .recurring_manager import get_today_in_user_timezone
+        today = get_today_in_user_timezone()
         today_date = Date(day=today.day, month=today.month, year=today.year)
 
         created_count = 0

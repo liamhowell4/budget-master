@@ -14,9 +14,11 @@ import pandas as pd
 from datetime import datetime
 import io
 import json
+import os
 
 # API Configuration
-API_URL = "http://localhost:8000"
+# Default to Cloud Run, but allow override with BACKEND_URL env var
+API_URL = os.getenv("BACKEND_URL", "https://expense-tracker-857587891388.us-central1.run.app")
 
 # Claude-themed color scheme
 COLORS = {

@@ -9,19 +9,78 @@ This module wraps the MCP client for use in FastAPI, providing:
 """
 
 import os
-import sys
 import json
 import base64
+import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import date
+from contextlib import AsyncExitStack
 
-# Add mcp-client to path
-mcp_client_path = os.path.join(os.path.dirname(__file__), '../../mcp-client')
-sys.path.insert(0, mcp_client_path)
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+from anthropic import Anthropic
 
-from client import MCPClient, ANTHROPIC_MODEL
 from backend.system_prompts import get_expense_parsing_system_prompt
+
+# Claude model constant
+ANTHROPIC_MODEL = "claude-sonnet-4-5"
+
+
+class MCPClient:
+    """
+    Core MCP client for connecting to MCP servers via stdio.
+
+    Handles:
+    - Server connection management
+    - Tool discovery
+    - Claude API integration with MCP tools
+    """
+
+    def __init__(self):
+        """Initialize MCP client."""
+        self.session: Optional[ClientSession] = None
+        self.exit_stack = AsyncExitStack()
+        self.anthropic = Anthropic(
+            api_key=os.getenv('ANTHROPIC_API_KEY')
+        )
+
+    async def connect_to_server(self, server_script_path: str):
+        """
+        Connect to an MCP server via stdio.
+
+        Args:
+            server_script_path: Path to the server script (.py file)
+        """
+        is_python = server_script_path.endswith('.py')
+        if not is_python:
+            raise ValueError("Server script must be a .py file")
+
+        path = Path(server_script_path).resolve()
+
+        # Pass environment variables to subprocess (important for Cloud Run secrets)
+        env = os.environ.copy()
+
+        server_params = StdioServerParameters(
+            command="python",
+            args=[str(path)],
+            env=env,
+        )
+
+        stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
+        self.stdio, self.write = stdio_transport
+        self.session = await self.exit_stack.enter_async_context(ClientSession(self.stdio, self.write))
+
+        await self.session.initialize()
+
+        # List available tools
+        response = await self.session.list_tools()
+        tools = response.tools
+        print("\nConnected to server with tools:", [tool.name for tool in tools])
+
+    async def cleanup(self):
+        """Clean up resources."""
+        await self.exit_stack.aclose()
 
 
 class ExpenseMCPClient:

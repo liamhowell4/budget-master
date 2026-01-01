@@ -8,7 +8,9 @@ This module contains all system prompts for Claude API calls, making it easy to:
 - Maintain consistency
 """
 
-from datetime import date
+import os
+from datetime import datetime
+import pytz
 
 def get_expense_parsing_system_prompt() -> str:
     """
@@ -23,7 +25,12 @@ def get_expense_parsing_system_prompt() -> str:
     Returns:
         System prompt string
     """
-    today = date.today()
+    # Get user's timezone from environment (defaults to America/Chicago)
+    user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
+    tz = pytz.timezone(user_timezone)
+
+    # Get today's date in the user's timezone
+    today = datetime.now(tz).date()
 
     return f"""You are an expense tracking assistant. Your job is to help users track their personal expenses via SMS or chat.
 
@@ -84,7 +91,8 @@ When a user sends you an expense (as text and/or a receipt image), you should:
 
 **Important**: Always use the MCP tools (`save_expense`, `get_budget_status`) to complete the task. Don't just describe what you would do - actually call the tools to save the expense and check the budget.
 
-Today's date for reference: {today.month}/{today.day}/{today.year}
+**Timezone**: User is in {user_timezone} timezone.
+Today's date for reference: {today.month}/{today.day}/{today.year} ({user_timezone})
 """
 
 

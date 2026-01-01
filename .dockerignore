@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment variables
+.env
+.env.*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+CLAUDE.md
+build_plan.md
+README.md
+
+# Tests
+tests/
+*.test.py
+pytest.ini
+
+# Legacy files
+legacy/
+
+# Frontend (not needed for backend deployment)
+frontend/
+
+# Scripts
+scripts/
+
+# Firebase local files
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Firebase config (will be in .env)
+firebase.json
+firestore.rules
+firestore.indexes.json
+.firebaserc
+
+# MCP client standalone (if not needed)
+mcp-client/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

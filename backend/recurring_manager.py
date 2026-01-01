@@ -8,9 +8,11 @@ Handles:
 - Confirmation/skip/cancel flows
 """
 
-from datetime import date, timedelta
+import os
+from datetime import date, datetime, timedelta
 from typing import List, Optional, Tuple
 from calendar import monthrange
+import pytz
 
 from .output_schemas import (
     RecurringExpense,
@@ -20,6 +22,18 @@ from .output_schemas import (
     FrequencyType,
     ExpenseType
 )
+
+
+def get_today_in_user_timezone() -> date:
+    """
+    Get today's date in the user's timezone (not UTC).
+
+    Returns:
+        Today's date in the user's timezone
+    """
+    user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
+    tz = pytz.timezone(user_timezone)
+    return datetime.now(tz).date()
 
 
 class RecurringManager:
@@ -38,7 +52,7 @@ class RecurringManager:
             The next trigger date
         """
         if from_date is None:
-            from_date = date.today()
+            from_date = get_today_in_user_timezone()
 
         if recurring.frequency == FrequencyType.MONTHLY:
             return RecurringManager._calculate_next_monthly(recurring, from_date)
@@ -150,7 +164,7 @@ class RecurringManager:
             The most recent trigger date that should have occurred
         """
         if as_of_date is None:
-            as_of_date = date.today()
+            as_of_date = get_today_in_user_timezone()
 
         if recurring.frequency == FrequencyType.MONTHLY:
             return RecurringManager._calculate_most_recent_monthly(recurring, as_of_date)
