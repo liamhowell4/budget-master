@@ -180,14 +180,16 @@ gcloud functions deploy expense-tracker --runtime python311 --trigger-http
 
 ### Budget Warnings
 - Alert at **50%, 90%, 95%, 100%** of budget
-- **ALWAYS** include warning if over budget (>100%)
-- Apply to both category-level and total budget
+- **Category budgets**: Warn EVERY TIME at thresholds (50%, 90%, 95%, 100%+)
+- **Overall budget**: Warn ONCE per threshold (50%, 90%, 95%, 100%)
+  - After crossing 100%, warn EVERY TIME
+  - Tracking stored in `budget_alert_tracking/` collection
 - Include in SMS responses and Streamlit UI
 
 Example responses:
-- `✅ Saved $50 Groceries (GROCERIES) ℹ️ 50% of monthly budget used`
-- `✅ Saved $15 Coffee (COFFEE) ⚠️ 95% of COFFEE budget used`
-- `✅ Saved $200 Rent (RENT) 🚨 OVER BUDGET! 105% of monthly total budget used`
+- `✅ Saved $50 Groceries (GROCERIES) ℹ️ 50% of GROCERIES budget used` (category warning - repeats)
+- `✅ Saved $15 Coffee (COFFEE) ℹ️ 55% of monthly total budget used` (overall warning - one-time)
+- `✅ Saved $200 Rent (RENT) 🚨 OVER BUDGET! 105% of monthly total budget used` (over 100% - repeats)
 
 ## Firebase Schema
 
@@ -255,6 +257,15 @@ Example responses:
   sms_sent: true, // whether SMS was sent (for SMS flow)
   awaiting_confirmation: true, // false after user responds
   created_at: Firebase timestamp
+}
+```
+
+**`budget_alert_tracking/`** (tracks which overall budget thresholds have been warned about)
+```javascript
+{
+  // Document ID: "{year}-{month:02d}" (e.g., "2025-12")
+  thresholds_warned: [50, 90], // List of thresholds already alerted (50, 90, 95, or 100)
+  last_updated: Firebase timestamp
 }
 ```
 

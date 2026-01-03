@@ -94,6 +94,9 @@ class BudgetManager:
         - 95%: ⚠️ warning
         - 100%+: 🚨 OVER BUDGET
 
+        Category budgets: Warn every time at threshold
+        Overall budget: Warn only ONCE per threshold (except 100%+ warns every time)
+
         Args:
             category: The expense category
             amount: The new expense amount to add
@@ -106,6 +109,7 @@ class BudgetManager:
         warnings = []
 
         # ==================== Category Budget Check ====================
+        # Category warnings: ALWAYS warn when at threshold (current behavior)
         category_cap = self.firebase.get_budget_cap(category.name)
         if category_cap and category_cap > 0:
             current_category_spending = self.calculate_monthly_spending(category, year, month)
@@ -125,6 +129,8 @@ class BudgetManager:
                 warnings.append(category_warning)
 
         # ==================== Total Monthly Budget Check ====================
+        # Overall budget warnings: ONE warning per threshold (50, 90, 95, 100)
+        # After 100%, warn every time
         total_cap = self.firebase.get_budget_cap("TOTAL")
         if total_cap and total_cap > 0:
             current_total_spending = self.calculate_total_monthly_spending(year, month)
@@ -133,18 +139,61 @@ class BudgetManager:
             total_percentage = (projected_total_spending / total_cap) * 100
             total_remaining = total_cap - projected_total_spending
 
-            total_warning = self._format_warning(
-                percentage=total_percentage,
-                remaining=total_remaining,
-                budget_type="monthly total budget",
-                cap=total_cap
-            )
+            # Determine which threshold we're at
+            current_threshold = self._get_threshold_level(total_percentage)
 
-            if total_warning:
-                warnings.append(total_warning)
+            if current_threshold is not None:
+                # Get list of thresholds already warned about this month
+                warned_thresholds = self.firebase.get_warned_thresholds(year, month)
+
+                # Decide whether to warn
+                should_warn = False
+                if current_threshold >= 100:
+                    # Over budget: ALWAYS warn (every time)
+                    should_warn = True
+                elif current_threshold not in warned_thresholds:
+                    # New threshold reached: warn and track it
+                    should_warn = True
+
+                if should_warn:
+                    total_warning = self._format_warning(
+                        percentage=total_percentage,
+                        remaining=total_remaining,
+                        budget_type="monthly total budget",
+                        cap=total_cap
+                    )
+
+                    if total_warning:
+                        warnings.append(total_warning)
+
+                        # Track this threshold (unless already tracked or over 100%)
+                        # Over 100% doesn't need tracking since we always warn
+                        if current_threshold < 100 and current_threshold not in warned_thresholds:
+                            self.firebase.add_warned_threshold(year, month, current_threshold)
 
         # Combine warnings with line breaks
         return "\n".join(warnings)
+
+    def _get_threshold_level(self, percentage: float) -> Optional[int]:
+        """
+        Determine which threshold level a percentage falls into.
+
+        Args:
+            percentage: Budget usage percentage (e.g., 95.5)
+
+        Returns:
+            Threshold level (50, 90, 95, or 100) or None if below 50%
+        """
+        if percentage >= 100:
+            return 100
+        elif percentage >= 95:
+            return 95
+        elif percentage >= 90:
+            return 90
+        elif percentage >= 50:
+            return 50
+        else:
+            return None
 
     def _format_warning(
         self,

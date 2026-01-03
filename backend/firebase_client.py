@@ -394,6 +394,55 @@ class FirebaseClient:
 
         return caps
 
+    def get_warned_thresholds(self, year: int, month: int) -> List[int]:
+        """
+        Get list of overall budget thresholds already warned about for a given month.
+
+        Args:
+            year: Year (e.g., 2025)
+            month: Month (1-12)
+
+        Returns:
+            List of threshold percentages already warned about (e.g., [50, 90])
+        """
+        doc_id = f"{year}-{month:02d}"
+        doc = self.db.collection("budget_alert_tracking").document(doc_id).get()
+
+        if doc.exists:
+            data = doc.to_dict()
+            return data.get("thresholds_warned", [])
+
+        return []
+
+    def add_warned_threshold(self, year: int, month: int, threshold: int) -> None:
+        """
+        Add a threshold to the list of warned thresholds for a given month.
+
+        Args:
+            year: Year (e.g., 2025)
+            month: Month (1-12)
+            threshold: Threshold percentage (50, 90, 95, or 100)
+        """
+        doc_id = f"{year}-{month:02d}"
+        doc_ref = self.db.collection("budget_alert_tracking").document(doc_id)
+
+        # Get existing thresholds
+        existing_doc = doc_ref.get()
+        if existing_doc.exists:
+            existing_thresholds = existing_doc.to_dict().get("thresholds_warned", [])
+        else:
+            existing_thresholds = []
+
+        # Add new threshold if not already present
+        if threshold not in existing_thresholds:
+            existing_thresholds.append(threshold)
+            existing_thresholds.sort()  # Keep sorted for readability
+
+            doc_ref.set({
+                "thresholds_warned": existing_thresholds,
+                "last_updated": firestore.SERVER_TIMESTAMP
+            })
+
     # ==================== Category Operations ====================
 
     def get_category_data(self) -> List[Dict]:
