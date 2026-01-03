@@ -15,9 +15,10 @@ from typing import Optional, List
 import pytz
 
 from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Header
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import json as json_module
 
 from .twilio_handler import TwilioHandler
 from .firebase_client import FirebaseClient
@@ -33,13 +34,15 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Add CORS middleware to allow Streamlit (localhost:8501) to call API (localhost:8000)
+# Add CORS middleware to allow Streamlit (localhost:8501) and MCP Chat Frontend (localhost:3000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:8501",  # Streamlit default port
+        "http://localhost:3000",   # MCP Chat Frontend
+        "http://127.0.0.1:3000",
+        "http://localhost:8501",   # Streamlit default port
         "http://127.0.0.1:8501",
-        "http://localhost:8000",  # Allow same-origin too
+        "http://localhost:8000",   # Allow same-origin too
         "http://127.0.0.1:8000",
     ],
     allow_credentials=True,
@@ -971,6 +974,317 @@ async def health_check():
             "POST /pending/{id}/confirm",
             "DELETE /pending/{id}",
             "DELETE /recurring/{id}",
-            "GET /health"
+            "GET /health",
+            "GET /servers",
+            "POST /connect/{server_id}",
+            "GET /status",
+            "POST /disconnect",
+            "POST /chat/stream"
         ]
     }
+
+
+# ==================== MCP Chat Frontend Endpoints ====================
+
+@app.get("/servers")
+async def list_servers():
+    """
+    List all available MCP servers.
+
+    Returns list of server configurations that can be connected to.
+    Follows BACKEND_API_CONTRACT.md specification.
+    """
+    from .mcp.server_config import get_available_servers
+
+    servers = get_available_servers()
+
+    return [
+        {
+            "id": server.id,
+            "name": server.name,
+            "path": server.path,
+            "description": server.description
+        }
+        for server in servers
+    ]
+
+
+@app.post("/connect/{server_id}")
+async def connect_to_server(server_id: str):
+    """
+    Connect to a specific MCP server.
+
+    Disconnects from current server (if any) and establishes connection
+    to the requested server. Returns tools available on the server.
+
+    Follows BACKEND_API_CONTRACT.md specification.
+    """
+    from .mcp.server_config import get_server_by_id
+    from .mcp.connection_manager import get_connection_manager
+
+    # Get server configuration
+    server_config = get_server_by_id(server_id)
+    if not server_config:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Server '{server_id}' not found"
+        )
+
+    # Get connection manager
+    conn_manager = get_connection_manager()
+
+    # Connect to server
+    success, tools, error = await conn_manager.connect(
+        server_id=server_config.id,
+        server_name=server_config.name,
+        server_path=server_config.path
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=500,
+            detail=error or "Failed to connect to server"
+        )
+
+    # Return success response
+    return {
+        "success": True,
+        "server_id": server_config.id,
+        "server_name": server_config.name,
+        "tools": tools
+    }
+
+
+@app.get("/status")
+async def get_connection_status():
+    """
+    Get current MCP server connection status.
+
+    Returns connection state including server ID and available tools.
+    Follows BACKEND_API_CONTRACT.md specification.
+    """
+    from .mcp.connection_manager import get_connection_manager
+
+    conn_manager = get_connection_manager()
+    state = conn_manager.state
+
+    if state.connected:
+        return {
+            "connected": True,
+            "server_id": state.server_id,
+            "tools": state.tools
+        }
+    else:
+        return {
+            "connected": False,
+            "server_id": None,
+            "tools": []
+        }
+
+
+@app.post("/disconnect")
+async def disconnect_from_server():
+    """
+    Disconnect from current MCP server.
+
+    Follows BACKEND_API_CONTRACT.md specification.
+    """
+    from .mcp.connection_manager import get_connection_manager
+
+    conn_manager = get_connection_manager()
+
+    # Disconnect
+    await conn_manager.disconnect()
+
+    return {"success": True}
+
+
+class ChatMessage(BaseModel):
+    """Request model for chat messages."""
+    message: str
+
+
+@app.post("/chat/stream")
+async def chat_stream(chat_message: ChatMessage):
+    """
+    Process a chat message and stream response with tool calls.
+
+    Uses Server-Sent Events (SSE) to stream:
+    - tool_start events when tools begin execution
+    - tool_end events when tools finish
+    - text events for response chunks
+    - [DONE] signal when complete
+    - [ERROR] signal on errors
+
+    Follows BACKEND_API_CONTRACT.md specification.
+    """
+    from .mcp.connection_manager import get_connection_manager
+    from anthropic import Anthropic
+
+    conn_manager = get_connection_manager()
+
+    # Check if connected
+    if not conn_manager.is_connected:
+        async def error_stream():
+            yield "data: [ERROR] Not connected to any server. Use POST /connect/{server_id} first.\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    # Get client and tools
+    client = conn_manager.get_client()
+    if not client or not client.session:
+        async def error_stream():
+            yield "data: [ERROR] MCP client not initialized\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    async def event_stream():
+        """Generate SSE events for the chat response."""
+        try:
+            # Get available tools from MCP server
+            response = await client.session.list_tools()
+            available_tools = [{
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": tool.inputSchema
+            } for tool in response.tools]
+
+            # Get system prompt
+            from .system_prompts import get_expense_parsing_system_prompt
+            system_prompt = get_expense_parsing_system_prompt()
+
+            # Build message
+            messages = [{
+                "role": "user",
+                "content": chat_message.message
+            }]
+
+            # Call Claude API with tools
+            anthropic_client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+            api_response = anthropic_client.messages.create(
+                model="claude-sonnet-4-5",
+                system=system_prompt,
+                max_tokens=2000,
+                messages=messages,
+                tools=available_tools
+            )
+
+            # Process response and handle tool calls in a loop
+            while api_response.stop_reason == "tool_use":
+                # Collect all tool uses and text from this response
+                assistant_content = []
+                tool_results = []
+
+                for content in api_response.content:
+                    if content.type == 'text':
+                        # Capture any text that appears during tool use (though we usually don't stream it per contract)
+                        assistant_content.append({
+                            "type": "text",
+                            "text": content.text
+                        })
+                    elif content.type == 'tool_use':
+                        tool_name = content.name
+                        tool_args = content.input
+                        tool_use_id = content.id
+
+                        # Emit tool_start event
+                        tool_start_event = {
+                            "type": "tool_start",
+                            "id": tool_use_id,
+                            "name": tool_name,
+                            "args": tool_args
+                        }
+                        yield f"data: {json_module.dumps(tool_start_event)}\n\n"
+
+                        # Execute tool call via MCP
+                        result = await client.session.call_tool(tool_name, tool_args)
+
+                        # Parse tool result
+                        if hasattr(result, 'content') and result.content:
+                            if isinstance(result.content, list):
+                                result_text = "\n".join(
+                                    block.text if hasattr(block, 'text') else str(block)
+                                    for block in result.content
+                                )
+                            else:
+                                result_text = str(result.content)
+                        else:
+                            result_text = str(result)
+
+                        # Emit tool_end event
+                        tool_end_event = {
+                            "type": "tool_end",
+                            "id": tool_use_id,
+                            "name": tool_name
+                        }
+                        yield f"data: {json_module.dumps(tool_end_event)}\n\n"
+
+                        # Add tool_use to assistant content
+                        assistant_content.append({
+                            "type": "tool_use",
+                            "id": tool_use_id,
+                            "name": tool_name,
+                            "input": tool_args
+                        })
+
+                        # Collect tool result
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": result_text
+                        })
+
+                # Add assistant message with tool uses
+                messages.append({
+                    "role": "assistant",
+                    "content": assistant_content
+                })
+
+                # Add user message with tool results
+                messages.append({
+                    "role": "user",
+                    "content": tool_results
+                })
+
+                # Get next response from Claude
+                api_response = anthropic_client.messages.create(
+                    model="claude-sonnet-4-5",
+                    system=system_prompt,
+                    max_tokens=2000,
+                    messages=messages,
+                    tools=available_tools
+                )
+
+            # Process final response (no more tool calls)
+            print(f"🔍 Final response stop_reason: {api_response.stop_reason}")
+            print(f"🔍 Final response content count: {len(api_response.content)}")
+
+            for content in api_response.content:
+                print(f"🔍 Content type: {content.type}")
+                if content.type == 'text':
+                    text = content.text
+                    print(f"🔍 Text content length: {len(text)}")
+                    print(f"🔍 Text preview: {text[:100]}...")
+
+                    # Send entire text as one event (or chunk into reasonable sizes)
+                    # API contract allows chunking for smooth streaming
+                    if len(text) > 0:
+                        # Send text in larger chunks (or all at once)
+                        text_event = {
+                            "type": "text",
+                            "content": text
+                        }
+                        yield f"data: {json_module.dumps(text_event)}\n\n"
+                    else:
+                        print("⚠️ Empty text content!")
+
+            # Send done signal
+            print("✅ Sending [DONE] signal")
+            yield "data: [DONE]\n\n"
+
+        except Exception as e:
+            # Send error signal
+            error_msg = f"[ERROR] {str(e)}"
+            yield f"data: {error_msg}\n\n"
+            import traceback
+            traceback.print_exc()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
