@@ -70,7 +70,7 @@ async def handle_list_tools() -> list[Tool]:
                     },
                     "amount": {
                         "type": "number",
-                        "description": "Dollar amount of the expense (e.g., 5.50, 15.00)"
+                        "description": "Dollar amount of the expense - positive for spending, negative for refunds/reimbursements (e.g., 5.50, 15.00, -20.00)"
                     },
                     "date": {
                         "type": "object",
@@ -156,7 +156,7 @@ async def handle_list_tools() -> list[Tool]:
                     },
                     "amount": {
                         "type": "number",
-                        "description": "New amount (optional)"
+                        "description": "New amount - positive for spending, negative for refunds (optional)"
                     },
                     "date": {
                         "type": "object",
@@ -248,7 +248,8 @@ async def handle_list_tools() -> list[Tool]:
             description=(
                 "Create a recurring expense template for subscriptions, rent, bills, etc. "
                 "The system will automatically create pending expenses on the specified schedule. "
-                "Supports monthly (on specific day), weekly (on specific weekday), and biweekly frequencies."
+                "Supports monthly (on specific day), weekly (on specific weekday), and biweekly frequencies. "
+                "NOTE: Recurring expenses must have positive amounts only (no negative/refund recurring expenses)."
             ),
             inputSchema={
                 "type": "object",
@@ -259,7 +260,8 @@ async def handle_list_tools() -> list[Tool]:
                     },
                     "amount": {
                         "type": "number",
-                        "description": "Amount of the recurring expense"
+                        "description": "Amount of the recurring expense (must be positive - no negative recurring expenses)",
+                        "minimum": 0.01
                     },
                     "category": {
                         "type": "string",
@@ -327,6 +329,234 @@ async def handle_list_tools() -> list[Tool]:
                 },
                 "required": ["template_id"]
             }
+        ),
+        Tool(
+            name="query_expenses",
+            description=(
+                "Query expenses with flexible filtering by date range, category, and amount. "
+                "Returns detailed expense list with totals. "
+                "Date range can span up to 12 months (warns if >3 months)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "object",
+                        "description": "Start date for query (inclusive)",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "end_date": {
+                        "type": "object",
+                        "description": "End date for query (inclusive)",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Filter by specific category (optional)",
+                        "enum": [e.name for e in ExpenseType]
+                    },
+                    "min_amount": {
+                        "type": "number",
+                        "description": "Filter expenses above this amount (optional)"
+                    }
+                },
+                "required": ["start_date", "end_date"]
+            }
+        ),
+        Tool(
+            name="get_spending_by_category",
+            description=(
+                "Get spending breakdown by category for a date range. "
+                "Shows how much was spent in each category with transaction counts. "
+                "Useful for 'How much did I spend on food last week?' type questions."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "object",
+                        "description": "Start date (inclusive)",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "end_date": {
+                        "type": "object",
+                        "description": "End date (inclusive)",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    }
+                },
+                "required": ["start_date", "end_date"]
+            }
+        ),
+        Tool(
+            name="get_spending_summary",
+            description=(
+                "Get overall spending summary for a date range. "
+                "Returns total spending, transaction count, and average per transaction. "
+                "Good for general spending questions."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "object",
+                        "description": "Start date (inclusive)",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "end_date": {
+                        "type": "object",
+                        "description": "End date (inclusive)",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    }
+                },
+                "required": ["start_date", "end_date"]
+            }
+        ),
+        Tool(
+            name="get_budget_remaining",
+            description=(
+                "Get remaining budget for all categories or a specific category. "
+                "Shows current spending, cap, percentage used, and amount remaining. "
+                "Formatted like the 'status' command."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "description": "Specific category to check (optional - if omitted, shows all categories)",
+                        "enum": [e.name for e in ExpenseType]
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="compare_periods",
+            description=(
+                "Compare spending between two time periods. "
+                "Shows difference in spending (both absolute dollar amount and percentage change). "
+                "Useful for 'compare this month to last month' type questions."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "period1_start": {
+                        "type": "object",
+                        "description": "Period 1 start date",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "period1_end": {
+                        "type": "object",
+                        "description": "Period 1 end date",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "period2_start": {
+                        "type": "object",
+                        "description": "Period 2 start date",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "period2_end": {
+                        "type": "object",
+                        "description": "Period 2 end date",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Optional category to compare (if omitted, compares total spending)",
+                        "enum": [e.name for e in ExpenseType]
+                    }
+                },
+                "required": ["period1_start", "period1_end", "period2_start", "period2_end"]
+            }
+        ),
+        Tool(
+            name="get_largest_expenses",
+            description=(
+                "Get the largest expenses for a date range. "
+                "Returns top 3 expenses by amount with details. "
+                "Useful for 'what was my biggest expense' type questions."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "object",
+                        "description": "Start date (inclusive)",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "end_date": {
+                        "type": "object",
+                        "description": "End date (inclusive)",
+                        "properties": {
+                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
+                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
+                            "year": {"type": "integer", "minimum": 2000}
+                        },
+                        "required": ["day", "month", "year"]
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Optional category filter",
+                        "enum": [e.name for e in ExpenseType]
+                    }
+                },
+                "required": ["start_date", "end_date"]
+            }
         )
     ]
 
@@ -364,6 +594,18 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
             return await _list_recurring_expenses(arguments)
         elif name == "delete_recurring_expense":
             return await _delete_recurring_expense(arguments)
+        elif name == "query_expenses":
+            return await _query_expenses(arguments)
+        elif name == "get_spending_by_category":
+            return await _get_spending_by_category(arguments)
+        elif name == "get_spending_summary":
+            return await _get_spending_summary(arguments)
+        elif name == "get_budget_remaining":
+            return await _get_budget_remaining(arguments)
+        elif name == "compare_periods":
+            return await _compare_periods(arguments)
+        elif name == "get_largest_expenses":
+            return await _get_largest_expenses(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
     except Exception as e:
@@ -909,6 +1151,450 @@ async def _delete_recurring_expense(arguments: dict) -> list[TextContent]:
         "amount": recurring.amount,
         "message": f"✅ Deleted recurring expense: {recurring.expense_name} (${recurring.amount:.2f})"
     }
+
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _query_expenses(arguments: dict) -> list[TextContent]:
+    """
+    Query expenses with flexible filtering.
+
+    Args:
+        arguments: {
+            "start_date": {day, month, year},
+            "end_date": {day, month, year},
+            "category": str (optional),
+            "min_amount": float (optional)
+        }
+
+    Returns:
+        TextContent with expense list and totals
+    """
+    import json
+    from datetime import date as date_type
+
+    # Parse dates
+    start_date_dict = arguments["start_date"]
+    end_date_dict = arguments["end_date"]
+    start_date = Date(
+        day=start_date_dict["day"],
+        month=start_date_dict["month"],
+        year=start_date_dict["year"]
+    )
+    end_date = Date(
+        day=end_date_dict["day"],
+        month=end_date_dict["month"],
+        year=end_date_dict["year"]
+    )
+
+    # Check date range (warn if >3 months, block if >12 months)
+    start_obj = date_type(start_date.year, start_date.month, start_date.day)
+    end_obj = date_type(end_date.year, end_date.month, end_date.day)
+    days_diff = (end_obj - start_obj).days
+
+    if days_diff > 365:
+        return [TextContent(type="text", text=json.dumps({
+            "error": "Date range exceeds 12 months limit. Please use a shorter range."
+        }))]
+
+    warning = ""
+    if days_diff > 90:  # ~3 months
+        warning = "⚠️ Query spans more than 3 months - results may take longer to load."
+
+    # Get category filter
+    category = None
+    if "category" in arguments and arguments["category"]:
+        category = ExpenseType[arguments["category"]]
+
+    # Get expenses
+    expenses = firebase_client.get_expenses_in_date_range(start_date, end_date, category)
+
+    # Filter by min_amount if provided
+    min_amount = arguments.get("min_amount")
+    if min_amount is not None:
+        expenses = [exp for exp in expenses if exp.get("amount", 0) >= min_amount]
+
+    # Calculate totals
+    total = sum(exp.get("amount", 0) for exp in expenses)
+    count = len(expenses)
+
+    # Format result
+    result = {
+        "expenses": expenses,
+        "total": total,
+        "count": count,
+        "start_date": start_date_dict,
+        "end_date": end_date_dict
+    }
+
+    if warning:
+        result["warning"] = warning
+
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _get_spending_by_category(arguments: dict) -> list[TextContent]:
+    """
+    Get spending breakdown by category.
+
+    Args:
+        arguments: {
+            "start_date": {day, month, year},
+            "end_date": {day, month, year}
+        }
+
+    Returns:
+        TextContent with category breakdown
+    """
+    import json
+
+    # Parse dates
+    start_date_dict = arguments["start_date"]
+    end_date_dict = arguments["end_date"]
+    start_date = Date(
+        day=start_date_dict["day"],
+        month=start_date_dict["month"],
+        year=start_date_dict["year"]
+    )
+    end_date = Date(
+        day=end_date_dict["day"],
+        month=end_date_dict["month"],
+        year=end_date_dict["year"]
+    )
+
+    # Get category totals
+    category_totals = firebase_client.get_spending_by_category(start_date, end_date)
+
+    # Get detailed expenses for transaction counts
+    expenses = firebase_client.get_expenses_in_date_range(start_date, end_date)
+
+    # Count transactions per category
+    category_counts = {}
+    for exp in expenses:
+        cat = exp.get("category", "OTHER")
+        category_counts[cat] = category_counts.get(cat, 0) + 1
+
+    # Build detailed breakdown with transaction names
+    breakdown = []
+    for category, total in category_totals.items():
+        cat_expenses = [e for e in expenses if e.get("category") == category]
+
+        breakdown.append({
+            "category": category,
+            "total": total,
+            "count": category_counts.get(category, 0),
+            "transactions": [
+                {
+                    "name": e.get("expense_name"),
+                    "amount": e.get("amount"),
+                    "date": e.get("date")
+                }
+                for e in cat_expenses
+            ]
+        })
+
+    # Sort by total (highest first)
+    breakdown.sort(key=lambda x: x["total"], reverse=True)
+
+    # Overall total
+    overall_total = sum(category_totals.values())
+
+    result = {
+        "breakdown": breakdown,
+        "total": overall_total,
+        "start_date": start_date_dict,
+        "end_date": end_date_dict
+    }
+
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _get_spending_summary(arguments: dict) -> list[TextContent]:
+    """
+    Get overall spending summary.
+
+    Args:
+        arguments: {
+            "start_date": {day, month, year},
+            "end_date": {day, month, year}
+        }
+
+    Returns:
+        TextContent with summary stats
+    """
+    import json
+
+    # Parse dates
+    start_date_dict = arguments["start_date"]
+    end_date_dict = arguments["end_date"]
+    start_date = Date(
+        day=start_date_dict["day"],
+        month=start_date_dict["month"],
+        year=start_date_dict["year"]
+    )
+    end_date = Date(
+        day=end_date_dict["day"],
+        month=end_date_dict["month"],
+        year=end_date_dict["year"]
+    )
+
+    # Get spending data
+    summary = firebase_client.get_total_spending_for_range(start_date, end_date)
+
+    # Calculate average per transaction
+    average = summary["total"] / summary["count"] if summary["count"] > 0 else 0
+
+    result = {
+        "total": summary["total"],
+        "count": summary["count"],
+        "average_per_transaction": average,
+        "start_date": start_date_dict,
+        "end_date": end_date_dict
+    }
+
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _get_budget_remaining(arguments: dict) -> list[TextContent]:
+    """
+    Get budget remaining for categories (status-style format).
+
+    Args:
+        arguments: {
+            "category": str (optional)
+        }
+
+    Returns:
+        TextContent with budget status
+    """
+    import json
+    from datetime import datetime
+    import os, pytz
+
+    # Get current month/year
+    user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
+    tz = pytz.timezone(user_timezone)
+    now = datetime.now(tz)
+    year = now.year
+    month = now.month
+
+    # Get all budget caps
+    all_caps = {}
+    for expense_type in ExpenseType:
+        cap = firebase_client.get_budget_cap(expense_type.name)
+        if cap:
+            all_caps[expense_type.name] = cap
+
+    # Get total cap
+    total_cap = firebase_client.get_budget_cap("TOTAL")
+
+    # Calculate spending per category
+    category_spending = {}
+    for expense_type in ExpenseType:
+        spending = budget_manager.calculate_monthly_spending(
+            category=expense_type,
+            year=year,
+            month=month
+        )
+        category_spending[expense_type.name] = spending
+
+    # Check if specific category requested
+    specific_category = arguments.get("category")
+
+    if specific_category:
+        # Just return this category
+        cap = all_caps.get(specific_category, 0)
+        spending = category_spending.get(specific_category, 0)
+        percentage = (spending / cap * 100) if cap > 0 else 0
+        remaining = cap - spending
+
+        result = {
+            "category": specific_category,
+            "spending": spending,
+            "cap": cap,
+            "percentage": percentage,
+            "remaining": remaining
+        }
+        return [TextContent(type="text", text=json.dumps(result))]
+
+    # Return all categories (status format)
+    categories = []
+    for expense_type in ExpenseType:
+        cap = all_caps.get(expense_type.name, 0)
+        spending = category_spending.get(expense_type.name, 0)
+
+        if cap > 0:
+            percentage = (spending / cap) * 100
+            remaining = cap - spending
+
+            categories.append({
+                "category": expense_type.name,
+                "spending": spending,
+                "cap": cap,
+                "percentage": percentage,
+                "remaining": remaining
+            })
+
+    # Calculate total
+    total_spending = sum(category_spending.values())
+    total_percentage = (total_spending / total_cap * 100) if total_cap else 0
+    total_remaining = total_cap - total_spending if total_cap else 0
+
+    result = {
+        "categories": categories,
+        "total": {
+            "spending": total_spending,
+            "cap": total_cap,
+            "percentage": total_percentage,
+            "remaining": total_remaining
+        }
+    }
+
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _compare_periods(arguments: dict) -> list[TextContent]:
+    """
+    Compare spending between two periods.
+
+    Args:
+        arguments: {
+            "period1_start": {day, month, year},
+            "period1_end": {day, month, year},
+            "period2_start": {day, month, year},
+            "period2_end": {day, month, year},
+            "category": str (optional)
+        }
+
+    Returns:
+        TextContent with comparison data
+    """
+    import json
+
+    # Parse dates for period 1
+    p1_start = Date(
+        day=arguments["period1_start"]["day"],
+        month=arguments["period1_start"]["month"],
+        year=arguments["period1_start"]["year"]
+    )
+    p1_end = Date(
+        day=arguments["period1_end"]["day"],
+        month=arguments["period1_end"]["month"],
+        year=arguments["period1_end"]["year"]
+    )
+
+    # Parse dates for period 2
+    p2_start = Date(
+        day=arguments["period2_start"]["day"],
+        month=arguments["period2_start"]["month"],
+        year=arguments["period2_start"]["year"]
+    )
+    p2_end = Date(
+        day=arguments["period2_end"]["day"],
+        month=arguments["period2_end"]["month"],
+        year=arguments["period2_end"]["year"]
+    )
+
+    # Get category filter
+    category = None
+    if "category" in arguments and arguments["category"]:
+        category = ExpenseType[arguments["category"]]
+
+    # Get expenses for both periods
+    p1_expenses = firebase_client.get_expenses_in_date_range(p1_start, p1_end, category)
+    p2_expenses = firebase_client.get_expenses_in_date_range(p2_start, p2_end, category)
+
+    # Calculate totals
+    p1_total = sum(exp.get("amount", 0) for exp in p1_expenses)
+    p2_total = sum(exp.get("amount", 0) for exp in p2_expenses)
+
+    # Calculate difference
+    difference = p2_total - p1_total
+    percentage_change = ((p2_total - p1_total) / p1_total * 100) if p1_total > 0 else 0
+
+    result = {
+        "period1": {
+            "start": arguments["period1_start"],
+            "end": arguments["period1_end"],
+            "total": p1_total,
+            "count": len(p1_expenses)
+        },
+        "period2": {
+            "start": arguments["period2_start"],
+            "end": arguments["period2_end"],
+            "total": p2_total,
+            "count": len(p2_expenses)
+        },
+        "comparison": {
+            "difference": difference,
+            "percentage_change": percentage_change
+        }
+    }
+
+    if category:
+        result["category"] = category.name
+
+    return [TextContent(type="text", text=json.dumps(result))]
+
+
+async def _get_largest_expenses(arguments: dict) -> list[TextContent]:
+    """
+    Get top 3 largest expenses.
+
+    Args:
+        arguments: {
+            "start_date": {day, month, year},
+            "end_date": {day, month, year},
+            "category": str (optional)
+        }
+
+    Returns:
+        TextContent with top 3 expenses
+    """
+    import json
+
+    # Parse dates
+    start_date_dict = arguments["start_date"]
+    end_date_dict = arguments["end_date"]
+    start_date = Date(
+        day=start_date_dict["day"],
+        month=start_date_dict["month"],
+        year=start_date_dict["year"]
+    )
+    end_date = Date(
+        day=end_date_dict["day"],
+        month=end_date_dict["month"],
+        year=end_date_dict["year"]
+    )
+
+    # Get category filter
+    category = None
+    if "category" in arguments and arguments["category"]:
+        category = ExpenseType[arguments["category"]]
+
+    # Get all expenses
+    expenses = firebase_client.get_expenses_in_date_range(start_date, end_date, category)
+
+    # Sort by amount (highest first) and take top 3
+    expenses.sort(key=lambda x: x.get("amount", 0), reverse=True)
+    top_3 = expenses[:3]
+
+    result = {
+        "largest_expenses": [
+            {
+                "name": exp.get("expense_name"),
+                "amount": exp.get("amount"),
+                "date": exp.get("date"),
+                "category": exp.get("category")
+            }
+            for exp in top_3
+        ],
+        "start_date": start_date_dict,
+        "end_date": end_date_dict
+    }
+
+    if category:
+        result["category"] = category.name
 
     return [TextContent(type="text", text=json.dumps(result))]
 

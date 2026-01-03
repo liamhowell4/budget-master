@@ -344,6 +344,122 @@ class FirebaseClient:
 
         return results
 
+    def get_expenses_in_date_range(
+        self,
+        start_date: Date,
+        end_date: Date,
+        category: Optional[ExpenseType] = None
+    ) -> List[Dict]:
+        """
+        Get expenses within a date range using Date objects.
+
+        Args:
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+            category: Optional category filter
+
+        Returns:
+            List of expense dicts
+        """
+        query = self.db.collection("expenses")
+
+        # Filter by year and month range
+        # Note: This is a simplified approach - for precise filtering we'd need composite queries
+        # For now, we'll fetch a wider range and filter in Python
+        query = query.where(filter=FieldFilter("date.year", ">=", start_date.year))
+        query = query.where(filter=FieldFilter("date.year", "<=", end_date.year))
+
+        if category:
+            query = query.where(filter=FieldFilter("category", "==", category.name))
+
+        docs = query.stream()
+
+        # Filter in Python for precise date matching
+        expenses = []
+        for doc in docs:
+            expense_data = doc.to_dict()
+            expense_data["id"] = doc.id
+
+            # Parse expense date
+            exp_date = expense_data.get("date", {})
+            exp_year = exp_date.get("year")
+            exp_month = exp_date.get("month")
+            exp_day = exp_date.get("day")
+
+            if not all([exp_year, exp_month, exp_day]):
+                continue
+
+            # Check if expense is within range
+            from datetime import date as date_type
+            try:
+                expense_date_obj = date_type(exp_year, exp_month, exp_day)
+                start_date_obj = date_type(start_date.year, start_date.month, start_date.day)
+                end_date_obj = date_type(end_date.year, end_date.month, end_date.day)
+
+                if start_date_obj <= expense_date_obj <= end_date_obj:
+                    expenses.append(expense_data)
+            except ValueError:
+                # Invalid date, skip
+                continue
+
+        return expenses
+
+    def get_spending_by_category(
+        self,
+        start_date: Date,
+        end_date: Date
+    ) -> Dict[str, float]:
+        """
+        Get spending totals grouped by category for a date range.
+
+        Args:
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+
+        Returns:
+            Dictionary mapping category names to total spending
+            Example: {"FOOD_OUT": 127.50, "COFFEE": 45.00, "GROCERIES": 89.25}
+        """
+        expenses = self.get_expenses_in_date_range(start_date, end_date)
+
+        # Group by category
+        category_totals = {}
+        for expense in expenses:
+            category = expense.get("category", "OTHER")
+            amount = expense.get("amount", 0)
+
+            if category not in category_totals:
+                category_totals[category] = 0
+            category_totals[category] += amount
+
+        return category_totals
+
+    def get_total_spending_for_range(
+        self,
+        start_date: Date,
+        end_date: Date
+    ) -> Dict[str, any]:
+        """
+        Get total spending and transaction count for a date range.
+
+        Args:
+            start_date: Start date (inclusive)
+            end_date: End date (inclusive)
+
+        Returns:
+            Dictionary with 'total' and 'count' keys
+            Example: {"total": 456.75, "count": 23}
+        """
+        expenses = self.get_expenses_in_date_range(start_date, end_date)
+
+        total = sum(exp.get("amount", 0) for exp in expenses)
+        count = len(expenses)
+
+        return {
+            "total": total,
+            "count": count
+        }
+
     # ==================== Budget Cap Operations ====================
 
     def get_budget_cap(self, category: str) -> Optional[float]:
