@@ -10,15 +10,18 @@ Endpoints:
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List
 import pytz
+import requests
+import base64
+import traceback
+import json
 
 from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Header
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import json as json_module
 
 from .twilio_handler import TwilioHandler
 from .firebase_client import FirebaseClient
@@ -198,7 +201,6 @@ async def check_recurring_expenses():
 
     except Exception as e:
         print(f"❌ Error checking recurring expenses: {e}")
-        import traceback
         traceback.print_exc()
 
 
@@ -222,7 +224,6 @@ async def startup_mcp():
             print("✅ MCP backend ready")
         except Exception as e:
             print(f"❌ Error initializing MCP backend: {e}")
-            import traceback
             traceback.print_exc()
             # Don't fail startup - allow OpenAI backend to still work
     else:
@@ -352,9 +353,6 @@ async def twilio_webhook_mcp(request: Request, x_twilio_signature: str = Header(
             media_type = form_data.get("MediaContentType0", "image/jpeg")
 
             if media_url:
-                import requests
-                import base64
-
                 print(f"📸 Downloading image from: {media_url}")
                 response = requests.get(media_url, auth=(
                     os.getenv("TWILIO_ACCOUNT_SID"),
@@ -384,7 +382,6 @@ async def twilio_webhook_mcp(request: Request, x_twilio_signature: str = Header(
 
     except Exception as e:
         print(f"Error in MCP Twilio webhook: {e}")
-        import traceback
         traceback.print_exc()
         return "❌ Error processing your message. Please try again."
 
@@ -441,7 +438,6 @@ async def mcp_process_expense(
             image_bytes = await image.read()
 
             # Convert to base64 with data URL prefix
-            import base64
             image_base64 = base64.b64encode(image_bytes).decode('utf-8')
             # Use the image content type from upload
             image_base64 = f"data:{image.content_type};base64,{image_base64}"
@@ -470,7 +466,6 @@ async def mcp_process_expense(
         raise
     except Exception as e:
         print(f"Error in /mcp/process_expense: {e}")
-        import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -552,7 +547,6 @@ async def streamlit_process(
         # Check if this is a recurring expense (text-only, no images)
         if text_input and not image_bytes:
             from .expense_parser import detect_recurring
-            from datetime import date
 
             print(f"\n🔍 Checking if text is recurring (Streamlit)...")
             print(f"   Text: '{text_input}'")
@@ -866,8 +860,6 @@ async def get_pending_expenses():
 async def confirm_pending_expense(pending_id: str, adjusted_amount: Optional[float] = None):
     """Confirm a pending expense and save it as a regular expense."""
     try:
-        from datetime import date as date_type
-
         # Get pending expense
         pending = firebase_client.get_pending_expense(pending_id)
         if not pending:
@@ -880,7 +872,7 @@ async def confirm_pending_expense(pending_id: str, adjusted_amount: Optional[flo
         doc_id = firebase_client.save_expense(expense, input_type="recurring")
 
         # Update recurring template's last_user_action
-        today = date_type.today()
+        today = date.today()
         today_date = Date(day=today.day, month=today.month, year=today.year)
 
         pending_dict = firebase_client.get_all_pending_expenses(awaiting_only=False)
@@ -915,8 +907,6 @@ async def confirm_pending_expense(pending_id: str, adjusted_amount: Optional[flo
 async def delete_pending_expense(pending_id: str):
     """Skip/delete a pending expense."""
     try:
-        from datetime import date as date_type
-
         # Get pending to find template_id
         pending_dict = firebase_client.get_all_pending_expenses(awaiting_only=False)
         template_id = None
@@ -927,7 +917,7 @@ async def delete_pending_expense(pending_id: str):
 
         if template_id:
             # Update last_user_action
-            today = date_type.today()
+            today = date.today()
             today_date = Date(day=today.day, month=today.month, year=today.year)
             firebase_client.update_recurring_expense(
                 template_id,
@@ -1192,7 +1182,7 @@ async def chat_stream(chat_message: ChatMessage):
                             "name": tool_name,
                             "args": tool_args
                         }
-                        yield f"data: {json_module.dumps(tool_start_event)}\n\n"
+                        yield f"data: {json.dumps(tool_start_event)}\n\n"
 
                         # Execute tool call via MCP
                         result = await client.session.call_tool(tool_name, tool_args)
@@ -1215,7 +1205,7 @@ async def chat_stream(chat_message: ChatMessage):
                             "id": tool_use_id,
                             "name": tool_name
                         }
-                        yield f"data: {json_module.dumps(tool_end_event)}\n\n"
+                        yield f"data: {json.dumps(tool_end_event)}\n\n"
 
                         # Add tool_use to assistant content
                         assistant_content.append({
@@ -1272,7 +1262,7 @@ async def chat_stream(chat_message: ChatMessage):
                             "type": "text",
                             "content": text
                         }
-                        yield f"data: {json_module.dumps(text_event)}\n\n"
+                        yield f"data: {json.dumps(text_event)}\n\n"
                     else:
                         print("⚠️ Empty text content!")
 
@@ -1284,7 +1274,6 @@ async def chat_stream(chat_message: ChatMessage):
             # Send error signal
             error_msg = f"[ERROR] {str(e)}"
             yield f"data: {error_msg}\n\n"
-            import traceback
             traceback.print_exc()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

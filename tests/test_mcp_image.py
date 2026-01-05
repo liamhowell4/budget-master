@@ -19,8 +19,8 @@ async def test_image_parsing():
     print("Testing MCP Backend - Receipt Image Parsing")
     print("=" * 60)
 
-    # Image path
-    image_path = "images/B6223AEE-8E18-4D6D-9165-077C559FC1E9_1_105_c.jpeg"
+    # Image path (relative to tests/ directory)
+    image_path = "fixtures/images/B6223AEE-8E18-4D6D-9165-077C559FC1E9_1_105_c.jpeg"
 
     if not os.path.exists(image_path):
         print(f"❌ Image not found: {image_path}")
