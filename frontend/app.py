@@ -477,7 +477,7 @@ def render_dashboard():
             )
 
         # Progress bar
-        st.progress(min(percentage / 100, 1.0))
+        st.progress(max(0.0, min(percentage / 100, 1.0)))
 
         # Details
         col1, col2 = st.columns([3, 1])
