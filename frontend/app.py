@@ -402,9 +402,50 @@ def render_dashboard():
     if not budget_data:
         return
 
+    # Calculate Disposable Budget (Total - Rent)
+    rent_data = next((cat for cat in budget_data["categories"] if cat["category"] == "RENT"), None)
+    rent_cap = rent_data["cap"] if rent_data else 0
+    rent_spent = rent_data["spending"] if rent_data else 0
+
+    disposable_cap = budget_data['total_cap'] - rent_cap
+    disposable_spent = budget_data['total_spending'] - rent_spent
+    disposable_remaining = disposable_cap - disposable_spent
+    disposable_percentage = (disposable_spent / disposable_cap * 100) if disposable_cap > 0 else 0
+
+    # Disposable Budget Ticker
+    st.markdown("---")
+    st.subheader("💸 Disposable Budget (Excluding Rent)")
+    
+    d_col1, d_col2, d_col3 = st.columns(3)
+    
+    with d_col1:
+        st.metric(
+            "Disposable Spent", 
+            f"${disposable_spent:.2f}", 
+            f"{disposable_percentage:.1f}%"
+        )
+        
+    with d_col2:
+        st.metric(
+            "Disposable Remaining", 
+            f"${disposable_remaining:.2f}", 
+            f"out of ${disposable_cap:.2f}"
+        )
+        
+    with d_col3:
+        if disposable_percentage >= 100:
+            d_status = "🚨 Over Budget"
+        elif disposable_percentage >= 90:
+            d_status = "⚠️ Warning"
+        elif disposable_percentage >= 50:
+            d_status = "ℹ️ On Track"
+        else:
+            d_status = "✅ Healthy"
+        st.metric("Disposable Status", d_status)
+
     # Summary metrics
     st.markdown("---")
-    st.subheader("Monthly Summary")
+    st.subheader("Monthly Summary (Total)")
 
     metric_col1, metric_col2, metric_col3 = st.columns(3)
 
