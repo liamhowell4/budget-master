@@ -443,51 +443,60 @@ def render_dashboard():
             d_status = "✅ Healthy"
         st.metric("Disposable Status", d_status)
 
-    # Summary metrics
-    st.markdown("---")
-    st.subheader("Monthly Summary (Total)")
-
-    metric_col1, metric_col2, metric_col3 = st.columns(3)
-
-    total_percentage = budget_data["total_percentage"]
-    total_color = get_budget_color(total_percentage)
-
-    with metric_col1:
-        st.metric(
-            "Total Spent",
-            f"${budget_data['total_spending']:.2f}",
-            f"{total_percentage:.1f}% of budget"
-        )
-
-    with metric_col2:
-        st.metric(
-            "Budget Remaining",
-            f"${budget_data['total_remaining']:.2f}",
-            f"out of ${budget_data['total_cap']:.2f}"
-        )
-
-    with metric_col3:
-        # Status indicator
-        if total_percentage >= 100:
-            status = "🚨 OVER BUDGET"
-        elif total_percentage >= 90:
-            status = "⚠️ Warning"
-        elif total_percentage >= 50:
-            status = "ℹ️ On Track"
-        else:
-            status = "✅ Healthy"
-
-        st.metric("Status", status)
-
-    # Total progress bar
-    st.markdown("---")
-    st.markdown(f"**Overall Budget Progress**")
-    st.progress(min(total_percentage / 100, 1.0))
+    # Disposable Budget Progress Bar
+    disposable_color = get_budget_color(disposable_percentage)
+    st.progress(min(disposable_percentage / 100, 1.0))
     st.markdown(
-        f"<div style='text-align: center; color: {total_color}; font-weight: bold;'>"
-        f"{total_percentage:.1f}% used</div>",
+        f"<div style='text-align: center; color: {disposable_color}; font-weight: bold;'>"
+        f"{disposable_percentage:.1f}% used</div>",
         unsafe_allow_html=True
     )
+
+    # Summary metrics (Total Budget) - Collapsed by default
+    st.markdown("---")
+    with st.expander("Total Budget (Including Rent)", expanded=False):
+        st.subheader("Monthly Summary (Total)")
+
+        metric_col1, metric_col2, metric_col3 = st.columns(3)
+
+        total_percentage = budget_data["total_percentage"]
+        total_color = get_budget_color(total_percentage)
+
+        with metric_col1:
+            st.metric(
+                "Total Spent",
+                f"${budget_data['total_spending']:.2f}",
+                f"{total_percentage:.1f}% of budget"
+            )
+
+        with metric_col2:
+            st.metric(
+                "Budget Remaining",
+                f"${budget_data['total_remaining']:.2f}",
+                f"out of ${budget_data['total_cap']:.2f}"
+            )
+
+        with metric_col3:
+            # Status indicator
+            if total_percentage >= 100:
+                status = "🚨 OVER BUDGET"
+            elif total_percentage >= 90:
+                status = "⚠️ Warning"
+            elif total_percentage >= 50:
+                status = "ℹ️ On Track"
+            else:
+                status = "✅ Healthy"
+
+            st.metric("Status", status)
+
+        # Total progress bar
+        st.markdown(f"**Overall Budget Progress**")
+        st.progress(min(total_percentage / 100, 1.0))
+        st.markdown(
+            f"<div style='text-align: center; color: {total_color}; font-weight: bold;'>"
+            f"{total_percentage:.1f}% used</div>",
+            unsafe_allow_html=True
+        )
 
     # Category breakdown
     st.markdown("---")
