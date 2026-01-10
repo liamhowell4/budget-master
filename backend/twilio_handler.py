@@ -292,6 +292,14 @@ class TwilioHandler:
             pending_obj = self.firebase._dict_to_pending_expense(pending, pending["pending_id"])
             expense = RecurringManager.pending_to_expense(pending_obj, adjusted_amount)
 
+            # Get budget warning BEFORE saving
+            warning = self.budget_manager.get_budget_warning(
+                category=expense.category,
+                amount=expense.amount,
+                year=year,
+                month=month
+            )
+
             # Save expense
             doc_id = self.firebase.save_expense(expense, input_type="recurring")
 
@@ -307,14 +315,6 @@ class TwilioHandler:
 
             # Delete pending expense
             self.firebase.delete_pending_expense(pending["pending_id"])
-
-            # Get budget warning
-            warning = self.budget_manager.get_budget_warning(
-                category=expense.category,
-                amount=expense.amount,
-                year=year,
-                month=month
-            )
 
             # Format confirmation
             amount_to_show = adjusted_amount if adjusted_amount else expense.amount
