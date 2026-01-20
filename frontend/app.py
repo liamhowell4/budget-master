@@ -16,9 +16,13 @@ import io
 import json
 import os
 import uuid
+from dotenv import load_dotenv
 
 # API Configuration
 # Default to Cloud Run, but allow override with BACKEND_URL env var
+
+load_dotenv()
+
 API_URL = os.getenv("BACKEND_URL", "https://expense-tracker-857587891388.us-central1.run.app")
 
 # Claude-themed color scheme
@@ -147,6 +151,27 @@ def delete_recurring_template(template_id: str):
         return False, str(e)
 
 
+def update_budget_caps(total_budget: float, category_budgets: dict):
+    """Update all budget caps via bulk update endpoint."""
+    try:
+        payload = {
+            "total_budget": total_budget,
+            "category_budgets": category_budgets
+        }
+        response = requests.put(f"{API_URL}/budget-caps/bulk-update", json=payload, timeout=10)
+        response.raise_for_status()
+        return True, response.json()
+    except requests.exceptions.HTTPError as e:
+        # Extract error detail from response
+        try:
+            error_detail = e.response.json().get("detail", str(e))
+        except:
+            error_detail = str(e)
+        return False, error_detail
+    except Exception as e:
+        return False, str(e)
+
+
 def submit_expense(text: str = None, image_file=None, session_id: str = None):
     """Submit expense to API."""
     try:
@@ -238,7 +263,7 @@ def render_chat():
         st.header("💬 Chat")
         st.caption("Text or send images just like SMS - your personal expense assistant")
     with col2:
-        if st.button("🗑️ Clear Chat", use_container_width=True):
+        if st.button("🗑️ Clear Chat", width='content'):
             st.session_state.chat_history = []
             st.rerun()
 
@@ -336,6 +361,191 @@ def render_chat():
         st.rerun()
 
 
+@st.dialog("Edit Total Budget", width="large")
+def show_total_budget_editor(budget_data):
+    """
+    Modal dialog for editing total monthly budget with proportional scaling.
+    """
+    st.markdown("### Edit Total Monthly Budget")
+    st.markdown("Change your total budget. Category budgets will scale proportionally.")
+
+    current_total = budget_data["total_cap"]
+    current_caps = {cat["category"]: cat["cap"] for cat in budget_data["categories"]}
+
+    # Total budget input
+    new_total = st.number_input(
+        "Total Monthly Budget",
+        min_value=0.0,
+        value=float(current_total),
+        step=50.0,
+        key="new_total_budget"
+    )
+
+    # Calculate proportional scaling
+    if current_total > 0:
+        scale_factor = new_total / current_total
+    else:
+        scale_factor = 1.0
+
+    st.markdown("---")
+    st.markdown("**Preview of Category Changes:**")
+
+    # Show how categories will change
+    new_caps = {}
+    for cat_name, old_cap in current_caps.items():
+        new_cap = old_cap * scale_factor
+        new_caps[cat_name] = new_cap
+
+        cat_data = next((c for c in budget_data["categories"] if c["category"] == cat_name), None)
+        if cat_data and cat_data["cap"] > 0:
+            emoji = cat_data["emoji"]
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                st.text(f"{emoji} {cat_name}")
+            with col2:
+                # Escape dollar signs with double backslash for LaTeX
+                st.text(f"\\${old_cap:.0f} → \\${new_cap:.0f}")
+            with col3:
+                change_pct = ((new_cap - old_cap) / old_cap * 100) if old_cap > 0 else 0
+                st.text(f"{change_pct:+.0f}%")
+
+    # Save button
+    st.markdown("---")
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        if st.button("💾 Save Changes", width='content', type="primary", key="save_total"):
+            success, result = update_budget_caps(new_total, new_caps)
+
+            if success:
+                st.success("✅ Total budget updated successfully!")
+                st.rerun()
+            else:
+                # Escape dollar signs in error messages
+                error_msg = str(result).replace("$", r"\$")
+                st.error(f"❌ Error: {error_msg}")
+
+    with col2:
+        if st.button("Cancel", width='content', key="cancel_total"):
+            st.rerun()
+
+
+@st.dialog("Edit Category Budgets", width="large")
+def show_budget_editor(budget_data):
+    """
+    Modal dialog for editing category budget caps.
+
+    Features:
+    - Sliders for each category (except OTHER)
+    - Shows current spending next to each category
+    - Automatic OTHER calculation from unallocated budget
+    - Validation before save
+    """
+    st.markdown("### Adjust Category Budgets")
+    st.markdown("Move budget between categories. Unused budget goes to OTHER.")
+
+    # Get current caps and spending from budget_data
+    current_caps = {cat["category"]: cat["cap"] for cat in budget_data["categories"]}
+    current_spending = {cat["category"]: cat["spending"] for cat in budget_data["categories"]}
+    current_total = budget_data["total_cap"]
+
+    # Initialize session state for editing if not exists
+    if "editing_category_budgets" not in st.session_state:
+        st.session_state.editing_category_budgets = current_caps.copy()
+
+    st.markdown("---")
+    st.markdown(f"**Total Budget:** \\${current_total:.2f}")
+    st.markdown("---")
+
+    # Get all categories except OTHER (which is auto-calculated)
+    categories_to_edit = [cat for cat in budget_data["categories"] if cat["category"] != "OTHER" and cat["cap"] > 0]
+
+    # Track slider changes
+    slider_values = {}
+
+    for cat_data in categories_to_edit:
+        cat_name = cat_data["category"]
+        emoji = cat_data["emoji"]
+        current_value = st.session_state.editing_category_budgets.get(cat_name, 0)
+        current_spent = current_spending.get(cat_name, 0)
+        current_cap = current_caps.get(cat_name, 0)
+
+        # Create slider with current spending and cap shown in label
+        # Escape dollar signs with double backslash
+        slider_values[cat_name] = st.slider(
+            f"{emoji} {cat_name} (spent: \\${current_spent:.2f} / cap: \\${current_cap:.2f})",
+            min_value=0.0,
+            max_value=float(current_total),
+            value=float(current_value),
+            step=10.0,
+            key=f"slider_{cat_name}"
+        )
+
+    # Update session state with slider values (no rerun needed - updates on next interaction)
+    for cat_name, value in slider_values.items():
+        st.session_state.editing_category_budgets[cat_name] = value
+
+    # Calculate OTHER automatically (unallocated budget)
+    allocated_total = sum(slider_values.values())
+    other_budget = max(0, current_total - allocated_total)
+    st.session_state.editing_category_budgets["OTHER"] = other_budget
+
+    # Show OTHER budget (read-only)
+    st.markdown("---")
+    other_cat = next((cat for cat in budget_data["categories"] if cat["category"] == "OTHER"), None)
+    if other_cat:
+        other_spent = current_spending.get("OTHER", 0)
+        other_current_cap = current_caps.get("OTHER", 0)
+        st.metric(
+            f"{other_cat['emoji']} OTHER (Unallocated) - spent: \\${other_spent:.2f} / cap: \\${other_current_cap:.2f}",
+            f"${other_budget:.2f}",
+            help="Any unused budget automatically goes to OTHER"
+        )
+
+    # Validation
+    st.markdown("---")
+    total_allocated = sum(st.session_state.editing_category_budgets.values())
+    is_valid = total_allocated <= current_total
+
+    if not is_valid:
+        # Escape dollar signs with double backslash
+        st.error(f"❌ Total allocated (\\${total_allocated:.2f}) exceeds budget (\\${current_total:.2f})")
+    else:
+        remaining = current_total - total_allocated
+        if remaining > 0:
+            st.info(f"ℹ️ \\${remaining:.2f} will be allocated to OTHER")
+        else:
+            st.success("✅ Budget is fully allocated")
+
+    # Save button
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        if st.button("💾 Save Changes", disabled=not is_valid, width='content', type="primary", key="save_cats"):
+            # Call API to update budget caps
+            success, result = update_budget_caps(
+                current_total,
+                st.session_state.editing_category_budgets
+            )
+
+            if success:
+                st.success("✅ Budget caps updated successfully!")
+                # Clear session state
+                del st.session_state.editing_category_budgets
+                st.rerun()
+            else:
+                # Escape dollar signs in error messages
+                error_msg = str(result).replace("$", r"\$")
+                st.error(f"❌ Error: {error_msg}")
+
+    with col2:
+        if st.button("Cancel", width='content', key="cancel_cats"):
+            # Clear session state and close
+            if "editing_category_budgets" in st.session_state:
+                del st.session_state.editing_category_budgets
+            st.rerun()
+
+
 def render_dashboard():
     """Render the budget dashboard tab."""
     st.header("📊 Budget Dashboard")
@@ -364,7 +574,7 @@ def render_dashboard():
                     st.markdown(f"`{pending['category']}`")
 
                 with col4:
-                    if st.button("✅ Confirm", key=f"confirm_{pending['pending_id']}", use_container_width=True):
+                    if st.button("✅ Confirm", key=f"confirm_{pending['pending_id']}", width='content'):
                         success, msg = confirm_pending_expense(pending['pending_id'])
                         if success:
                             st.success("✅ Confirmed!")
@@ -373,7 +583,7 @@ def render_dashboard():
                             st.error(f"Error: {msg}")
 
                 with col5:
-                    if st.button("⏭️ Skip", key=f"skip_{pending['pending_id']}", use_container_width=True):
+                    if st.button("⏭️ Skip", key=f"skip_{pending['pending_id']}", width='content'):
                         success, msg = delete_pending_expense(pending['pending_id'])
                         if success:
                             st.info("Skipped")
@@ -500,7 +710,21 @@ def render_dashboard():
 
     # Category breakdown
     st.markdown("---")
-    st.subheader("Category Breakdown")
+
+    # Category breakdown header with edit buttons
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.subheader("Category Breakdown")
+    with col2:
+        if st.button("📝 Edit Total Budget", width='content', key="edit_total_btn"):
+            budget_data_for_edit = fetch_budget_data()
+            if budget_data_for_edit:
+                show_total_budget_editor(budget_data_for_edit)
+    with col3:
+        if st.button("⚙️ Edit Category Caps", width='content', key="edit_caps_btn"):
+            budget_data_for_edit = fetch_budget_data()
+            if budget_data_for_edit:
+                show_budget_editor(budget_data_for_edit)
 
     # Filter to show only categories with caps > 0
     categories = [cat for cat in budget_data["categories"] if cat["cap"] > 0]
@@ -533,9 +757,9 @@ def render_dashboard():
         col1, col2 = st.columns([3, 1])
         with col1:
             if remaining >= 0:
-                st.caption(f"${remaining:.2f} remaining")
+                st.caption(f"\\${remaining:.2f} remaining")
             else:
-                st.caption(f"${abs(remaining):.2f} over budget", help="You've exceeded this budget!")
+                st.caption(f"\\${abs(remaining):.2f} over budget", help="You've exceeded this budget!")
         with col2:
             st.caption(
                 f"<div style='text-align: right; color: {color};'>{percentage:.1f}%</div>",
@@ -692,7 +916,7 @@ def render_recurring():
                     st.caption("Not triggered yet")
 
             with col5:
-                if st.button("🗑️", key=f"delete_rec_{rec['template_id']}", help="Delete recurring", use_container_width=True):
+                if st.button("🗑️", key=f"delete_rec_{rec['template_id']}", help="Delete recurring", width='content'):
                     success, msg = delete_recurring_template(rec['template_id'])
                     if success:
                         st.success("Deleted!")
@@ -734,10 +958,10 @@ def render_add_expense():
 
     # Preview image
     if uploaded_image:
-        st.image(uploaded_image, caption="Uploaded Receipt", use_container_width=True)
+        st.image(uploaded_image, caption="Uploaded Receipt", width='content')
 
     # Submit button
-    if st.button("Add Expense", type="primary", use_container_width=True):
+    if st.button("Add Expense", type="primary", width='content'):
         if not expense_text and not uploaded_image:
             st.error("Please provide either a text description or upload a receipt image.")
         else:
@@ -840,12 +1064,12 @@ def render_history():
 
     # Total
     total_amount = df["Amount"].sum()
-    st.markdown(f"**Total Expenses:** ${total_amount:.2f} ({len(df)} items)")
+    st.markdown(f"**Total Expenses:** \\${total_amount:.2f} ({len(df)} items)")
 
     # Data table
     st.dataframe(
         df,
-        use_container_width=True,
+        width='content',
         hide_index=True,
         column_config={
             "Amount": st.column_config.NumberColumn(
@@ -862,7 +1086,7 @@ def render_history():
         data=csv,
         file_name=f"expenses_{filter_year}_{filter_month:02d}.csv",
         mime="text/csv",
-        use_container_width=True
+        width='content'
     )
 
 

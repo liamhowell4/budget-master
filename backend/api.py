@@ -265,6 +265,19 @@ class BudgetStatusResponse(BaseModel):
     total_remaining: float
 
 
+class BulkBudgetUpdateRequest(BaseModel):
+    """Request model for bulk budget cap updates."""
+    total_budget: float
+    category_budgets: dict[str, float]  # {"FOOD_OUT": 500.0, "RENT": 1200.0, ...}
+
+
+class BulkBudgetUpdateResponse(BaseModel):
+    """Response model for bulk budget cap updates."""
+    success: bool
+    message: str
+    updated_caps: dict[str, float]
+
+
 # ==================== Endpoints ====================
 
 @app.post("/twilio/webhook", response_class=PlainTextResponse)
@@ -805,6 +818,73 @@ async def get_budget_status(
 
     except Exception as e:
         print(f"Error in /budget: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/budget-caps/bulk-update", response_model=BulkBudgetUpdateResponse)
+async def bulk_update_budget_caps(request: BulkBudgetUpdateRequest):
+    """
+    Bulk update all budget caps.
+
+    Request body:
+    {
+        "total_budget": 2000.0,
+        "category_budgets": {
+            "FOOD_OUT": 500.0,
+            "RENT": 1200.0,
+            "GROCERIES": 150.0,
+            ...
+        }
+    }
+
+    Validates:
+    - sum(category_budgets) <= total_budget
+    - All category keys are valid ExpenseType enum values
+
+    Updates all budget caps in budget_caps/ collection atomically.
+    """
+    try:
+        # Validate that sum of category budgets doesn't exceed total
+        total_allocated = sum(request.category_budgets.values())
+
+        if total_allocated > request.total_budget:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Sum of category budgets (${total_allocated:.2f}) exceeds total budget (${request.total_budget:.2f})"
+            )
+
+        # Validate all category names are valid ExpenseType enums
+        valid_categories = {expense_type.name for expense_type in ExpenseType}
+        invalid_categories = set(request.category_budgets.keys()) - valid_categories
+
+        if invalid_categories:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid category names: {', '.join(invalid_categories)}"
+            )
+
+        # Update total budget cap
+        firebase_client.set_budget_cap("TOTAL", request.total_budget)
+
+        # Update all category budget caps
+        for category, amount in request.category_budgets.items():
+            firebase_client.set_budget_cap(category, amount)
+
+        # Return updated caps
+        all_caps = firebase_client.get_all_budget_caps()
+
+        return BulkBudgetUpdateResponse(
+            success=True,
+            message=f"Successfully updated {len(request.category_budgets)} category budgets and total budget",
+            updated_caps=all_caps
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        print(f"Error in /budget-caps/bulk-update: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
