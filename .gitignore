@@ -30,3 +30,7 @@ yarn-error.log*
 
 # Environment files (local configs)
 /.env.*
+
+# macOS system files
+.DS_Store
+**/.DS_Store
