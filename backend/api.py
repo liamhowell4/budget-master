@@ -130,6 +130,69 @@ async def process_expense_with_mcp(text: str, image_base64: Optional[str] = None
     return result
 
 
+# ==================== Recurring Check Logic ====================
+
+async def _check_recurring_expenses_logic() -> dict:
+    """
+    Core logic for checking and creating pending expenses from recurring templates.
+
+    Used by both startup event (local dev) and /admin/check-recurring endpoint (production).
+
+    Returns:
+        dict with created_count, total_recurring, message, and details
+    """
+    from .recurring_manager import get_today_in_user_timezone
+
+    # Get all active recurring expenses
+    recurring_expenses = firebase_client.get_all_recurring_expenses(active_only=True)
+
+    if not recurring_expenses:
+        return {"created_count": 0, "message": "No active recurring expenses found", "details": []}
+
+    # Use timezone-aware today
+    today = get_today_in_user_timezone()
+    today_date = Date(day=today.day, month=today.month, year=today.year)
+
+    created_count = 0
+    details = []
+
+    for recurring in recurring_expenses:
+        # Check if we should create a pending expense
+        should_create, trigger_date = RecurringManager.should_create_pending(recurring)
+
+        if should_create and trigger_date:
+            # Check if pending already exists for this template
+            existing_pending = firebase_client.get_pending_by_template(recurring.template_id)
+
+            if existing_pending:
+                details.append(f"Skipped {recurring.expense_name} - pending already exists")
+                continue
+
+            # Create pending expense
+            pending = RecurringManager.create_pending_expense_from_recurring(recurring, trigger_date)
+            pending_id = firebase_client.save_pending_expense(pending)
+
+            # Update last_reminded
+            firebase_client.update_recurring_expense(
+                recurring.template_id,
+                {"last_reminded": {
+                    "day": today_date.day,
+                    "month": today_date.month,
+                    "year": today_date.year
+                }}
+            )
+
+            created_count += 1
+            details.append(f"Created pending for {recurring.expense_name} (due {trigger_date.month}/{trigger_date.day})")
+
+    return {
+        "created_count": created_count,
+        "total_recurring": len(recurring_expenses),
+        "message": f"Created {created_count} pending expense(s)" if created_count > 0 else "All recurring expenses up to date",
+        "details": details
+    }
+
+
 # ==================== Startup Events ====================
 
 @app.on_event("startup")
@@ -137,68 +200,21 @@ async def check_recurring_expenses():
     """
     Check for due recurring expenses on API startup.
 
-    This runs every time the API starts. It checks all active recurring expenses
-    and creates pending expenses if they're due.
-
-    NOTE: This is a temporary implementation for pre-Cloud Functions deployment.
-    When deployed to Cloud Functions, this logic will move to a daily Cloud Scheduler
-    job that calls /admin/check-recurring endpoint.
-
-    See RECURRING_IMPLEMENTATION_PLAN.md for migration details.
+    This runs every time the API starts (for local dev convenience).
+    In production (Cloud Run), set SKIP_STARTUP_RECURRING_CHECK=true
+    and use Cloud Scheduler to call /admin/check-recurring instead.
     """
+    # Skip in production - Cloud Scheduler handles this
+    if os.getenv("SKIP_STARTUP_RECURRING_CHECK", "").lower() == "true":
+        print("⏭️  Skipping startup recurring check (SKIP_STARTUP_RECURRING_CHECK=true)")
+        return
+
     try:
-        print("🔄 Checking for due recurring expenses...")
-
-        # Get all active recurring expenses
-        recurring_expenses = firebase_client.get_all_recurring_expenses(active_only=True)
-
-        if not recurring_expenses:
-            print("✅ No active recurring expenses found")
-            return
-
-        print(f"📋 Found {len(recurring_expenses)} active recurring expenses")
-
-        # Use timezone-aware today (not UTC)
-        from .recurring_manager import get_today_in_user_timezone
-        today = get_today_in_user_timezone()
-        today_date = Date(day=today.day, month=today.month, year=today.year)
-
-        created_count = 0
-
-        for recurring in recurring_expenses:
-            # Check if we should create a pending expense
-            should_create, trigger_date = RecurringManager.should_create_pending(recurring)
-
-            if should_create and trigger_date:
-                # Check if pending already exists for this template
-                existing_pending = firebase_client.get_pending_by_template(recurring.template_id)
-
-                if existing_pending:
-                    print(f"⏭️  Skipping {recurring.expense_name} - pending already exists")
-                    continue
-
-                # Create pending expense
-                pending = RecurringManager.create_pending_expense_from_recurring(recurring, trigger_date)
-                pending_id = firebase_client.save_pending_expense(pending)
-
-                # Update last_reminded
-                firebase_client.update_recurring_expense(
-                    recurring.template_id,
-                    {"last_reminded": {
-                        "day": today_date.day,
-                        "month": today_date.month,
-                        "year": today_date.year
-                    }}
-                )
-
-                created_count += 1
-                print(f"✅ Created pending expense for {recurring.expense_name} (due {trigger_date.month}/{trigger_date.day})")
-
-        if created_count > 0:
-            print(f"🎉 Created {created_count} pending expense(s)")
-        else:
-            print("✅ All recurring expenses up to date")
-
+        print("🔄 Checking for due recurring expenses on startup...")
+        result = await _check_recurring_expenses_logic()
+        print(f"✅ {result['message']}")
+        for detail in result.get("details", []):
+            print(f"   {detail}")
     except Exception as e:
         print(f"❌ Error checking recurring expenses: {e}")
         traceback.print_exc()
@@ -403,17 +419,19 @@ async def twilio_webhook_mcp(request: Request, x_twilio_signature: str = Header(
 async def mcp_process_expense(
     text: Optional[str] = Form(None, description="Text description of expense"),
     image: Optional[UploadFile] = File(None, description="Receipt image"),
+    audio: Optional[UploadFile] = File(None, description="Voice recording for transcription"),
     user_id: Optional[str] = Form(None, description="User/session ID for conversation tracking")
 ):
     """
     Generic MCP endpoint for processing expenses.
 
     This endpoint is used by Streamlit and can be used by other clients.
-    It accepts text and/or image inputs and processes them via MCP backend.
+    It accepts text, image, and/or audio inputs and processes them via MCP backend.
 
     Args:
         text: Optional text description of expense
         image: Optional receipt image file
+        audio: Optional voice recording (WAV, MP3, etc.) for Whisper transcription
         user_id: Optional user/session ID for conversation tracking
 
     Returns:
@@ -429,11 +447,33 @@ async def mcp_process_expense(
                 detail="MCP backend not enabled. Set USE_MCP_BACKEND=true"
             )
 
+        # Transcribe audio if provided
+        if audio:
+            from .whisper_client import transcribe_audio
+
+            # Validate audio type
+            allowed_audio_types = ["audio/wav", "audio/mpeg", "audio/mp3", "audio/webm", "audio/ogg", "audio/mp4", "audio/x-wav"]
+            if audio.content_type and audio.content_type not in allowed_audio_types:
+                print(f"⚠️ Audio type {audio.content_type} not in allowed list, proceeding anyway")
+
+            audio_bytes = await audio.read()
+            print(f"🎤 Transcribing audio: {len(audio_bytes)} bytes, type: {audio.content_type}")
+
+            transcription = await transcribe_audio(audio_bytes, audio.filename or "recording.wav")
+            print(f"📝 Transcription: {transcription}")
+
+            # Combine transcription with text (transcription first, then user text)
+            if transcription:
+                if text:
+                    text = f"{transcription} {text}"
+                else:
+                    text = transcription
+
         # Must have at least one input
         if not text and not image:
             raise HTTPException(
                 status_code=400,
-                detail="Must provide at least one input: text or image"
+                detail="Must provide at least one input: text, image, or audio"
             )
 
         # Process image if provided
@@ -1028,6 +1068,50 @@ async def delete_recurring_template(template_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== Admin Endpoints ====================
+
+# Load admin API key from environment
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
+
+
+@app.post("/admin/check-recurring")
+async def admin_check_recurring(x_api_key: Optional[str] = Header(None)):
+    """
+    Check for due recurring expenses and create pending expenses.
+
+    This endpoint is designed to be called by Cloud Scheduler daily.
+    Requires ADMIN_API_KEY header for authentication.
+
+    Headers:
+        X-API-Key: The admin API key (must match ADMIN_API_KEY env var)
+
+    Returns:
+        JSON with created_count and details
+    """
+    # Verify API key
+    if not ADMIN_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="ADMIN_API_KEY not configured on server"
+        )
+
+    if x_api_key != ADMIN_API_KEY:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing X-API-Key header"
+        )
+
+    try:
+        print("🔄 [Admin] Checking for due recurring expenses...")
+        result = await _check_recurring_expenses_logic()
+        print(f"✅ [Admin] {result['message']}")
+        return result
+    except Exception as e:
+        print(f"❌ [Admin] Error checking recurring expenses: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -1044,6 +1128,7 @@ async def health_check():
             "POST /pending/{id}/confirm",
             "DELETE /pending/{id}",
             "DELETE /recurring/{id}",
+            "POST /admin/check-recurring",
             "GET /health",
             "GET /servers",
             "POST /connect/{server_id}",

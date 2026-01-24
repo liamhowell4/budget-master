@@ -172,8 +172,18 @@ def update_budget_caps(total_budget: float, category_budgets: dict):
         return False, str(e)
 
 
-def submit_expense(text: str = None, image_file=None, session_id: str = None):
-    """Submit expense to API."""
+def submit_expense(text: str = None, image_file=None, audio_file=None, session_id: str = None):
+    """Submit expense to API.
+
+    Args:
+        text: Optional text description of expense
+        image_file: Optional uploaded image file (UploadedFile)
+        audio_file: Optional audio recording (UploadedFile from st.chat_input)
+        session_id: Optional session ID for conversation tracking
+
+    Returns:
+        tuple: (success: bool, result: dict or error string)
+    """
     try:
         files = {}
         data = {}
@@ -187,11 +197,19 @@ def submit_expense(text: str = None, image_file=None, session_id: str = None):
         if image_file:
             files["image"] = (image_file.name, image_file.getvalue(), image_file.type)
 
+        if audio_file:
+            # Audio from st.chat_input is UploadedFile
+            files["audio"] = (
+                getattr(audio_file, 'name', None) or "recording.wav",
+                audio_file.getvalue(),
+                getattr(audio_file, 'type', None) or "audio/wav"
+            )
+
         response = requests.post(
             f"{API_URL}/mcp/process_expense",
             files=files if files else None,
             data=data if data else None,
-            timeout=30
+            timeout=60  # Increased timeout for Whisper + Claude processing
         )
 
         if response.status_code == 200:
@@ -210,19 +228,20 @@ def escape_markdown_dollars(text: str) -> str:
     return text.replace("$", "\\$")
 
 
-def process_chat_message(text: str = None, image_file=None, session_id: str = None):
+def process_chat_message(text: str = None, image_file=None, audio_file=None, session_id: str = None):
     """
-    Process a chat message (text and/or image) and return a formatted SMS-like response.
+    Process a chat message (text, image, and/or audio) and return a formatted SMS-like response.
 
     Args:
         text: Optional text message
         image_file: Optional uploaded image file
+        audio_file: Optional audio recording (UploadedFile from st.chat_input)
         session_id: Optional session ID for conversation tracking
 
     Returns:
         tuple: (success: bool, response_message: str, expense_data: dict or None)
     """
-    success, result = submit_expense(text, image_file, session_id)
+    success, result = submit_expense(text, image_file, audio_file, session_id)
 
     if not success:
         return False, f"❌ Error: {result}", None
@@ -307,6 +326,7 @@ def render_chat():
                     success, response, expense_data = process_chat_message(
                         msg_data.get("text"),
                         msg_data.get("image"),
+                        msg_data.get("audio"),
                         st.session_state.session_id
                     )
 
@@ -322,27 +342,51 @@ def render_chat():
                     # Rerun to show the response
                     st.rerun()
 
-    # Chat input with image upload option
-    col1, col2 = st.columns([4, 1])
+    # Image uploader (separate from chat input)
+    uploaded_image = st.file_uploader(
+        "📎 Attach receipt",
+        type=["jpg", "jpeg", "png"],
+        help="Attach a receipt image",
+        label_visibility="collapsed",
+        key=f"chat_image_{len(st.session_state.chat_history)}"
+    )
 
-    with col2:
-        uploaded_image = st.file_uploader(
-            "📎",
-            type=["jpg", "jpeg", "png"],
-            help="Attach a receipt image",
-            label_visibility="collapsed",
-            key=f"chat_image_{len(st.session_state.chat_history)}"
-        )
+    # Unified chat input with audio support
+    user_input = st.chat_input(
+        "Type, attach receipt, or record audio...",
+        accept_audio=True
+    )
 
-    with col1:
-        user_input = st.chat_input("Type an expense or attach a receipt...")
+    # Handle new user input (text, audio, or image)
+    # Note: user_input can be a string (text only) or ChatInputValue (has .text and .audio)
+    input_text = None
+    audio_file = None
 
-    # Handle new user input
-    if user_input or uploaded_image:
+    if user_input:
+        # Check if it's a ChatInputValue object (has .text and .audio attributes)
+        if hasattr(user_input, 'text'):
+            input_text = user_input.text
+            audio_file = getattr(user_input, 'audio', None)
+        else:
+            # Plain string (text only, no audio recorded)
+            input_text = user_input
+
+    if input_text or audio_file or uploaded_image:
+        # Build display message based on input type
+        if audio_file:
+            if input_text:
+                content = f"🎤 {input_text}"  # Audio + text
+            else:
+                content = "🎤 [Voice Recording]"
+        elif input_text:
+            content = input_text
+        else:
+            content = "📎 [Receipt Image]"
+
         # Create user message
         user_message = {
             "role": "user",
-            "content": user_input if user_input else "📎 [Receipt Image]"
+            "content": content
         }
 
         if uploaded_image:
@@ -353,8 +397,9 @@ def render_chat():
 
         # Set processing flag with the message data
         st.session_state.processing_message = {
-            "text": user_input,
-            "image": uploaded_image
+            "text": input_text,
+            "image": uploaded_image,
+            "audio": audio_file
         }
 
         # Trigger a rerun to show user message and process response
