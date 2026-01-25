@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from mcp.server.models import InitializationOptions
 from mcp.server import NotificationOptions, Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import Tool, TextContent, ToolAnnotations
 
 # Import backend modules
 from backend.firebase_client import FirebaseClient
@@ -37,12 +37,88 @@ from backend.budget_manager import BudgetManager
 from backend.output_schemas import Expense, ExpenseType, Date, RecurringExpense, FrequencyType
 
 
-# Initialize Firebase and Budget Manager
-firebase_client = FirebaseClient()
-budget_manager = BudgetManager(firebase_client)
+# Initialize global Firebase client for categories (read-only, shared)
+# User-scoped clients are created per-request based on user_id
+_global_firebase = FirebaseClient()
 
 # Create MCP server
 server = Server("expense-tracker-mcp")
+
+
+# Common schema property for auth_token
+AUTH_TOKEN_PROPERTY = {
+    "type": "string",
+    "description": "Firebase Auth ID token for authentication (required)"
+}
+
+
+def verify_token_and_get_uid(auth_token: str) -> str:
+    """
+    Verify Firebase Auth token and extract user ID.
+
+    Firebase Auth does the cryptographic verification - we just read the result.
+
+    Args:
+        auth_token: Firebase ID token from client
+
+    Returns:
+        User ID (uid) from the verified token
+
+    Raises:
+        ValueError: If token is invalid or verification fails
+    """
+    import firebase_admin.auth as firebase_auth
+
+    try:
+        # Firebase verifies: signature, expiry, issuer, audience
+        decoded_token = firebase_auth.verify_id_token(auth_token)
+        return decoded_token["uid"]
+    except firebase_auth.InvalidIdTokenError:
+        raise ValueError("Invalid authentication token")
+    except firebase_auth.ExpiredIdTokenError:
+        raise ValueError("Authentication token has expired")
+    except Exception as e:
+        raise ValueError(f"Token verification failed: {str(e)}")
+
+
+def get_user_firebase(arguments: dict) -> FirebaseClient:
+    """
+    Get a user-scoped FirebaseClient from tool arguments.
+
+    Verifies the auth token with Firebase Auth before creating the client.
+
+    Args:
+        arguments: Tool arguments dict containing 'auth_token'
+
+    Returns:
+        FirebaseClient scoped to the verified user
+
+    Raises:
+        ValueError: If auth_token is missing or invalid
+    """
+    auth_token = arguments.get("auth_token")
+    if not auth_token:
+        raise ValueError("auth_token is required for authentication")
+
+    # Firebase Auth verifies the token and gives us the uid
+    user_id = verify_token_and_get_uid(auth_token)
+    return FirebaseClient.for_user(user_id)
+
+
+def get_user_budget_manager(arguments: dict) -> BudgetManager:
+    """
+    Get a user-scoped BudgetManager from tool arguments.
+
+    Verifies the auth token with Firebase Auth before creating the manager.
+
+    Args:
+        arguments: Tool arguments dict containing 'auth_token'
+
+    Returns:
+        BudgetManager scoped to the verified user
+    """
+    firebase = get_user_firebase(arguments)
+    return BudgetManager(firebase)
 
 
 @server.list_tools()
@@ -61,9 +137,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Call this after extracting expense information from user input. "
                 "Returns the saved expense ID."
             ),
+            annotations=ToolAnnotations(title="Save Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "name": {
                         "type": "string",
                         "description": "Descriptive name for the expense (e.g., 'Starbucks coffee', 'Chipotle lunch')"
@@ -88,7 +166,7 @@ async def handle_list_tools() -> list[Tool]:
                         "enum": [e.name for e in ExpenseType]
                     }
                 },
-                "required": ["name", "amount", "date", "category"]
+                "required": ["auth_token", "name", "amount", "date", "category"]
             }
         ),
         Tool(
@@ -98,9 +176,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Returns budget warnings if user is approaching or over budget limits. "
                 "Call this after save_expense to inform the user about their budget status."
             ),
+            annotations=ToolAnnotations(title="Get Budget Status"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "category": {
                         "type": "string",
                         "description": "The expense category to check (e.g., 'FOOD_OUT', 'COFFEE')",
@@ -121,7 +201,7 @@ async def handle_list_tools() -> list[Tool]:
                         "maximum": 12
                     }
                 },
-                "required": ["category", "amount", "year", "month"]
+                "required": ["auth_token", "category", "amount", "year", "month"]
             }
         ),
         Tool(
@@ -130,6 +210,7 @@ async def handle_list_tools() -> list[Tool]:
                 "Get all valid expense categories with their descriptions. "
                 "Use this to understand which category to assign to an expense."
             ),
+            annotations=ToolAnnotations(title="Get Categories"),
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -143,9 +224,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Use this when the user wants to correct or modify a previous expense. "
                 "You can update name, amount, date, and/or category."
             ),
+            annotations=ToolAnnotations(title="Update Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "expense_id": {
                         "type": "string",
                         "description": "The Firebase document ID of the expense to update"
@@ -174,7 +257,7 @@ async def handle_list_tools() -> list[Tool]:
                         "enum": [e.name for e in ExpenseType]
                     }
                 },
-                "required": ["expense_id"]
+                "required": ["auth_token", "expense_id"]
             }
         ),
         Tool(
@@ -184,15 +267,17 @@ async def handle_list_tools() -> list[Tool]:
                 "Use this when the user confirms they want to remove an expense. "
                 "Always confirm with the user before calling this tool."
             ),
+            annotations=ToolAnnotations(title="Delete Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "expense_id": {
                         "type": "string",
                         "description": "The Firebase document ID of the expense to delete"
                     }
                 },
-                "required": ["expense_id"]
+                "required": ["auth_token", "expense_id"]
             }
         ),
         Tool(
@@ -202,9 +287,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Use this when the user asks to see their recent purchases or recent activity. "
                 "Returns expenses sorted by most recent first."
             ),
+            annotations=ToolAnnotations(title="Get Recent Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "limit": {
                         "type": "integer",
                         "description": "Maximum number of expenses to return (default 20)",
@@ -217,7 +304,7 @@ async def handle_list_tools() -> list[Tool]:
                         "enum": [e.name for e in ExpenseType]
                     }
                 },
-                "required": []
+                "required": ["auth_token"]
             }
         ),
         Tool(
@@ -227,9 +314,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Searches current month by default, or specify a date range. "
                 "Also supports filtering by category."
             ),
+            annotations=ToolAnnotations(title="Search Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "query": {
                         "type": "string",
                         "description": "Text to search for in expense names (case-insensitive)"
@@ -240,7 +329,7 @@ async def handle_list_tools() -> list[Tool]:
                         "enum": [e.name for e in ExpenseType]
                     }
                 },
-                "required": ["query"]
+                "required": ["auth_token", "query"]
             }
         ),
         Tool(
@@ -251,9 +340,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Supports monthly (on specific day), weekly (on specific weekday), and biweekly frequencies. "
                 "NOTE: Recurring expenses must have positive amounts only (no negative/refund recurring expenses)."
             ),
+            annotations=ToolAnnotations(title="Create Recurring Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "name": {
                         "type": "string",
                         "description": "Name of the recurring expense (e.g., 'Libro.fm subscription', 'Rent', 'Netflix')"
@@ -291,7 +382,7 @@ async def handle_list_tools() -> list[Tool]:
                         "default": False
                     }
                 },
-                "required": ["name", "amount", "category", "frequency"]
+                "required": ["auth_token", "name", "amount", "category", "frequency"]
             }
         ),
         Tool(
@@ -300,16 +391,18 @@ async def handle_list_tools() -> list[Tool]:
                 "Get all active recurring expense templates. "
                 "Use this when the user asks to see their subscriptions, recurring bills, etc."
             ),
+            annotations=ToolAnnotations(title="List Recurring Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "active_only": {
                         "type": "boolean",
                         "description": "Only show active recurring expenses (default true)",
                         "default": True
                     }
                 },
-                "required": []
+                "required": ["auth_token"]
             }
         ),
         Tool(
@@ -319,15 +412,17 @@ async def handle_list_tools() -> list[Tool]:
                 "This will stop future pending expenses from being created. "
                 "Always confirm with the user before calling this tool."
             ),
+            annotations=ToolAnnotations(title="Delete Recurring Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "template_id": {
                         "type": "string",
                         "description": "The Firebase document ID of the recurring expense template to delete"
                     }
                 },
-                "required": ["template_id"]
+                "required": ["auth_token", "template_id"]
             }
         ),
         Tool(
@@ -337,9 +432,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Returns detailed expense list with totals. "
                 "Date range can span up to 12 months (warns if >3 months)."
             ),
+            annotations=ToolAnnotations(title="Query Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "start_date": {
                         "type": "object",
                         "description": "Start date for query (inclusive)",
@@ -370,7 +467,7 @@ async def handle_list_tools() -> list[Tool]:
                         "description": "Filter expenses above this amount (optional)"
                     }
                 },
-                "required": ["start_date", "end_date"]
+                "required": ["auth_token", "start_date", "end_date"]
             }
         ),
         Tool(
@@ -380,9 +477,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Shows how much was spent in each category with transaction counts. "
                 "Useful for 'How much did I spend on food last week?' type questions."
             ),
+            annotations=ToolAnnotations(title="Get Spending By Category"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "start_date": {
                         "type": "object",
                         "description": "Start date (inclusive)",
@@ -404,7 +503,7 @@ async def handle_list_tools() -> list[Tool]:
                         "required": ["day", "month", "year"]
                     }
                 },
-                "required": ["start_date", "end_date"]
+                "required": ["auth_token", "start_date", "end_date"]
             }
         ),
         Tool(
@@ -414,9 +513,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Returns total spending, transaction count, and average per transaction. "
                 "Good for general spending questions."
             ),
+            annotations=ToolAnnotations(title="Get Spending Summary"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "start_date": {
                         "type": "object",
                         "description": "Start date (inclusive)",
@@ -438,7 +539,7 @@ async def handle_list_tools() -> list[Tool]:
                         "required": ["day", "month", "year"]
                     }
                 },
-                "required": ["start_date", "end_date"]
+                "required": ["auth_token", "start_date", "end_date"]
             }
         ),
         Tool(
@@ -448,16 +549,18 @@ async def handle_list_tools() -> list[Tool]:
                 "Shows current spending, cap, percentage used, and amount remaining. "
                 "Formatted like the 'status' command."
             ),
+            annotations=ToolAnnotations(title="Get Budget Remaining"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "category": {
                         "type": "string",
                         "description": "Specific category to check (optional - if omitted, shows all categories)",
                         "enum": [e.name for e in ExpenseType]
                     }
                 },
-                "required": []
+                "required": ["auth_token"]
             }
         ),
         Tool(
@@ -467,9 +570,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Shows difference in spending (both absolute dollar amount and percentage change). "
                 "Useful for 'compare this month to last month' type questions."
             ),
+            annotations=ToolAnnotations(title="Compare Periods"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "period1_start": {
                         "type": "object",
                         "description": "Period 1 start date",
@@ -516,7 +621,7 @@ async def handle_list_tools() -> list[Tool]:
                         "enum": [e.name for e in ExpenseType]
                     }
                 },
-                "required": ["period1_start", "period1_end", "period2_start", "period2_end"]
+                "required": ["auth_token", "period1_start", "period1_end", "period2_start", "period2_end"]
             }
         ),
         Tool(
@@ -526,9 +631,11 @@ async def handle_list_tools() -> list[Tool]:
                 "Returns top 3 expenses by amount with details. "
                 "Useful for 'what was my biggest expense' type questions."
             ),
+            annotations=ToolAnnotations(title="Get Largest Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY,
                     "start_date": {
                         "type": "object",
                         "description": "Start date (inclusive)",
@@ -555,7 +662,7 @@ async def handle_list_tools() -> list[Tool]:
                         "enum": [e.name for e in ExpenseType]
                     }
                 },
-                "required": ["start_date", "end_date"]
+                "required": ["auth_token", "start_date", "end_date"]
             }
         )
     ]
@@ -660,8 +767,9 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
         category=category
     )
 
-    # Save to Firebase
-    expense_id = firebase_client.save_expense(expense, input_type="mcp")
+    # Get user-scoped Firebase client and save
+    firebase = get_user_firebase(arguments)
+    expense_id = firebase.save_expense(expense, input_type="mcp")
 
     # Return success response
     result = {
@@ -705,8 +813,9 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
             text=f"Error: Invalid category '{category_str}'"
         )]
 
-    # Get budget warning
-    warning = budget_manager.get_budget_warning(
+    # Get user-scoped budget manager and get warning
+    user_budget_manager = get_user_budget_manager(arguments)
+    warning = user_budget_manager.get_budget_warning(
         category=category,
         amount=amount,
         year=year,
@@ -787,8 +896,11 @@ async def _update_expense(arguments: dict) -> list[TextContent]:
                 text=f"Error: Invalid category '{category_str}'"
             )]
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Update expense
-    success = firebase_client.update_expense(
+    success = firebase.update_expense(
         expense_id=expense_id,
         expense_name=expense_name,
         amount=amount,
@@ -803,7 +915,7 @@ async def _update_expense(arguments: dict) -> list[TextContent]:
         )]
 
     # Get updated expense to return details
-    updated_expense = firebase_client.get_expense_by_id(expense_id)
+    updated_expense = firebase.get_expense_by_id(expense_id)
 
     result = {
         "success": True,
@@ -831,8 +943,11 @@ async def _delete_expense(arguments: dict) -> list[TextContent]:
     """
     expense_id = arguments["expense_id"]
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Get expense details before deleting (for confirmation message)
-    expense = firebase_client.get_expense_by_id(expense_id)
+    expense = firebase.get_expense_by_id(expense_id)
 
     if not expense:
         return [TextContent(
@@ -841,7 +956,7 @@ async def _delete_expense(arguments: dict) -> list[TextContent]:
         )]
 
     # Delete expense
-    success = firebase_client.delete_expense(expense_id)
+    success = firebase.delete_expense(expense_id)
 
     if not success:
         return [TextContent(
@@ -879,6 +994,9 @@ async def _get_recent_expenses(arguments: dict) -> list[TextContent]:
     limit = arguments.get("limit", 20)
     category_str = arguments.get("category")
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Parse category if provided
     category_obj = None
     if category_str:
@@ -891,7 +1009,7 @@ async def _get_recent_expenses(arguments: dict) -> list[TextContent]:
             )]
 
     # Get recent expenses
-    expenses = firebase_client.get_recent_expenses_from_db(
+    expenses = firebase.get_recent_expenses_from_db(
         limit=limit,
         category=category_obj
     )
@@ -932,6 +1050,9 @@ async def _search_expenses(arguments: dict) -> list[TextContent]:
     query = arguments["query"]
     category_str = arguments.get("category")
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Parse category if provided
     category_obj = None
     if category_str:
@@ -944,7 +1065,7 @@ async def _search_expenses(arguments: dict) -> list[TextContent]:
             )]
 
     # Search expenses (defaults to current month)
-    expenses = firebase_client.search_expenses_in_db(
+    expenses = firebase.search_expenses_in_db(
         text_query=query,
         category=category_obj
     )
@@ -1049,8 +1170,9 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
         active=True
     )
 
-    # Save to Firebase
-    template_id = firebase_client.save_recurring_expense(recurring)
+    # Get user-scoped Firebase client and save
+    firebase = get_user_firebase(arguments)
+    template_id = firebase.save_recurring_expense(recurring)
 
     result = {
         "success": True,
@@ -1059,7 +1181,7 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
         "amount": amount,
         "category": category_str,
         "frequency": frequency_str,
-        "message": f"✅ Created recurring expense: {name} (${amount:.2f} {frequency_str})"
+        "message": f"Created recurring expense: {name} (${amount:.2f} {frequency_str})"
     }
 
     return [TextContent(type="text", text=json.dumps(result))]
@@ -1081,8 +1203,11 @@ async def _list_recurring_expenses(arguments: dict) -> list[TextContent]:
 
     active_only = arguments.get("active_only", True)
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Get recurring expenses from Firebase
-    recurring_list = firebase_client.get_all_recurring_expenses(active_only=active_only)
+    recurring_list = firebase.get_all_recurring_expenses(active_only=active_only)
 
     # Format for response
     formatted_expenses = []
@@ -1132,8 +1257,11 @@ async def _delete_recurring_expense(arguments: dict) -> list[TextContent]:
 
     template_id = arguments["template_id"]
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Get the expense first to return details
-    recurring = firebase_client.get_recurring_expense(template_id)
+    recurring = firebase.get_recurring_expense(template_id)
 
     if not recurring:
         return [TextContent(type="text", text=json.dumps({
@@ -1142,14 +1270,14 @@ async def _delete_recurring_expense(arguments: dict) -> list[TextContent]:
         }))]
 
     # Delete the recurring expense
-    firebase_client.delete_recurring_expense(template_id)
+    firebase.delete_recurring_expense(template_id)
 
     result = {
         "success": True,
         "template_id": template_id,
         "expense_name": recurring.expense_name,
         "amount": recurring.amount,
-        "message": f"✅ Deleted recurring expense: {recurring.expense_name} (${recurring.amount:.2f})"
+        "message": f"Deleted recurring expense: {recurring.expense_name} (${recurring.amount:.2f})"
     }
 
     return [TextContent(type="text", text=json.dumps(result))]
@@ -1199,7 +1327,10 @@ async def _query_expenses(arguments: dict) -> list[TextContent]:
 
     warning = ""
     if days_diff > 90:  # ~3 months
-        warning = "⚠️ Query spans more than 3 months - results may take longer to load."
+        warning = "Query spans more than 3 months - results may take longer to load."
+
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
 
     # Get category filter
     category = None
@@ -1207,7 +1338,7 @@ async def _query_expenses(arguments: dict) -> list[TextContent]:
         category = ExpenseType[arguments["category"]]
 
     # Get expenses
-    expenses = firebase_client.get_expenses_in_date_range(start_date, end_date, category)
+    expenses = firebase.get_expenses_in_date_range(start_date, end_date, category)
 
     # Filter by min_amount if provided
     min_amount = arguments.get("min_amount")
@@ -1262,11 +1393,14 @@ async def _get_spending_by_category(arguments: dict) -> list[TextContent]:
         year=end_date_dict["year"]
     )
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Get category totals
-    category_totals = firebase_client.get_spending_by_category(start_date, end_date)
+    category_totals = firebase.get_spending_by_category(start_date, end_date)
 
     # Get detailed expenses for transaction counts
-    expenses = firebase_client.get_expenses_in_date_range(start_date, end_date)
+    expenses = firebase.get_expenses_in_date_range(start_date, end_date)
 
     # Count transactions per category
     category_counts = {}
@@ -1338,8 +1472,11 @@ async def _get_spending_summary(arguments: dict) -> list[TextContent]:
         year=end_date_dict["year"]
     )
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Get spending data
-    summary = firebase_client.get_total_spending_for_range(start_date, end_date)
+    summary = firebase.get_total_spending_for_range(start_date, end_date)
 
     # Calculate average per transaction
     average = summary["total"] / summary["count"] if summary["count"] > 0 else 0
@@ -1378,20 +1515,24 @@ async def _get_budget_remaining(arguments: dict) -> list[TextContent]:
     year = now.year
     month = now.month
 
+    # Get user-scoped Firebase client and budget manager
+    firebase = get_user_firebase(arguments)
+    user_budget_manager = get_user_budget_manager(arguments)
+
     # Get all budget caps
     all_caps = {}
     for expense_type in ExpenseType:
-        cap = firebase_client.get_budget_cap(expense_type.name)
+        cap = firebase.get_budget_cap(expense_type.name)
         if cap:
             all_caps[expense_type.name] = cap
 
     # Get total cap
-    total_cap = firebase_client.get_budget_cap("TOTAL")
+    total_cap = firebase.get_budget_cap("TOTAL")
 
     # Calculate spending per category
     category_spending = {}
     for expense_type in ExpenseType:
-        spending = budget_manager.calculate_monthly_spending(
+        spending = user_budget_manager.calculate_monthly_spending(
             category=expense_type,
             year=year,
             month=month
@@ -1495,14 +1636,17 @@ async def _compare_periods(arguments: dict) -> list[TextContent]:
         year=arguments["period2_end"]["year"]
     )
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Get category filter
     category = None
     if "category" in arguments and arguments["category"]:
         category = ExpenseType[arguments["category"]]
 
     # Get expenses for both periods
-    p1_expenses = firebase_client.get_expenses_in_date_range(p1_start, p1_end, category)
-    p2_expenses = firebase_client.get_expenses_in_date_range(p2_start, p2_end, category)
+    p1_expenses = firebase.get_expenses_in_date_range(p1_start, p1_end, category)
+    p2_expenses = firebase.get_expenses_in_date_range(p2_start, p2_end, category)
 
     # Calculate totals
     p1_total = sum(exp.get("amount", 0) for exp in p1_expenses)
@@ -1567,13 +1711,16 @@ async def _get_largest_expenses(arguments: dict) -> list[TextContent]:
         year=end_date_dict["year"]
     )
 
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
     # Get category filter
     category = None
     if "category" in arguments and arguments["category"]:
         category = ExpenseType[arguments["category"]]
 
     # Get all expenses
-    expenses = firebase_client.get_expenses_in_date_range(start_date, end_date, category)
+    expenses = firebase.get_expenses_in_date_range(start_date, end_date, category)
 
     # Sort by amount (highest first) and take top 3
     expenses.sort(key=lambda x: x.get("amount", 0), reverse=True)
