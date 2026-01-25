@@ -2,10 +2,10 @@
 FastAPI Backend - Personal Expense Tracker API
 
 Endpoints:
-- POST /twilio/webhook - Twilio SMS/MMS webhook handler
-- POST /streamlit/process - Streamlit UI expense submission (audio/image/text)
+- POST /mcp/process_expense - Process expenses via MCP (text/image/audio)
 - GET /expenses - Query expense history with filters
 - GET /budget - Get current budget status
+- POST /chat/stream - Streaming chat with MCP tools
 - GET /health - Health check
 """
 
@@ -13,20 +13,17 @@ import os
 from datetime import datetime, date
 from typing import Optional, List
 import pytz
-import requests
 import base64
 import traceback
 import json
 
 from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Header
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .twilio_handler import TwilioHandler
 from .firebase_client import FirebaseClient
 from .budget_manager import BudgetManager
-from .expense_parser import parse_receipt
 from .output_schemas import ExpenseType, Date
 from .recurring_manager import RecurringManager
 
@@ -57,21 +54,8 @@ app.add_middleware(
 firebase_client = FirebaseClient()
 budget_manager = BudgetManager(firebase_client)
 
-# Lazy initialization for Twilio handler (only when needed)
-_twilio_handler = None
-
-# MCP Backend Feature Flag (Phase 4.1)
-USE_MCP_BACKEND = os.getenv("USE_MCP_BACKEND", "false").lower() == "true"
-
-# MCP Client (lazy initialization on startup if feature flag enabled)
+# MCP Client (initialized on startup)
 _mcp_client = None
-
-def get_twilio_handler():
-    """Get or create Twilio handler instance (lazy initialization)."""
-    global _twilio_handler
-    if _twilio_handler is None:
-        _twilio_handler = TwilioHandler()
-    return _twilio_handler
 
 # Get user timezone
 USER_TIMEZONE = pytz.timezone(os.getenv("USER_TIMEZONE", "America/Chicago"))
@@ -83,14 +67,13 @@ async def process_expense_with_mcp(text: str, image_base64: Optional[str] = None
     """
     Shared MCP processing function for expense parsing.
 
-    This function is called by both /twilio/webhook-mcp and /mcp/process_expense.
-    It handles text and/or image inputs, processes them via MCP client,
+    Handles text and/or image inputs, processes them via MCP client,
     and returns structured expense data.
 
     Args:
         text: Text description of expense (can be empty if image provided)
         image_base64: Optional base64-encoded image with data URL prefix
-        user_id: Phone number or session ID for conversation tracking
+        user_id: Session ID for conversation tracking
 
     Returns:
         dict with keys: success, expense_id, expense_name, amount, category,
@@ -100,7 +83,7 @@ async def process_expense_with_mcp(text: str, image_base64: Optional[str] = None
         RuntimeError: If MCP client is not initialized
     """
     if not _mcp_client:
-        raise RuntimeError("MCP client not initialized. Set USE_MCP_BACKEND=true")
+        raise RuntimeError("MCP client not initialized")
 
     print(f"🤖 Processing with MCP: user_id='{user_id}', text='{text}', has_image={image_base64 is not None}")
 
@@ -223,27 +206,22 @@ async def check_recurring_expenses():
 @app.on_event("startup")
 async def startup_mcp():
     """
-    Initialize MCP client if feature flag is enabled.
+    Initialize MCP client on startup.
 
     This spawns the expense_server.py subprocess and connects via stdio.
-    Only runs if USE_MCP_BACKEND=true in environment.
     """
     global _mcp_client
 
-    if USE_MCP_BACKEND:
-        try:
-            print("🔄 MCP backend enabled - initializing MCP client...")
-            from .mcp.client import ExpenseMCPClient
+    try:
+        print("🔄 Initializing MCP client...")
+        from .mcp.client import ExpenseMCPClient
 
-            _mcp_client = ExpenseMCPClient()
-            await _mcp_client.startup()
-            print("✅ MCP backend ready")
-        except Exception as e:
-            print(f"❌ Error initializing MCP backend: {e}")
-            traceback.print_exc()
-            # Don't fail startup - allow OpenAI backend to still work
-    else:
-        print("ℹ️  MCP backend disabled (USE_MCP_BACKEND=false)")
+        _mcp_client = ExpenseMCPClient()
+        await _mcp_client.startup()
+        print("✅ MCP backend ready")
+    except Exception as e:
+        print(f"❌ Error initializing MCP backend: {e}")
+        traceback.print_exc()
 
 
 # ==================== Pydantic Models ====================
@@ -296,125 +274,6 @@ class BulkBudgetUpdateResponse(BaseModel):
 
 # ==================== Endpoints ====================
 
-@app.post("/twilio/webhook", response_class=PlainTextResponse)
-async def twilio_webhook(request: Request, x_twilio_signature: str = Header(None)):
-    """
-    Twilio SMS/MMS webhook handler.
-
-    Receives incoming SMS/MMS messages, processes expenses, and responds.
-    Validates Twilio signature for security.
-    """
-    try:
-        # Get Twilio handler (lazy initialization)
-        handler = get_twilio_handler()
-
-        # Get form data and URL for signature validation
-        form_data = await request.form()
-        url = str(request.url)
-
-        # Validate Twilio signature
-        if x_twilio_signature:
-            is_valid = handler.validate_request(
-                url=url,
-                post_data=dict(form_data),
-                signature=x_twilio_signature
-            )
-            if not is_valid:
-                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
-
-        # Get sender's phone number
-        from_number = form_data.get("From", "")
-
-        # Process the webhook and get response message
-        response_message = handler.handle_webhook(from_number, dict(form_data))
-
-        # Return plain text response (Twilio will send as SMS)
-        return response_message
-
-    except Exception as e:
-        print(f"Error in Twilio webhook: {e}")
-        return "❌ Error processing your message. Please try again."
-
-
-@app.post("/twilio/webhook-mcp", response_class=PlainTextResponse)
-async def twilio_webhook_mcp(request: Request, x_twilio_signature: str = Header(None)):
-    """
-    Twilio SMS/MMS webhook handler using MCP backend.
-
-    This endpoint uses Claude + MCP architecture instead of OpenAI.
-    Maintains same signature validation and response format as /twilio/webhook.
-
-    Only active if USE_MCP_BACKEND=true in environment.
-    """
-    try:
-        # Check if MCP backend is enabled
-        if not USE_MCP_BACKEND or not _mcp_client:
-            return "❌ MCP backend not enabled. Please use /twilio/webhook endpoint."
-
-        # Get Twilio handler for signature validation and image download
-        handler = get_twilio_handler()
-
-        # Get form data and URL for signature validation
-        form_data = await request.form()
-        url = str(request.url)
-
-        # Validate Twilio signature
-        if x_twilio_signature:
-            is_valid = handler.validate_request(
-                url=url,
-                post_data=dict(form_data),
-                signature=x_twilio_signature
-            )
-            if not is_valid:
-                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
-
-        # Get message body and phone number
-        message_body = form_data.get("Body", "").strip()
-        from_number = form_data.get("From", "")  # Phone number for conversation tracking
-
-        # Check for images (MMS)
-        num_media = int(form_data.get("NumMedia", 0))
-        image_base64 = None
-
-        if num_media > 0:
-            # Download first image and convert to base64
-            media_url = form_data.get("MediaUrl0")
-            media_type = form_data.get("MediaContentType0", "image/jpeg")
-
-            if media_url:
-                print(f"📸 Downloading image from: {media_url}")
-                response = requests.get(media_url, auth=(
-                    os.getenv("TWILIO_ACCOUNT_SID"),
-                    os.getenv("TWILIO_ACCOUNT_TOKEN")
-                ))
-
-                if response.status_code == 200:
-                    # Convert to base64
-                    image_bytes = response.content
-                    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-                    # Add data URL prefix
-                    image_base64 = f"data:{media_type};base64,{image_base64}"
-                    print(f"✅ Image downloaded and encoded ({len(image_bytes)} bytes)")
-
-        # Process with shared MCP function
-        result = await process_expense_with_mcp(
-            text=message_body,
-            image_base64=image_base64,
-            user_id=from_number  # Pass phone number for conversation tracking
-        )
-
-        # Get response message (already formatted by shared function)
-        response_message = result.get("message", "❌ Error processing expense")
-
-        print(f"📤 Sending response: {response_message}")
-        return response_message
-
-    except Exception as e:
-        print(f"Error in MCP Twilio webhook: {e}")
-        traceback.print_exc()
-        return "❌ Error processing your message. Please try again."
-
-
 @app.post("/mcp/process_expense", response_model=ExpenseResponse)
 async def mcp_process_expense(
     text: Optional[str] = Form(None, description="Text description of expense"),
@@ -423,10 +282,9 @@ async def mcp_process_expense(
     user_id: Optional[str] = Form(None, description="User/session ID for conversation tracking")
 ):
     """
-    Generic MCP endpoint for processing expenses.
+    Process expenses via MCP backend.
 
-    This endpoint is used by Streamlit and can be used by other clients.
-    It accepts text, image, and/or audio inputs and processes them via MCP backend.
+    Accepts text, image, and/or audio inputs and processes them via Claude + MCP.
 
     Args:
         text: Optional text description of expense
@@ -436,15 +294,13 @@ async def mcp_process_expense(
 
     Returns:
         ExpenseResponse with structured expense data
-
-    Note: This endpoint requires USE_MCP_BACKEND=true to be set.
     """
     try:
-        # Check if MCP backend is enabled
-        if not USE_MCP_BACKEND or not _mcp_client:
+        # Check if MCP client is initialized
+        if not _mcp_client:
             raise HTTPException(
                 status_code=503,
-                detail="MCP backend not enabled. Set USE_MCP_BACKEND=true"
+                detail="MCP backend not initialized"
             )
 
         # Transcribe audio if provided
@@ -520,219 +376,6 @@ async def mcp_process_expense(
     except Exception as e:
         print(f"Error in /mcp/process_expense: {e}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/streamlit/process", response_model=ExpenseResponse)
-async def streamlit_process(
-    audio: Optional[UploadFile] = File(None, description="Audio file for transcription"),
-    image: Optional[UploadFile] = File(None, description="Receipt image"),
-    text: Optional[str] = Form(None, description="Text description of expense")
-):
-    """
-    Process expense from Streamlit UI.
-
-    Accepts:
-    - Audio file (for Whisper transcription)
-    - Receipt image
-    - Text description
-    - Any combination of the above
-    - Commands: "status", "total"
-
-    Returns expense data and budget warning, or command response.
-    """
-    try:
-        # Must have at least one input
-        if not audio and not image and not text:
-            raise HTTPException(
-                status_code=400,
-                detail="Must provide at least one input: audio, image, or text"
-            )
-
-        # Check for command keywords (status, total) - only if text-only (no images/audio)
-        if text and not image and not audio:
-            text_lower = text.lower().strip()
-            if text_lower in ["status", "total", "summary"]:
-                twilio_handler = get_twilio_handler()
-                if text_lower in ["status", "summary"]:
-                    response_message = twilio_handler.handle_status_command()
-                else:  # total
-                    response_message = twilio_handler.handle_total_command()
-
-                return ExpenseResponse(
-                    success=True,
-                    message=response_message,
-                    expense_id=None,
-                    expense_name=None,
-                    amount=None,
-                    category=None,
-                    budget_warning=None
-                )
-
-        # Process audio if provided (TODO: Implement Whisper transcription in Phase 4)
-        transcription = None
-        if audio:
-            # For now, return error - will implement in Phase 4
-            raise HTTPException(
-                status_code=501,
-                detail="Audio transcription not yet implemented. Coming in Phase 4!"
-            )
-
-        # Process image
-        image_bytes = None
-        if image:
-            # Validate image type
-            allowed_types = ["image/jpeg", "image/jpg", "image/png"]
-            if image.content_type not in allowed_types:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid image type. Allowed: {allowed_types}"
-                )
-            image_bytes = await image.read()
-
-        # Combine text and transcription
-        text_input = None
-        if text:
-            text_input = text
-        elif transcription:
-            text_input = transcription
-
-        # Check if this is a recurring expense (text-only, no images)
-        if text_input and not image_bytes:
-            from .expense_parser import detect_recurring
-
-            print(f"\n🔍 Checking if text is recurring (Streamlit)...")
-            print(f"   Text: '{text_input}'")
-
-            detection = detect_recurring(text_input)
-
-            print(f"   is_recurring: {detection.is_recurring}")
-            print(f"   confidence: {detection.confidence}")
-            print(f"   explanation: {detection.explanation}")
-
-            if detection.is_recurring and detection.recurring_expense:
-                print(f"   ✅ Detected as recurring! Creating recurring expense...")
-
-                # Save recurring expense template
-                recurring = detection.recurring_expense
-                template_id = firebase_client.save_recurring_expense(recurring)
-
-                print(f"   ✅ Created recurring template: {template_id}")
-
-                # Check if we should create a pending expense retroactively
-                recurring.template_id = template_id
-                should_create, trigger_date = RecurringManager.should_create_pending(recurring)
-
-                if trigger_date:
-                    today = date.today()
-                    if trigger_date <= today:
-                        # Create pending expense
-                        pending = RecurringManager.create_pending_expense_from_recurring(recurring, trigger_date)
-                        pending_id = firebase_client.save_pending_expense(pending)
-
-                        # Update last_reminded
-                        today_date = Date(day=today.day, month=today.month, year=today.year)
-                        firebase_client.update_recurring_expense(
-                            template_id,
-                            {"last_reminded": {
-                                "day": today_date.day,
-                                "month": today_date.month,
-                                "year": today_date.year
-                            }}
-                        )
-
-                        print(f"   ✅ Created pending expense (retroactive): {pending_id}")
-
-                        response = ExpenseResponse(
-                            success=True,
-                            message=f"✅ Created recurring {recurring.expense_name} expense. Pending confirmation for {trigger_date.month}/{trigger_date.day}/{trigger_date.year} - check Dashboard!",
-                            expense_id=template_id,
-                            expense_name=recurring.expense_name,
-                            amount=recurring.amount,
-                            category=recurring.category.name,
-                            budget_warning=None
-                        )
-                        print(f"   🎯 Returning response with pending expense")
-                        return response
-
-                response = ExpenseResponse(
-                    success=True,
-                    message=f"✅ Created recurring {recurring.expense_name} expense (${recurring.amount:.2f} {recurring.frequency.value})",
-                    expense_id=template_id,
-                    expense_name=recurring.expense_name,
-                    amount=recurring.amount,
-                    category=recurring.category.name,
-                    budget_warning=None
-                )
-                print(f"   🎯 Returning response (future date)")
-                return response
-            else:
-                print(f"   ℹ️  Not recurring (confidence too low or no parsed expense)")
-
-        # Parse expense (regular, one-time expense)
-        expense = parse_receipt(
-            image_bytes=image_bytes,
-            text=text_input,
-            context=None
-        )
-
-        # Validate amount
-        if expense.amount == 0:
-            return ExpenseResponse(
-                success=False,
-                message="Couldn't find an amount. Please provide a complete expense with an amount.",
-                expense_id=None
-            )
-
-        # Get current date
-        now = datetime.now(USER_TIMEZONE)
-        year, month = now.year, now.month
-
-        # Get budget warning BEFORE saving
-        warning = budget_manager.get_budget_warning(
-            category=expense.category,
-            amount=expense.amount,
-            year=year,
-            month=month
-        )
-
-        # Save to Firestore (with retry)
-        saved = False
-        doc_id = None
-        for attempt in range(2):
-            try:
-                doc_id = firebase_client.save_expense(expense, input_type="streamlit")
-                saved = True
-                break
-            except Exception as e:
-                if attempt == 0:
-                    print(f"Retry saving expense: {e}")
-                    continue
-                else:
-                    raise
-
-        if not saved:
-            return ExpenseResponse(
-                success=False,
-                message="Failed to save expense after retry. Please try again.",
-                expense_id=None
-            )
-
-        # Return success response
-        return ExpenseResponse(
-            success=True,
-            message=f"Saved ${expense.amount:.2f} {expense.expense_name}",
-            expense_id=doc_id,
-            expense_name=expense.expense_name,
-            amount=expense.amount,
-            category=expense.category.name,
-            budget_warning=warning if warning else None
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error in /streamlit/process: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1117,12 +760,12 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "endpoints": [
-            "POST /twilio/webhook",
-            "POST /streamlit/process",
+            "POST /mcp/process_expense",
             "GET /expenses",
             "GET /budget",
+            "PUT /budget-caps/bulk-update",
             "GET /recurring",
             "GET /pending",
             "POST /pending/{id}/confirm",
