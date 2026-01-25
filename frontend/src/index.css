@@ -1,0 +1,178 @@
+@import "tailwindcss";
+
+/* Use class-based dark mode instead of media query */
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /* Remove focus outline from textareas (custom glow used instead) */
+  textarea {
+    outline: none !important;
+  }
+  textarea:focus,
+  textarea:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Base styles */
+html {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100dvh;
+  line-height: 1.5;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+/* Safe area padding for mobile */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Scrollbar styling - subtle */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4d4d4;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a3a3a3;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #404040;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #525252;
+}
+
+/* Focus visible styles disabled - using custom focus indicators */
+
+/* Selection */
+::selection {
+  background-color: rgba(0, 112, 243, 0.2);
+}
+
+.dark ::selection {
+  background-color: rgba(0, 112, 243, 0.3);
+}
+
+/* Apple Intelligence gradient glow */
+.glow-gradient {
+  background: linear-gradient(
+    135deg,
+    #6366f1 0%,
+    #8b5cf6 20%,
+    #a855f7 40%,
+    #ec4899 60%,
+    #f43f5e 80%,
+    #fb923c 100%
+  );
+}
+
+/* Apple Intelligence style animated border glow */
+@keyframes apple-glow-spin-and-fade {
+  0% {
+    transform: rotate(0deg);
+    opacity: 1;
+  }
+  70% {
+    transform: rotate(180deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(180deg);
+    opacity: 0;
+  }
+}
+
+@keyframes apple-glow-settle {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.apple-intelligence-glow {
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Rotating gradient - spins once then fades out */
+.apple-intelligence-glow::before {
+  content: '';
+  position: absolute;
+  inset: -50%;
+  background: conic-gradient(
+    from 0deg,
+    #7c3aed,
+    #8b5cf6,
+    #a78bfa,
+    #c084fc,
+    #e879f9,
+    #f472b6,
+    #fb7185,
+    #f97316,
+    #fbbf24,
+    #f97316,
+    #fb7185,
+    #f472b6,
+    #e879f9,
+    #c084fc,
+    #a78bfa,
+    #8b5cf6,
+    #7c3aed
+  );
+  animation: apple-glow-spin-and-fade 0.625s ease-out forwards;
+  filter: blur(20px);
+}
+
+/* Static glow - always visible underneath the rotation */
+.apple-intelligence-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(139, 92, 246, 0.875),
+    rgba(168, 85, 247, 0.875),
+    rgba(236, 72, 153, 0.875),
+    rgba(249, 115, 22, 0.7)
+  );
+  filter: blur(12px);
+  opacity: 1;
+}
+
+/* Nuclear override for textarea focus - placed last for highest priority */
+textarea, textarea:focus, textarea:focus-visible, textarea:focus-within {
+  outline: none !important;
+  outline-width: 0 !important;
+  outline-style: none !important;
+  box-shadow: none !important;
+}

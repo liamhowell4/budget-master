@@ -34,3 +34,6 @@ yarn-error.log*
 # macOS system files
 .DS_Store
 **/.DS_Store
+
+# Migration backups (contains sensitive data)
+backups/

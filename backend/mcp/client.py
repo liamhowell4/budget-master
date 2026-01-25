@@ -119,23 +119,27 @@ class ExpenseMCPClient:
         self,
         text: str,
         image_base64: Optional[str] = None,
-        user_id: Optional[str] = None
+        auth_token: Optional[str] = None,
+        user_id: Optional[str] = None,
+        conversation_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Process an expense message using Claude + MCP tools.
 
         This method:
-        1. Gets recent expense context from conversation cache
+        1. Gets recent expense context from Firestore conversation
         2. Builds a message with text and/or image
         3. Calls Claude API with system prompt, context, and MCP tools
         4. Orchestrates tool calls (save_expense, update_expense, delete_expense, etc.)
-        5. Updates conversation cache after saving/updating
+        5. Updates Firestore conversation after saving/updating
         6. Returns structured response
 
         Args:
             text: Text description of expense (e.g., "Starbucks $5", "Actually make that $6")
             image_base64: Optional base64-encoded image (receipt photo)
-            user_id: Phone number or session ID for conversation tracking
+            auth_token: Firebase Auth ID token for MCP tool authentication
+            user_id: User ID for Firestore conversation (extracted from auth_token at API layer)
+            conversation_id: Optional conversation ID for context continuity
 
         Returns:
             {
@@ -145,7 +149,8 @@ class ExpenseMCPClient:
                 "amount": 5.0,
                 "category": "COFFEE",
                 "budget_warning": "⚠️ 90% of COFFEE budget used ($10 left)",
-                "message": "✅ Saved $5 Starbucks coffee (COFFEE)\n⚠️ 90% of COFFEE budget used ($10 left)"
+                "message": "✅ Saved $5 Starbucks coffee (COFFEE)\n⚠️ 90% of COFFEE budget used ($10 left)",
+                "conversation_id": "conv123"
             }
 
         Raises:
@@ -154,14 +159,52 @@ class ExpenseMCPClient:
         if not self.client:
             raise RuntimeError("MCP client not initialized. Call startup() first.")
 
-        # Get conversation cache
-        from .conversation_cache import get_conversation_cache
-        cache = get_conversation_cache()
+        # Get or create conversation in Firestore
+        from backend.firebase_client import FirebaseClient
+        from datetime import datetime, timedelta
+        import pytz
 
-        # Get recent expenses for context (if user_id provided)
-        recent_expenses = []
+        user_firebase = None
+        conversation_messages = []
         if user_id:
-            recent_expenses = cache.get_recent_expenses(user_id, limit=5)
+            user_firebase = FirebaseClient.for_user(user_id)
+
+            # Check if existing conversation is stale (>1 hour idle)
+            if conversation_id:
+                existing_conv = user_firebase.get_conversation(conversation_id)
+                if existing_conv:
+                    last_activity = existing_conv.get("last_activity")
+                    if last_activity:
+                        # Check if more than 1 hour has passed
+                        user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
+                        tz = pytz.timezone(user_timezone)
+                        now = datetime.now(tz)
+
+                        # Handle Firestore timestamp
+                        if hasattr(last_activity, 'timestamp'):
+                            last_activity = last_activity.timestamp()
+                            last_activity = datetime.fromtimestamp(last_activity, tz)
+                        elif isinstance(last_activity, datetime):
+                            if last_activity.tzinfo is None:
+                                last_activity = tz.localize(last_activity)
+
+                        if now - last_activity > timedelta(hours=1):
+                            print(f"Conversation {conversation_id} is stale (>1 hour), creating new one")
+                            conversation_id = None  # Will create new one below
+                        else:
+                            # Get existing messages for context
+                            conversation_messages = existing_conv.get("messages", [])
+                else:
+                    conversation_id = None  # Conversation not found, create new
+
+            # Create new conversation if none provided or stale
+            if not conversation_id:
+                conversation_id = user_firebase.create_conversation()
+
+        # Get recent expenses for context from Firestore conversation
+        recent_expenses = []
+        if user_firebase and conversation_id:
+            recent_expenses = user_firebase.get_conversation_recent_expenses(conversation_id, limit=5)
 
         # Build message content
         message_content = []
@@ -216,8 +259,19 @@ class ExpenseMCPClient:
             "input_schema": tool.inputSchema
         } for tool in response.tools]
 
-        # Build messages
-        messages = [{"role": "user", "content": message_content}]
+        # Build messages with conversation history
+        messages = []
+
+        # Add previous conversation messages for context (if any)
+        if conversation_messages:
+            for msg in conversation_messages:
+                messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", "")
+                })
+
+        # Add current user message
+        messages.append({"role": "user", "content": message_content})
 
         # Call Claude API with tools
         response = self.client.anthropic.messages.create(
@@ -258,6 +312,12 @@ class ExpenseMCPClient:
 
                     print(f"🔧 Calling tool: {tool_name}")
 
+                    # Inject auth_token into tool arguments for multi-user support
+                    # Claude doesn't know the auth token, so we inject it here
+                    # MCP server will verify the token with Firebase Auth
+                    if auth_token and tool_name != "get_categories":
+                        tool_args = {**tool_args, "auth_token": auth_token}
+
                     # Execute tool call via MCP
                     result = await self.client.session.call_tool(tool_name, tool_args)
 
@@ -284,10 +344,10 @@ class ExpenseMCPClient:
                             expense_data["amount"] = result_data.get("amount")
                             expense_data["category"] = result_data.get("category")
 
-                            # Update conversation cache with new expense
-                            if user_id and expense_data["expense_id"]:
-                                cache.update_last_expense(
-                                    user_id=user_id,
+                            # Update Firestore conversation with new expense
+                            if user_firebase and conversation_id and expense_data["expense_id"]:
+                                user_firebase.update_conversation_recent_expenses(
+                                    conversation_id=conversation_id,
                                     expense_id=expense_data["expense_id"],
                                     expense_name=expense_data["expense_name"],
                                     amount=expense_data["amount"],
@@ -301,10 +361,10 @@ class ExpenseMCPClient:
                             expense_data["amount"] = result_data.get("amount")
                             expense_data["category"] = result_data.get("category")
 
-                            # Update cache with updated expense details
-                            if user_id and expense_data["expense_id"]:
-                                cache.update_last_expense(
-                                    user_id=user_id,
+                            # Update Firestore conversation with updated expense details
+                            if user_firebase and conversation_id and expense_data["expense_id"]:
+                                user_firebase.update_conversation_recent_expenses(
+                                    conversation_id=conversation_id,
                                     expense_id=expense_data["expense_id"],
                                     expense_name=expense_data["expense_name"],
                                     amount=expense_data["amount"],
@@ -313,7 +373,7 @@ class ExpenseMCPClient:
 
                         elif tool_name == "delete_expense":
                             expense_data["success"] = result_data.get("success", False)
-                            # Note: For deletes, we don't update cache since expense is gone
+                            # Note: For deletes, we don't update conversation since expense is gone
 
                         elif tool_name == "get_budget_status":
                             expense_data["budget_warning"] = result_data.get("budget_warning", "")
@@ -364,6 +424,28 @@ class ExpenseMCPClient:
 
         # Build final message
         expense_data["message"] = "\n".join(final_text)
+
+        # Store messages in Firestore conversation
+        if user_firebase and conversation_id:
+            # Store user message
+            user_message = text or "[Image/Audio input]"
+            user_firebase.add_message_to_conversation(conversation_id, "user", user_message)
+
+            # Store assistant response
+            if expense_data["message"]:
+                user_firebase.add_message_to_conversation(conversation_id, "assistant", expense_data["message"])
+
+            # Generate summary from the interaction
+            summary_parts = []
+            if expense_data.get("expense_name"):
+                action = "Added" if expense_data.get("success") else "Attempted"
+                summary_parts.append(f"{action} ${expense_data.get('amount', 0):.2f} {expense_data['expense_name']}")
+            if not summary_parts:
+                summary_parts.append(text[:50] if text else "Expense interaction")
+            user_firebase.update_conversation_summary(conversation_id, ", ".join(summary_parts))
+
+        # Include conversation_id in response
+        expense_data["conversation_id"] = conversation_id
 
         return expense_data
 

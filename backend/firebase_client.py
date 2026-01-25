@@ -6,6 +6,7 @@ import os
 import json
 from datetime import datetime
 from typing import List, Optional, Dict
+from pathlib import Path
 from dotenv import load_dotenv
 
 import firebase_admin
@@ -14,14 +15,35 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 
 from .output_schemas import Expense, ExpenseType, Date, RecurringExpense, PendingExpense, FrequencyType
 
-load_dotenv(override=True)
+# Load .env from project root (parent of backend/)
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(env_path, override=True)
 
 
 class FirebaseClient:
     """Handles all Firebase operations for expense tracking."""
 
-    def __init__(self):
-        """Initialize Firebase Admin SDK."""
+    # Collections that are user-scoped (stored under users/{userId}/)
+    USER_SCOPED_COLLECTIONS = {
+        "expenses",
+        "budget_caps",
+        "budget_alert_tracking",
+        "recurring_expenses",
+        "pending_expenses",
+        "conversations",
+    }
+
+    # Collections that remain global (shared across all users)
+    GLOBAL_COLLECTIONS = {"categories"}
+
+    def __init__(self, user_id: Optional[str] = None):
+        """
+        Initialize Firebase Admin SDK.
+
+        Args:
+            user_id: Optional user ID for user-scoped operations.
+                     If not provided, operates on global collections (legacy mode).
+        """
         # Check if already initialized
         if not firebase_admin._apps:
             firebase_key = os.getenv("FIREBASE_KEY")
@@ -43,6 +65,39 @@ class FirebaseClient:
 
         self.db = firestore.client()
         self.bucket = storage.bucket() if os.getenv('FIREBASE_STORAGE_BUCKET') else None
+        self.user_id = user_id
+
+    @classmethod
+    def for_user(cls, user_id: str) -> "FirebaseClient":
+        """
+        Create a FirebaseClient scoped to a specific user.
+
+        Args:
+            user_id: Firebase Auth UID of the user
+
+        Returns:
+            FirebaseClient instance scoped to the user
+        """
+        return cls(user_id=user_id)
+
+    def _get_collection_path(self, collection: str) -> str:
+        """
+        Get the collection path, scoped to user if applicable.
+
+        Args:
+            collection: Base collection name (e.g., "expenses")
+
+        Returns:
+            Full collection path (e.g., "users/{userId}/expenses" or "expenses")
+        """
+        if collection in self.GLOBAL_COLLECTIONS:
+            return collection
+
+        if self.user_id and collection in self.USER_SCOPED_COLLECTIONS:
+            return f"users/{self.user_id}/{collection}"
+
+        # Legacy mode: return global collection path
+        return collection
 
     # ==================== Expense Operations ====================
 
@@ -71,7 +126,7 @@ class FirebaseClient:
         }
 
         # Add to Firestore
-        doc_ref = self.db.collection("expenses").add(expense_data)
+        doc_ref = self.db.collection(self._get_collection_path("expenses")).add(expense_data)
         return doc_ref[1].id
 
     def get_expenses(
@@ -91,7 +146,7 @@ class FirebaseClient:
         Returns:
             List of expense dictionaries
         """
-        query = self.db.collection("expenses")
+        query = self.db.collection(self._get_collection_path("expenses"))
 
         # Apply filters
         if start_date:
@@ -127,7 +182,7 @@ class FirebaseClient:
         Returns:
             List of expense dictionaries for the month
         """
-        query = self.db.collection("expenses")
+        query = self.db.collection(self._get_collection_path("expenses"))
 
         # Filter by date fields (day, month, year)
         query = query.where(filter=FieldFilter("date.year", "==", year))
@@ -171,7 +226,7 @@ class FirebaseClient:
         Returns:
             Expense dict with 'id' field, or None if not found
         """
-        doc_ref = self.db.collection("expenses").document(expense_id)
+        doc_ref = self.db.collection(self._get_collection_path("expenses")).document(expense_id)
         doc = doc_ref.get()
 
         if not doc.exists:
@@ -202,7 +257,7 @@ class FirebaseClient:
         Returns:
             True if updated, False if expense not found
         """
-        doc_ref = self.db.collection("expenses").document(expense_id)
+        doc_ref = self.db.collection(self._get_collection_path("expenses")).document(expense_id)
 
         # Check if expense exists
         if not doc_ref.get().exists:
@@ -239,7 +294,7 @@ class FirebaseClient:
         Returns:
             True if deleted, False if expense not found
         """
-        doc_ref = self.db.collection("expenses").document(expense_id)
+        doc_ref = self.db.collection(self._get_collection_path("expenses")).document(expense_id)
 
         # Check if expense exists
         if not doc_ref.get().exists:
@@ -275,7 +330,7 @@ class FirebaseClient:
         start_date = now - timedelta(days=days_back)
 
         # Build query
-        query = self.db.collection("expenses")
+        query = self.db.collection(self._get_collection_path("expenses"))
         query = query.where(filter=FieldFilter("timestamp", ">=", start_date))
 
         if category:
@@ -361,7 +416,7 @@ class FirebaseClient:
         Returns:
             List of expense dicts
         """
-        query = self.db.collection("expenses")
+        query = self.db.collection(self._get_collection_path("expenses"))
 
         # Filter by year and month range
         # Note: This is a simplified approach - for precise filtering we'd need composite queries
@@ -472,7 +527,7 @@ class FirebaseClient:
         Returns:
             Budget cap amount or None if not set
         """
-        doc = self.db.collection("budget_caps").document(category).get()
+        doc = self.db.collection(self._get_collection_path("budget_caps")).document(category).get()
 
         if doc.exists:
             data = doc.to_dict()
@@ -488,7 +543,7 @@ class FirebaseClient:
             category: Category name (e.g., "FOOD_OUT") or "TOTAL" for overall cap
             amount: Monthly budget cap amount
         """
-        self.db.collection("budget_caps").document(category).set({
+        self.db.collection(self._get_collection_path("budget_caps")).document(category).set({
             "category": category,
             "monthly_cap": amount,
             "last_updated": firestore.SERVER_TIMESTAMP
@@ -501,7 +556,7 @@ class FirebaseClient:
         Returns:
             Dictionary mapping category names to budget cap amounts
         """
-        docs = self.db.collection("budget_caps").stream()
+        docs = self.db.collection(self._get_collection_path("budget_caps")).stream()
 
         caps = {}
         for doc in docs:
@@ -522,7 +577,7 @@ class FirebaseClient:
             List of threshold percentages already warned about (e.g., [50, 90])
         """
         doc_id = f"{year}-{month:02d}"
-        doc = self.db.collection("budget_alert_tracking").document(doc_id).get()
+        doc = self.db.collection(self._get_collection_path("budget_alert_tracking")).document(doc_id).get()
 
         if doc.exists:
             data = doc.to_dict()
@@ -540,7 +595,7 @@ class FirebaseClient:
             threshold: Threshold percentage (50, 90, 95, or 100)
         """
         doc_id = f"{year}-{month:02d}"
-        doc_ref = self.db.collection("budget_alert_tracking").document(doc_id)
+        doc_ref = self.db.collection(self._get_collection_path("budget_alert_tracking")).document(doc_id)
 
         # Get existing thresholds
         existing_doc = doc_ref.get()
@@ -686,7 +741,7 @@ class FirebaseClient:
         }
 
         # Add to Firestore
-        doc_ref = self.db.collection("recurring_expenses").add(recurring_data)
+        doc_ref = self.db.collection(self._get_collection_path("recurring_expenses")).add(recurring_data)
         return doc_ref[1].id
 
     def get_recurring_expense(self, template_id: str) -> Optional[RecurringExpense]:
@@ -699,7 +754,7 @@ class FirebaseClient:
         Returns:
             RecurringExpense object or None
         """
-        doc = self.db.collection("recurring_expenses").document(template_id).get()
+        doc = self.db.collection(self._get_collection_path("recurring_expenses")).document(template_id).get()
 
         if not doc.exists:
             return None
@@ -717,7 +772,7 @@ class FirebaseClient:
         Returns:
             List of RecurringExpense objects
         """
-        query = self.db.collection("recurring_expenses")
+        query = self.db.collection(self._get_collection_path("recurring_expenses"))
 
         if active_only:
             query = query.where(filter=FieldFilter("active", "==", True))
@@ -740,7 +795,7 @@ class FirebaseClient:
             template_id: Document ID
             updates: Dictionary of fields to update
         """
-        self.db.collection("recurring_expenses").document(template_id).update(updates)
+        self.db.collection(self._get_collection_path("recurring_expenses")).document(template_id).update(updates)
 
     def delete_recurring_expense(self, template_id: str) -> None:
         """
@@ -750,7 +805,7 @@ class FirebaseClient:
             template_id: Document ID
         """
         # Mark as inactive instead of deleting
-        self.db.collection("recurring_expenses").document(template_id).update({"active": False})
+        self.db.collection(self._get_collection_path("recurring_expenses")).document(template_id).update({"active": False})
 
     def _dict_to_recurring_expense(self, data: Dict, template_id: str) -> RecurringExpense:
         """Convert Firestore dict to RecurringExpense object."""
@@ -821,7 +876,7 @@ class FirebaseClient:
         }
 
         # Add to Firestore
-        doc_ref = self.db.collection("pending_expenses").add(pending_data)
+        doc_ref = self.db.collection(self._get_collection_path("pending_expenses")).add(pending_data)
         return doc_ref[1].id
 
     def get_pending_expense(self, pending_id: str) -> Optional[PendingExpense]:
@@ -834,7 +889,7 @@ class FirebaseClient:
         Returns:
             PendingExpense object or None
         """
-        doc = self.db.collection("pending_expenses").document(pending_id).get()
+        doc = self.db.collection(self._get_collection_path("pending_expenses")).document(pending_id).get()
 
         if not doc.exists:
             return None
@@ -852,7 +907,7 @@ class FirebaseClient:
         Returns:
             List of dictionaries with pending expense data + pending_id
         """
-        query = self.db.collection("pending_expenses")
+        query = self.db.collection(self._get_collection_path("pending_expenses"))
 
         if awaiting_only:
             query = query.where(filter=FieldFilter("awaiting_confirmation", "==", True))
@@ -877,7 +932,7 @@ class FirebaseClient:
         Returns:
             Pending expense dict or None
         """
-        query = self.db.collection("pending_expenses").where(
+        query = self.db.collection(self._get_collection_path("pending_expenses")).where(
             filter=FieldFilter("template_id", "==", template_id)
         ).where(
             filter=FieldFilter("awaiting_confirmation", "==", True)
@@ -900,7 +955,7 @@ class FirebaseClient:
             pending_id: Document ID
             updates: Dictionary of fields to update
         """
-        self.db.collection("pending_expenses").document(pending_id).update(updates)
+        self.db.collection(self._get_collection_path("pending_expenses")).document(pending_id).update(updates)
 
     def delete_pending_expense(self, pending_id: str) -> None:
         """
@@ -909,7 +964,7 @@ class FirebaseClient:
         Args:
             pending_id: Document ID
         """
-        self.db.collection("pending_expenses").document(pending_id).delete()
+        self.db.collection(self._get_collection_path("pending_expenses")).document(pending_id).delete()
 
     def _dict_to_pending_expense(self, data: Dict, pending_id: str) -> PendingExpense:
         """Convert Firestore dict to PendingExpense object."""
@@ -938,3 +993,279 @@ class FirebaseClient:
             sms_sent=data.get("sms_sent", False),
             awaiting_confirmation=data.get("awaiting_confirmation", True)
         )
+
+    # ==================== Conversation History Operations ====================
+
+    def create_conversation(self) -> str:
+        """
+        Create a new conversation and return its ID.
+
+        Returns:
+            Document ID of the new conversation
+        """
+        conversation_data = {
+            "created_at": firestore.SERVER_TIMESTAMP,
+            "last_activity": firestore.SERVER_TIMESTAMP,
+            "messages": [],
+            "summary": None,
+            "recent_expenses": []  # Track recent expenses for context
+        }
+
+        doc_ref = self.db.collection(self._get_collection_path("conversations")).add(conversation_data)
+        return doc_ref[1].id
+
+    def get_conversation(self, conversation_id: str) -> Optional[Dict]:
+        """
+        Get a specific conversation by ID.
+
+        Args:
+            conversation_id: Firestore document ID
+
+        Returns:
+            Conversation dict or None if not found
+        """
+        doc = self.db.collection(self._get_collection_path("conversations")).document(conversation_id).get()
+
+        if not doc.exists:
+            return None
+
+        data = doc.to_dict()
+        data["conversation_id"] = doc.id
+        return data
+
+    def list_conversations(self, limit: int = 20) -> List[Dict]:
+        """
+        List recent conversations, ordered by last activity.
+
+        Args:
+            limit: Maximum number of conversations to return
+
+        Returns:
+            List of conversation dicts with conversation_id
+        """
+        query = self.db.collection(self._get_collection_path("conversations"))
+        query = query.order_by("last_activity", direction=firestore.Query.DESCENDING)
+        query = query.limit(limit)
+
+        docs = query.stream()
+
+        conversations = []
+        for doc in docs:
+            data = doc.to_dict()
+            data["conversation_id"] = doc.id
+            conversations.append(data)
+
+        return conversations
+
+    def add_message_to_conversation(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str
+    ) -> bool:
+        """
+        Add a message to a conversation.
+
+        Args:
+            conversation_id: Firestore document ID
+            role: Message role ("user" or "assistant")
+            content: Message content
+
+        Returns:
+            True if successful, False if conversation not found
+        """
+        doc_ref = self.db.collection(self._get_collection_path("conversations")).document(conversation_id)
+
+        # Check if conversation exists
+        if not doc_ref.get().exists:
+            return False
+
+        # Get current time for message timestamp
+        import pytz
+        user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
+        tz = pytz.timezone(user_timezone)
+        now = datetime.now(tz)
+
+        message = {
+            "role": role,
+            "content": content,
+            "timestamp": now.isoformat()
+        }
+
+        # Use array union to add message
+        doc_ref.update({
+            "messages": firestore.ArrayUnion([message]),
+            "last_activity": firestore.SERVER_TIMESTAMP
+        })
+
+        return True
+
+    def update_conversation_summary(self, conversation_id: str, summary: str) -> bool:
+        """
+        Update the summary of a conversation.
+
+        Args:
+            conversation_id: Firestore document ID
+            summary: Brief summary of the conversation
+
+        Returns:
+            True if successful, False if conversation not found
+        """
+        doc_ref = self.db.collection(self._get_collection_path("conversations")).document(conversation_id)
+
+        if not doc_ref.get().exists:
+            return False
+
+        doc_ref.update({"summary": summary})
+        return True
+
+    def update_conversation_recent_expenses(
+        self,
+        conversation_id: str,
+        expense_id: str,
+        expense_name: str,
+        amount: float,
+        category: str,
+        date: Optional[Dict] = None
+    ) -> bool:
+        """
+        Update the recent expenses tracked in a conversation (for context).
+
+        Keeps last 5 expenses for "that expense" / "the last one" references.
+
+        Args:
+            conversation_id: Firestore document ID
+            expense_id: Firebase expense document ID
+            expense_name: Human-readable expense name
+            amount: Dollar amount
+            category: Expense category
+            date: Optional date dict {day, month, year}
+
+        Returns:
+            True if successful, False if conversation not found
+        """
+        doc_ref = self.db.collection(self._get_collection_path("conversations")).document(conversation_id)
+
+        doc = doc_ref.get()
+        if not doc.exists:
+            return False
+
+        data = doc.to_dict()
+        recent_expenses = data.get("recent_expenses", [])
+
+        # Add new expense to front
+        expense_data = {
+            "expense_id": expense_id,
+            "expense_name": expense_name,
+            "amount": amount,
+            "category": category,
+            "date": date
+        }
+
+        recent_expenses.insert(0, expense_data)
+        recent_expenses = recent_expenses[:5]  # Keep last 5
+
+        doc_ref.update({
+            "recent_expenses": recent_expenses,
+            "last_activity": firestore.SERVER_TIMESTAMP
+        })
+
+        return True
+
+    def get_conversation_recent_expenses(self, conversation_id: str, limit: int = 5) -> List[Dict]:
+        """
+        Get recent expenses from a conversation for context.
+
+        Args:
+            conversation_id: Firestore document ID
+            limit: Maximum number of expenses to return
+
+        Returns:
+            List of recent expense dicts
+        """
+        doc = self.db.collection(self._get_collection_path("conversations")).document(conversation_id).get()
+
+        if not doc.exists:
+            return []
+
+        data = doc.to_dict()
+        recent_expenses = data.get("recent_expenses", [])
+        return recent_expenses[:limit]
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        """
+        Delete a conversation.
+
+        Args:
+            conversation_id: Firestore document ID
+
+        Returns:
+            True if deleted, False if not found
+        """
+        doc_ref = self.db.collection(self._get_collection_path("conversations")).document(conversation_id)
+
+        if not doc_ref.get().exists:
+            return False
+
+        doc_ref.delete()
+        return True
+
+    def cleanup_old_conversations(self, ttl_hours: int = 24) -> int:
+        """
+        Delete conversations older than TTL.
+
+        Args:
+            ttl_hours: Time-to-live in hours (default 24)
+
+        Returns:
+            Number of conversations deleted
+        """
+        import pytz
+        from datetime import timedelta
+
+        user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
+        tz = pytz.timezone(user_timezone)
+        cutoff = datetime.now(tz) - timedelta(hours=ttl_hours)
+
+        query = self.db.collection(self._get_collection_path("conversations"))
+        query = query.where(filter=FieldFilter("last_activity", "<", cutoff))
+
+        docs = query.stream()
+
+        deleted_count = 0
+        for doc in docs:
+            doc.reference.delete()
+            deleted_count += 1
+
+        return deleted_count
+
+    @classmethod
+    def cleanup_all_users_conversations(cls, ttl_hours: int = 24) -> Dict[str, int]:
+        """
+        Delete old conversations for ALL users. Used by admin cleanup endpoint.
+
+        Args:
+            ttl_hours: Time-to-live in hours (default 24)
+
+        Returns:
+            Dict with user_id -> deleted_count
+        """
+        # Get a global client to iterate users
+        global_client = cls()
+        users_ref = global_client.db.collection("users")
+        user_docs = users_ref.stream()
+
+        results = {}
+        total_deleted = 0
+
+        for user_doc in user_docs:
+            user_id = user_doc.id
+            user_client = cls.for_user(user_id)
+            deleted = user_client.cleanup_old_conversations(ttl_hours)
+
+            if deleted > 0:
+                results[user_id] = deleted
+                total_deleted += deleted
+
+        results["_total"] = total_deleted
+        return results

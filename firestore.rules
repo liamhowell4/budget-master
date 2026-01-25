@@ -2,21 +2,45 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Expenses collection - allow authenticated users to read/write their own expenses
-    match /expenses/{expenseId} {
-      allow read, write: if request.auth != null;
+
+    // User-scoped collections - users can only access their own data
+    // This matches: users/{userId}/expenses/{expenseId}
+    //               users/{userId}/budget_caps/{category}
+    //               users/{userId}/recurring_expenses/{templateId}
+    //               users/{userId}/pending_expenses/{pendingId}
+    //               users/{userId}/budget_alert_tracking/{yearMonth}
+    //               users/{userId}/conversations/{conversationId}
+    match /users/{userId}/{collection}/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    
-    // Budget caps - allow authenticated users to read/write
-    match /budget_caps/{capId} {
-      allow read, write: if request.auth != null;
-    }
-    
-    // Categories - allow authenticated users to read
+
+    // Categories - global, read-only for authenticated users
+    // Categories are shared across all users (maintained by admin)
     match /categories/{categoryId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if false;  // Only admin can modify via Admin SDK
+    }
+
+    // Legacy collections (for migration period) - deny direct access
+    // Data should be accessed via users/{userId}/... subcollections
+    match /expenses/{expenseId} {
+      allow read, write: if false;
+    }
+
+    match /budget_caps/{capId} {
+      allow read, write: if false;
+    }
+
+    match /recurring_expenses/{templateId} {
+      allow read, write: if false;
+    }
+
+    match /pending_expenses/{pendingId} {
+      allow read, write: if false;
+    }
+
+    match /budget_alert_tracking/{trackingId} {
+      allow read, write: if false;
     }
   }
 }
