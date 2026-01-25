@@ -1,0 +1,45 @@
+# Exclude frontend from Cloud Run build (deployed separately to Firebase Hosting)
+frontend/
+frontend_streamlit/
+
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+.env.local
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Tests
+tests/
+*.test.py
+
+# Docs
+docs/
+*.md
+!requirements.txt
+
+# Legacy code
+legacy/
+
+# Scripts (not needed in production)
+scripts/
+
+# Firebase config (not needed in Cloud Run)
+firebase.json
+firestore.indexes.json
+.firebaserc
