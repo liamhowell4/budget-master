@@ -52,9 +52,10 @@ export function Header() {
       )}
     >
       {/* Logo/Title - Left */}
-      <div className="flex items-center">
+      <div className="flex items-center gap-2">
+        <img src="/favicon.svg" alt="" className="h-5 w-5" />
         <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
-          Finance
+          Budget Master
         </span>
       </div>
 
