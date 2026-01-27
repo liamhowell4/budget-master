@@ -214,7 +214,7 @@ export function ChatPage() {
   const { expenses } = useExpenses()
   const { isConnected, isConnecting, error: serverError, reconnect } = useServer()
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null)
 
@@ -357,7 +357,7 @@ export function ChatPage() {
           </div>
         </div>
 
-        {/* Sidebar toggle button */}
+        {/* Sidebar toggle button - only visible on smaller screens */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className={cn(
@@ -367,7 +367,8 @@ export function ChatPage() {
             'border border-neutral-200 dark:border-neutral-700',
             'text-neutral-600 dark:text-neutral-300',
             'hover:bg-neutral-50 dark:hover:bg-neutral-700',
-            'transition-colors'
+            'transition-colors',
+            'xl:hidden' // Hide toggle on large screens
           )}
           aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
         >
@@ -380,9 +381,11 @@ export function ChatPage() {
             'w-80 border-l border-neutral-200 dark:border-neutral-800',
             'bg-white dark:bg-neutral-950 overflow-y-auto',
             'transition-transform duration-200 ease-out',
-            'fixed inset-y-0 right-0 z-20',
-            'top-14',
-            sidebarOpen ? 'translate-x-0' : 'translate-x-full'
+            // Mobile/tablet: fixed overlay
+            'fixed inset-y-0 right-0 z-20 top-14',
+            sidebarOpen ? 'translate-x-0' : 'translate-x-full',
+            // Large screens: inline, part of flex layout, always visible
+            'xl:relative xl:top-0 xl:z-0 xl:flex-shrink-0 xl:translate-x-0'
           )}
         >
           <div className="p-4 space-y-6">
@@ -494,10 +497,10 @@ export function ChatPage() {
           </div>
         </aside>
 
-        {/* Sidebar backdrop */}
+        {/* Sidebar backdrop - only on smaller screens */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/20 z-10"
+            className="fixed inset-0 bg-black/20 z-10 xl:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}

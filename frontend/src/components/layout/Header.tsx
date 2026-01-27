@@ -1,5 +1,5 @@
 import { cn } from '@/utils/cn'
-import { Moon, Sun, LogOut, ChevronDown } from 'lucide-react'
+import { Moon, Sun, Monitor, LogOut, ChevronDown } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/contexts/ThemeContext'
@@ -12,11 +12,19 @@ const navItems = [
   { value: '/expenses', label: 'Expenses' },
 ]
 
+const themeOptions = [
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'system', label: 'System', icon: Monitor },
+] as const
+
 export function Header() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [themeDropdownOpen, setThemeDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const themeDropdownRef = useRef<HTMLDivElement>(null)
   const { user, signOut } = useAuth()
-  const { theme, toggleTheme } = useTheme()
+  const { theme, preference, setPreference } = useTheme()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -24,6 +32,9 @@ export function Header() {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false)
+      }
+      if (themeDropdownRef.current && !themeDropdownRef.current.contains(event.target as Node)) {
+        setThemeDropdownOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -62,22 +73,60 @@ export function Header() {
 
       {/* Right side */}
       <div className="flex items-center justify-end gap-2">
-        {/* Theme toggle */}
-        <button
-          onClick={toggleTheme}
-          className={cn(
-            'p-2 rounded-md transition-colors',
-            'text-neutral-500 dark:text-neutral-400',
-            'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+        {/* Theme dropdown */}
+        <div className="relative" ref={themeDropdownRef}>
+          <button
+            onClick={() => setThemeDropdownOpen(!themeDropdownOpen)}
+            className={cn(
+              'p-2 rounded-md transition-colors',
+              'text-neutral-500 dark:text-neutral-400',
+              'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+            )}
+            aria-label="Change theme"
+          >
+            {theme === 'light' ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
+          </button>
+
+          {themeDropdownOpen && (
+            <div
+              className={cn(
+                'absolute right-0 top-full mt-1 w-36',
+                'rounded-lg',
+                'bg-white dark:bg-neutral-900',
+                'border border-neutral-200 dark:border-neutral-800',
+                'shadow-lg',
+                'py-1'
+              )}
+            >
+              {themeOptions.map((option) => {
+                const Icon = option.icon
+                return (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setPreference(option.value)
+                      setThemeDropdownOpen(false)
+                    }}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-2',
+                      'text-sm transition-colors',
+                      preference === option.value
+                        ? 'text-neutral-900 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800'
+                        : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
           )}
-          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-        >
-          {theme === 'light' ? (
-            <Moon className="h-4 w-4" />
-          ) : (
-            <Sun className="h-4 w-4" />
-          )}
-        </button>
+        </div>
 
         {/* User dropdown */}
         <div className="relative" ref={dropdownRef}>

@@ -1,76 +1,87 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
-type Theme = 'light' | 'dark'
+type ThemePreference = 'light' | 'dark' | 'system'
+type ResolvedTheme = 'light' | 'dark'
 
 interface ThemeContextValue {
-  theme: Theme
-  toggleTheme: () => void
-  setTheme: (theme: Theme) => void
+  theme: ResolvedTheme
+  preference: ThemePreference
+  setPreference: (preference: ThemePreference) => void
 }
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
 
 const STORAGE_KEY = 'finance-bot-theme'
 
+function getSystemTheme(): ResolvedTheme {
+  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    return 'dark'
+  }
+  return 'light'
+}
+
 interface ThemeProviderProps {
   children: ReactNode
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    // Check localStorage first
+  const [preference, setPreferenceState] = useState<ThemePreference>(() => {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
-      if (stored === 'light' || stored === 'dark') {
+      const stored = localStorage.getItem(STORAGE_KEY) as ThemePreference | null
+      if (stored === 'light' || stored === 'dark' || stored === 'system') {
         return stored
       }
-
-      // Check system preference
-      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        return 'dark'
-      }
     }
-    return 'light'
+    return 'system'
   })
 
+  const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => {
+    if (preference === 'system') {
+      return getSystemTheme()
+    }
+    return preference as ResolvedTheme
+  })
+
+  // Update resolved theme when preference changes
+  useEffect(() => {
+    if (preference === 'system') {
+      setResolvedTheme(getSystemTheme())
+    } else {
+      setResolvedTheme(preference)
+    }
+    localStorage.setItem(STORAGE_KEY, preference)
+  }, [preference])
+
+  // Apply theme to document
   useEffect(() => {
     const root = document.documentElement
-
-    if (theme === 'dark') {
+    if (resolvedTheme === 'dark') {
       root.classList.add('dark')
     } else {
       root.classList.remove('dark')
     }
+  }, [resolvedTheme])
 
-    localStorage.setItem(STORAGE_KEY, theme)
-  }, [theme])
-
-  // Listen for system theme changes
+  // Listen for system theme changes when preference is 'system'
   useEffect(() => {
+    if (preference !== 'system') return
+
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
 
     const handleChange = (e: MediaQueryListEvent) => {
-      // Only auto-switch if user hasn't manually set a preference
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (!stored) {
-        setThemeState(e.matches ? 'dark' : 'light')
-      }
+      setResolvedTheme(e.matches ? 'dark' : 'light')
     }
 
     mediaQuery.addEventListener('change', handleChange)
     return () => mediaQuery.removeEventListener('change', handleChange)
-  }, [])
+  }, [preference])
 
-  const toggleTheme = () => {
-    setThemeState((prev) => (prev === 'light' ? 'dark' : 'light'))
-  }
-
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme)
+  const setPreference = (newPreference: ThemePreference) => {
+    setPreferenceState(newPreference)
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
+    <ThemeContext.Provider value={{ theme: resolvedTheme, preference, setPreference }}>
       {children}
     </ThemeContext.Provider>
   )

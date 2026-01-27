@@ -241,6 +241,7 @@ async def startup_mcp():
     Initialize MCP client on startup.
 
     This spawns the expense_server.py subprocess and connects via stdio.
+    Also pre-connects the ConnectionManager so frontend connections are instant.
     """
     global _mcp_client
 
@@ -254,6 +255,27 @@ async def startup_mcp():
     except Exception as e:
         print(f"❌ Error initializing MCP backend: {e}")
         traceback.print_exc()
+
+    # Pre-connect the ConnectionManager so frontend doesn't wait
+    try:
+        print("🔄 Pre-connecting MCP server for frontend...")
+        from .mcp.connection_manager import get_connection_manager
+        from .mcp.server_config import get_server_by_id
+
+        server_config = get_server_by_id("expense-server")
+        if server_config:
+            conn_manager = get_connection_manager()
+            success, tools, error = await conn_manager.connect(
+                server_id=server_config.id,
+                server_name=server_config.name,
+                server_path=server_config.path
+            )
+            if success:
+                print(f"✅ MCP server pre-connected ({len(tools)} tools available)")
+            else:
+                print(f"⚠️ MCP pre-connection failed: {error}")
+    except Exception as e:
+        print(f"⚠️ MCP pre-connection error (non-fatal): {e}")
 
 
 # ==================== Pydantic Models ====================
@@ -1178,7 +1200,8 @@ async def connect_to_server(server_id: str):
     """
     Connect to a specific MCP server.
 
-    Disconnects from current server (if any) and establishes connection
+    If already connected to the requested server, returns existing connection.
+    Otherwise disconnects from current server (if any) and establishes connection
     to the requested server. Returns tools available on the server.
 
     Follows BACKEND_API_CONTRACT.md specification.
@@ -1196,6 +1219,15 @@ async def connect_to_server(server_id: str):
 
     # Get connection manager
     conn_manager = get_connection_manager()
+
+    # If already connected to this server, return existing connection (fast path)
+    if conn_manager.is_connected and conn_manager.state.server_id == server_id:
+        return {
+            "success": True,
+            "server_id": conn_manager.state.server_id,
+            "server_name": conn_manager.state.server_name,
+            "tools": conn_manager.state.tools
+        }
 
     # Connect to server
     success, tools, error = await conn_manager.connect(
