@@ -77,7 +77,7 @@ export function ChatInput({ onSendMessage, onSendAudio, disabled }: ChatInputPro
           rows={1}
           className={cn(
             'flex-1 bg-transparent px-2 py-1.5 resize-none',
-            'text-sm text-neutral-900 dark:text-neutral-100',
+            'text-base text-neutral-900 dark:text-neutral-100', // 16px prevents iOS auto-zoom
             'placeholder:text-neutral-400 dark:placeholder:text-neutral-500',
             'disabled:opacity-50',
             'max-h-32'

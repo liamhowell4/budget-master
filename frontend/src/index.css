@@ -176,3 +176,16 @@ textarea, textarea:focus, textarea:focus-visible, textarea:focus-within {
   outline-style: none !important;
   box-shadow: none !important;
 }
+
+/* Mobile-specific: prevent zoom on input focus */
+@media (max-width: 768px) {
+  /* Prevent double-tap zoom on interactive elements */
+  input, textarea, button, select {
+    touch-action: manipulation;
+  }
+
+  /* Ensure all form inputs are at least 16px to prevent iOS auto-zoom */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
