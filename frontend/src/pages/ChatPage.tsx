@@ -5,11 +5,25 @@ import { useChat } from '@/hooks/useChat'
 import { useBudget, invalidateBudgetCache } from '@/hooks/useBudget'
 import { useExpenses, invalidateExpensesCache } from '@/hooks/useExpenses'
 import { deleteExpense, updateExpense } from '@/services/expenseService'
+import { formatConversationTitle } from '@/services/conversationService'
 import { useServer } from '@/contexts/ServerContext'
 import { Card, ProgressBar, Spinner, CategoryIcon, Modal } from '@/components/ui'
 import { cn } from '@/utils/cn'
 import { formatCurrency, formatExpenseDate } from '@/utils/formatters'
-import { PanelRightClose, PanelRight, RefreshCw, Calendar, Clock, Repeat, ArrowUpDown } from 'lucide-react'
+import {
+  PanelRightClose,
+  PanelRight,
+  PanelLeftClose,
+  PanelLeft,
+  RefreshCw,
+  Calendar,
+  Clock,
+  Repeat,
+  ArrowUpDown,
+  Plus,
+  MessageSquare,
+  Trash2,
+} from 'lucide-react'
 import type { Expense } from '@/types/expense'
 import type { BudgetCategory } from '@/types/budget'
 
@@ -209,14 +223,38 @@ function CategoryExpensesModal({
 
 export function ChatPage() {
   const navigate = useNavigate()
-  const { messages, isLoading, error, sendMessage, sendAudio } = useChat()
+  const {
+    messages,
+    isLoading,
+    error,
+    sendMessage,
+    sendAudio,
+    conversations,
+    currentConversationId,
+    conversationsLoading,
+    loadConversations,
+    loadConversation,
+    startNewConversation,
+    removeConversation,
+  } = useChat()
   const { budget } = useBudget()
   const { expenses } = useExpenses()
   const { isConnected, isConnecting, error: serverError, reconnect } = useServer()
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Default sidebars open on desktop (lg+), closed on mobile
+  const [leftSidebarOpen, setLeftSidebarOpen] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth >= 1024
+  )
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth >= 1024
+  )
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null)
+
+  // Load conversations on mount
+  useEffect(() => {
+    loadConversations()
+  }, [loadConversations])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -252,6 +290,97 @@ export function ChatPage() {
 
   return (
     <div className="flex h-[calc(100dvh-56px)]">
+        {/* Left sidebar - Conversation History */}
+        <aside
+          className={cn(
+            'w-64 border-r border-neutral-200 dark:border-neutral-800',
+            'bg-neutral-50 dark:bg-neutral-900 overflow-y-auto',
+            'transition-transform duration-200 ease-out',
+            // Mobile/tablet: fixed overlay
+            'fixed inset-y-0 left-0 z-20 top-14',
+            leftSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+            // Large screens: inline, part of flex layout
+            'lg:relative lg:top-0 lg:z-0 lg:flex-shrink-0 lg:translate-x-0'
+          )}
+        >
+          <div className="p-3 space-y-2">
+            {/* New Chat Button */}
+            <button
+              onClick={startNewConversation}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2.5 rounded-lg',
+                'bg-white dark:bg-neutral-800',
+                'border border-neutral-200 dark:border-neutral-700',
+                'text-neutral-700 dark:text-neutral-200',
+                'hover:bg-neutral-100 dark:hover:bg-neutral-700',
+                'transition-colors text-sm font-medium'
+              )}
+            >
+              <Plus className="h-4 w-4" />
+              New Chat
+            </button>
+
+            {/* Conversation List */}
+            <div className="pt-2">
+              <h3 className="px-2 text-xs font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wider mb-2">
+                Recent
+              </h3>
+              {conversationsLoading ? (
+                <div className="flex justify-center py-4">
+                  <Spinner size="sm" />
+                </div>
+              ) : conversations.length === 0 ? (
+                <p className="px-2 text-xs text-neutral-400 dark:text-neutral-500">
+                  No conversations yet
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {conversations.map((conv) => (
+                    <div
+                      key={conv.conversation_id}
+                      className={cn(
+                        'group flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer',
+                        'hover:bg-white dark:hover:bg-neutral-800',
+                        'transition-colors',
+                        currentConversationId === conv.conversation_id &&
+                          'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700'
+                      )}
+                      onClick={() => loadConversation(conv.conversation_id)}
+                    >
+                      <MessageSquare className="h-4 w-4 text-neutral-400 dark:text-neutral-500 flex-shrink-0" />
+                      <span className="flex-1 text-sm text-neutral-700 dark:text-neutral-300 truncate">
+                        {formatConversationTitle(conv)}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          removeConversation(conv.conversation_id)
+                        }}
+                        className={cn(
+                          'opacity-0 group-hover:opacity-100',
+                          'p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700',
+                          'text-neutral-400 hover:text-red-500 dark:hover:text-red-400',
+                          'transition-all'
+                        )}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        {/* Left sidebar backdrop - only on smaller screens */}
+        {leftSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/20 z-10 lg:hidden"
+            onClick={() => setLeftSidebarOpen(false)}
+          />
+        )}
+
         {/* Main chat area */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Messages area */}
@@ -357,22 +486,36 @@ export function ChatPage() {
           </div>
         </div>
 
-        {/* Sidebar toggle button - only visible on smaller screens */}
+        {/* Sidebar toggle buttons - only visible on smaller screens */}
         <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
+          onClick={() => setLeftSidebarOpen(!leftSidebarOpen)}
           className={cn(
-            'fixed bottom-20 right-4 z-30',
+            'fixed bottom-24 left-4 z-30 lg:hidden',
             'p-3 rounded-full shadow-lg',
             'bg-white dark:bg-neutral-800',
             'border border-neutral-200 dark:border-neutral-700',
             'text-neutral-600 dark:text-neutral-300',
             'hover:bg-neutral-50 dark:hover:bg-neutral-700',
-            'transition-colors',
-            'xl:hidden' // Hide toggle on large screens
+            'transition-colors'
           )}
-          aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          aria-label={leftSidebarOpen ? 'Close history' : 'Open history'}
         >
-          {sidebarOpen ? <PanelRightClose className="h-5 w-5" /> : <PanelRight className="h-5 w-5" />}
+          {leftSidebarOpen ? <PanelLeftClose className="h-5 w-5" /> : <PanelLeft className="h-5 w-5" />}
+        </button>
+        <button
+          onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
+          className={cn(
+            'fixed bottom-24 right-4 z-30 lg:hidden',
+            'p-3 rounded-full shadow-lg',
+            'bg-white dark:bg-neutral-800',
+            'border border-neutral-200 dark:border-neutral-700',
+            'text-neutral-600 dark:text-neutral-300',
+            'hover:bg-neutral-50 dark:hover:bg-neutral-700',
+            'transition-colors'
+          )}
+          aria-label={rightSidebarOpen ? 'Close budget' : 'Open budget'}
+        >
+          {rightSidebarOpen ? <PanelRightClose className="h-5 w-5" /> : <PanelRight className="h-5 w-5" />}
         </button>
 
         {/* Right sidebar */}
@@ -383,9 +526,9 @@ export function ChatPage() {
             'transition-transform duration-200 ease-out',
             // Mobile/tablet: fixed overlay
             'fixed inset-y-0 right-0 z-20 top-14',
-            sidebarOpen ? 'translate-x-0' : 'translate-x-full',
+            rightSidebarOpen ? 'translate-x-0' : 'translate-x-full',
             // Large screens: inline, part of flex layout, always visible
-            'xl:relative xl:top-0 xl:z-0 xl:flex-shrink-0 xl:translate-x-0'
+            'lg:relative lg:top-0 lg:z-0 lg:flex-shrink-0 lg:translate-x-0'
           )}
         >
           <div className="p-4 space-y-6">
@@ -497,11 +640,11 @@ export function ChatPage() {
           </div>
         </aside>
 
-        {/* Sidebar backdrop - only on smaller screens */}
-        {sidebarOpen && (
+        {/* Right sidebar backdrop - only on smaller screens */}
+        {rightSidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/20 z-10 xl:hidden"
-            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 bg-black/20 z-10 lg:hidden"
+            onClick={() => setRightSidebarOpen(false)}
           />
         )}
 

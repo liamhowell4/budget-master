@@ -1,18 +1,27 @@
 import { API_URL } from '@/utils/constants'
 import type { ChatEvent } from '@/types/chat'
 
-export async function streamChat(
-  token: string,
-  message: string,
+export interface StreamChatOptions {
+  token: string
+  message: string
+  conversationId?: string | null
   onEvent: (event: ChatEvent) => void
-): Promise<void> {
+  onConversationId?: (id: string) => void
+}
+
+export async function streamChat(options: StreamChatOptions): Promise<void> {
+  const { token, message, conversationId, onEvent, onConversationId } = options
+
   const response = await fetch(`${API_URL}/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      conversation_id: conversationId || undefined,
+    }),
   })
 
   if (!response.ok) {
@@ -39,8 +48,14 @@ export async function streamChat(
           throw new Error(data.slice(7))
         }
         try {
-          const event = JSON.parse(data) as ChatEvent
-          onEvent(event)
+          const event = JSON.parse(data)
+
+          // Handle conversation_id event separately
+          if (event.type === 'conversation_id' && onConversationId) {
+            onConversationId(event.conversation_id)
+          } else {
+            onEvent(event as ChatEvent)
+          }
         } catch {
           // Non-JSON text chunk
           if (data.trim()) {

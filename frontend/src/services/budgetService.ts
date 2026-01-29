@@ -34,3 +34,14 @@ export async function skipPendingExpense(
   const response = await api.delete(`/pending/${pendingId}`)
   return response.data
 }
+
+export async function updateBudgetCaps(
+  totalBudget: number,
+  categoryBudgets: Record<string, number>
+): Promise<{ success: boolean; message: string; updated_caps: Record<string, number> }> {
+  const response = await api.put('/budget-caps/bulk-update', {
+    total_budget: totalBudget,
+    category_budgets: categoryBudgets,
+  })
+  return response.data
+}

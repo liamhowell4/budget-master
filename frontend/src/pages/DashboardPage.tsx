@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react'
 import { Card, ProgressBar, Spinner, CategoryIcon, Modal } from '@/components/ui'
-import { useBudget } from '@/hooks/useBudget'
+import { useBudget, invalidateBudgetCache } from '@/hooks/useBudget'
 import { useExpenses } from '@/hooks/useExpenses'
+import { updateBudgetCaps } from '@/services/budgetService'
 import { cn } from '@/utils/cn'
 import { formatCurrency, formatExpenseDate } from '@/utils/formatters'
-import { ArrowUpDown, Calendar, TrendingDown, TrendingUp } from 'lucide-react'
-import type { BudgetCategory } from '@/types/budget'
-import type { Expense } from '@/types/expense'
+import { ArrowUpDown, Calendar, TrendingDown, TrendingUp, Pencil } from 'lucide-react'
+import type { BudgetCategory, BudgetStatus } from '@/types/budget'
+import type { Expense, ExpenseType } from '@/types/expense'
 
 const CATEGORY_LABELS: Record<string, string> = {
   FOOD_OUT: 'Dining',
@@ -21,6 +22,176 @@ const CATEGORY_LABELS: Record<string, string> = {
   TECH: 'Tech',
   TRAVEL: 'Travel',
   OTHER: 'Other',
+}
+
+const ALL_CATEGORIES: ExpenseType[] = [
+  'FOOD_OUT',
+  'COFFEE',
+  'GROCERIES',
+  'RENT',
+  'UTILITIES',
+  'MEDICAL',
+  'GAS',
+  'RIDE_SHARE',
+  'HOTEL',
+  'TECH',
+  'TRAVEL',
+  'OTHER',
+]
+
+function EditBudgetModal({
+  isOpen,
+  onClose,
+  budget,
+  onSaved,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  budget: BudgetStatus
+  onSaved: () => void
+}) {
+  const [totalBudget, setTotalBudget] = useState(budget.total_cap.toString())
+  const [categoryBudgets, setCategoryBudgets] = useState<Record<string, string>>(() => {
+    const caps: Record<string, string> = {}
+    for (const cat of ALL_CATEGORIES) {
+      const existing = budget.categories.find((c) => c.category === cat)
+      caps[cat] = existing ? existing.cap.toString() : '0'
+    }
+    return caps
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleCategoryChange = (category: string, value: string) => {
+    setCategoryBudgets((prev) => ({ ...prev, [category]: value }))
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError(null)
+
+    try {
+      const total = parseFloat(totalBudget) || 0
+      const cats: Record<string, number> = {}
+      for (const [cat, val] of Object.entries(categoryBudgets)) {
+        cats[cat] = parseFloat(val) || 0
+      }
+
+      await updateBudgetCaps(total, cats)
+      invalidateBudgetCache()
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save budget')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Budget" className="max-w-md">
+      <div className="space-y-5">
+        {error && (
+          <div className="p-3 rounded-md bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
+            Total Monthly Budget
+          </label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">$</span>
+            <input
+              type="number"
+              value={totalBudget}
+              onChange={(e) => setTotalBudget(e.target.value)}
+              className={cn(
+                'w-full pl-7 pr-3 py-2 rounded-md',
+                'bg-neutral-50 dark:bg-neutral-800',
+                'border border-neutral-200 dark:border-neutral-700',
+                'text-neutral-900 dark:text-neutral-100',
+                'focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500'
+              )}
+              min="0"
+              step="0.01"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+            Category Budgets
+          </label>
+          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            {ALL_CATEGORIES.map((cat) => (
+              <div key={cat} className="flex items-center gap-3">
+                <div className="flex items-center gap-2 w-28">
+                  <CategoryIcon
+                    category={cat}
+                    className="h-4 w-4 text-neutral-400 dark:text-neutral-500"
+                  />
+                  <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                    {CATEGORY_LABELS[cat]}
+                  </span>
+                </div>
+                <div className="relative flex-1">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-400 text-sm">
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    value={categoryBudgets[cat]}
+                    onChange={(e) => handleCategoryChange(cat, e.target.value)}
+                    className={cn(
+                      'w-full pl-6 pr-2 py-1.5 rounded-md text-sm',
+                      'bg-neutral-50 dark:bg-neutral-800',
+                      'border border-neutral-200 dark:border-neutral-700',
+                      'text-neutral-900 dark:text-neutral-100',
+                      'focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-500'
+                    )}
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className={cn(
+              'flex-1 px-4 py-2 rounded-md text-sm font-medium',
+              'bg-neutral-100 dark:bg-neutral-800',
+              'text-neutral-700 dark:text-neutral-300',
+              'hover:bg-neutral-200 dark:hover:bg-neutral-700',
+              'transition-colors',
+              'disabled:opacity-50'
+            )}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className={cn(
+              'flex-1 px-4 py-2 rounded-md text-sm font-medium',
+              'bg-neutral-900 dark:bg-neutral-100',
+              'text-white dark:text-neutral-900',
+              'hover:opacity-90 transition-opacity',
+              'disabled:opacity-50'
+            )}
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
 }
 
 type SortOption = 'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'
@@ -205,6 +376,7 @@ function CategoryExpensesModal({
 export function DashboardPage() {
   const { budget, loading, error, refetch } = useBudget()
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
 
   if (loading) {
     return (
@@ -238,14 +410,29 @@ export function DashboardPage() {
   const activeCategories = budget.categories.filter((cat) => cat.cap > 0)
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8">
-        <div>
-          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-            Dashboard
-          </h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-            {budget.month_name} budget overview
-          </p>
+    <div className="max-w-4xl mx-auto px-4 py-6 sm:p-6 space-y-6 sm:space-y-8">
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+              Dashboard
+            </h1>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+              {budget.month_name} budget overview
+            </p>
+          </div>
+          <button
+            onClick={() => setShowEditModal(true)}
+            className={cn(
+              'p-2 rounded-md',
+              'text-neutral-500 dark:text-neutral-400',
+              'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+              'hover:text-neutral-700 dark:hover:text-neutral-200',
+              'transition-colors'
+            )}
+            aria-label="Edit budget"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
         </div>
 
         <Card padding="lg">
@@ -324,6 +511,16 @@ export function DashboardPage() {
           isOpen={selectedCategory !== null}
           onClose={() => setSelectedCategory(null)}
         />
+
+        {/* Edit Budget Modal */}
+        {budget && (
+          <EditBudgetModal
+            isOpen={showEditModal}
+            onClose={() => setShowEditModal(false)}
+            budget={budget}
+            onSaved={refetch}
+          />
+        )}
     </div>
   )
 }

@@ -25,3 +25,34 @@ export interface ChatEvent {
   content?: string
   result?: unknown
 }
+
+// Conversation types for persistent chat history
+export interface StoredMessage {
+  role: MessageRole
+  content: string
+  timestamp: string
+}
+
+export interface Conversation {
+  conversation_id: string
+  created_at: string
+  last_activity: string
+  messages: StoredMessage[]
+  summary: string | null
+  recent_expenses: Array<{
+    expense_id: string
+    expense_name: string
+    amount: number
+    category: string
+    timestamp: string
+  }>
+}
+
+export interface ConversationListItem {
+  conversation_id: string
+  created_at: string
+  last_activity: string
+  summary: string | null
+  message_count: number
+  first_message?: string
+}

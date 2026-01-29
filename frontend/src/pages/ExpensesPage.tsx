@@ -700,7 +700,7 @@ export function ExpensesPage() {
   }, [recurring])
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-4xl mx-auto px-4 py-6 sm:p-6 overflow-x-hidden">
         {/* Page header */}
         <div className="mb-6">
           <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
@@ -754,12 +754,12 @@ export function ExpensesPage() {
             )}
 
             {/* Filters */}
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className={cn(
-                  'flex-1 h-9 rounded-md px-3 text-sm',
+                  'h-9 rounded-md px-3 text-sm min-w-0',
                   'bg-neutral-50 dark:bg-neutral-900',
                   'border border-neutral-200 dark:border-neutral-800',
                   'text-neutral-900 dark:text-neutral-100',
@@ -776,7 +776,7 @@ export function ExpensesPage() {
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className={cn(
-                  'flex-1 h-9 rounded-md px-3 text-sm',
+                  'h-9 rounded-md px-3 text-sm min-w-0',
                   'bg-neutral-50 dark:bg-neutral-900',
                   'border border-neutral-200 dark:border-neutral-800',
                   'text-neutral-900 dark:text-neutral-100',
