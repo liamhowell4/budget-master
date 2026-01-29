@@ -700,16 +700,17 @@ export function ExpensesPage() {
   }, [recurring])
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 sm:p-6 overflow-x-hidden">
+    <div className="h-[calc(100dvh-56px)] flex flex-col overflow-hidden">
+      <div className="max-w-4xl mx-auto w-full px-4 pt-6 sm:px-6 flex flex-col flex-1 min-h-0">
         {/* Page header */}
-        <div className="mb-6">
+        <div className="mb-4 flex-shrink-0">
           <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
             Expenses
           </h1>
         </div>
 
         {/* Tabs */}
-        <div className="mb-6">
+        <div className="mb-4 flex-shrink-0">
           <SegmentedControl
             options={[
               { value: 'history', label: 'History' },
@@ -728,10 +729,10 @@ export function ExpensesPage() {
 
         {/* History Tab */}
         {activeTab === 'history' && (
-          <div className="space-y-6">
+          <div className="flex flex-col flex-1 min-h-0 space-y-4">
             {/* Pending Expenses */}
             {!pendingLoading && pending.length > 0 && (
-              <Card>
+              <Card className="flex-shrink-0">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                     Pending Confirmation
@@ -754,7 +755,7 @@ export function ExpensesPage() {
             )}
 
             {/* Filters */}
-            <div className="flex flex-wrap gap-2 sm:gap-3">
+            <div className="flex flex-wrap gap-2 sm:gap-3 flex-shrink-0">
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
@@ -812,7 +813,7 @@ export function ExpensesPage() {
               </div>
             </div>
 
-            {/* Expense List */}
+            {/* Expense List - Card with scrollable content */}
             {expensesLoading ? (
               <div className="flex justify-center py-12">
                 <Spinner size="lg" />
@@ -832,22 +833,27 @@ export function ExpensesPage() {
                 </div>
               </Card>
             ) : (
-              <Card>
-                {sortedExpenses.map((expense) => (
-                  <ExpenseItem
-                    key={expense.id}
-                    expense={expense}
-                    onClick={() => setSelectedExpense(expense)}
-                  />
-                ))}
+              <Card className="flex-1 min-h-0 flex flex-col overflow-hidden !p-0">
+                <div className="flex-1 overflow-y-auto px-4 py-1.5">
+                  {sortedExpenses.map((expense) => (
+                    <ExpenseItem
+                      key={expense.id}
+                      expense={expense}
+                      onClick={() => setSelectedExpense(expense)}
+                    />
+                  ))}
+                </div>
               </Card>
             )}
+            {/* Bottom spacer - always visible */}
+            <div className="h-6 flex-shrink-0" />
           </div>
         )}
 
         {/* Recurring Tab */}
         {activeTab === 'recurring' && (
-          <div className="space-y-6">
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto">
             {recurringLoading ? (
               <div className="flex justify-center py-12">
                 <Spinner size="lg" />
@@ -890,6 +896,9 @@ export function ExpensesPage() {
                 ))}
               </Card>
             )}
+            </div>
+            {/* Bottom spacer - always visible */}
+            <div className="h-6 flex-shrink-0" />
           </div>
         )}
 
@@ -900,6 +909,7 @@ export function ExpensesPage() {
           onClose={() => setSelectedExpense(null)}
           onDeleted={() => setSelectedExpense(null)}
         />
+      </div>
     </div>
   )
 }

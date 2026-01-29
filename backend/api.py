@@ -1088,7 +1088,7 @@ async def admin_check_recurring(x_api_key: Optional[str] = Header(None)):
 @app.post("/admin/cleanup-conversations")
 async def admin_cleanup_conversations(
     x_api_key: Optional[str] = Header(None),
-    ttl_hours: int = 24
+    ttl_hours: int = 1440  # 60 days default (60 * 24 = 1440 hours)
 ):
     """
     Delete old conversations for ALL users.
@@ -1100,7 +1100,7 @@ async def admin_cleanup_conversations(
         X-API-Key: The admin API key (must match ADMIN_API_KEY env var)
 
     Query Parameters:
-        ttl_hours: Delete conversations older than this many hours (default 24)
+        ttl_hours: Delete conversations older than this many hours (default 1440 = 60 days)
 
     Returns:
         JSON with total deleted count and per-user details
@@ -1298,6 +1298,7 @@ async def disconnect_from_server():
 class ChatMessage(BaseModel):
     """Request model for chat messages."""
     message: str
+    conversation_id: Optional[str] = None
 
 
 @app.post("/chat/stream")
@@ -1311,6 +1312,7 @@ async def chat_stream(
     Requires authentication via Firebase Auth token.
 
     Uses Server-Sent Events (SSE) to stream:
+    - conversation_id event at start (for frontend to track)
     - tool_start events when tools begin execution
     - tool_end events when tools finish
     - text events for response chunks
@@ -1321,6 +1323,7 @@ async def chat_stream(
     """
     from .mcp.connection_manager import get_connection_manager
     from anthropic import Anthropic
+    from datetime import timedelta
 
     conn_manager = get_connection_manager()
 
@@ -1337,9 +1340,53 @@ async def chat_stream(
             yield "data: [ERROR] MCP client not initialized\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
+    # Set up user-scoped Firebase client
+    user_firebase = FirebaseClient.for_user(current_user.uid)
+
+    # Determine conversation_id (get existing or create new based on 12h inactivity)
+    conversation_id = chat_message.conversation_id
+    conversation_messages = []
+
+    INACTIVITY_THRESHOLD_HOURS = 12
+
+    if conversation_id:
+        # Check if existing conversation is stale (>12 hours idle)
+        existing_conv = user_firebase.get_conversation(conversation_id)
+        if existing_conv:
+            last_activity = existing_conv.get("last_activity")
+            if last_activity:
+                now = datetime.now(USER_TIMEZONE)
+
+                # Handle Firestore timestamp
+                if hasattr(last_activity, 'timestamp'):
+                    last_activity = datetime.fromtimestamp(last_activity.timestamp(), USER_TIMEZONE)
+                elif isinstance(last_activity, datetime):
+                    if last_activity.tzinfo is None:
+                        last_activity = USER_TIMEZONE.localize(last_activity)
+
+                if now - last_activity > timedelta(hours=INACTIVITY_THRESHOLD_HOURS):
+                    print(f"Conversation {conversation_id} is stale (>{INACTIVITY_THRESHOLD_HOURS}h), creating new one")
+                    conversation_id = None
+                else:
+                    # Get existing messages for context
+                    conversation_messages = existing_conv.get("messages", [])
+        else:
+            conversation_id = None  # Conversation not found
+
+    # Create new conversation if needed
+    if not conversation_id:
+        conversation_id = user_firebase.create_conversation()
+
     async def event_stream():
         """Generate SSE events for the chat response."""
+        nonlocal conversation_id
+        final_response_text = []
+
         try:
+            # Send conversation_id first so frontend can track it
+            conv_event = {"type": "conversation_id", "conversation_id": conversation_id}
+            yield f"data: {json.dumps(conv_event)}\n\n"
+
             # Get available tools from MCP server
             response = await client.session.list_tools()
             available_tools = [{
@@ -1352,11 +1399,21 @@ async def chat_stream(
             from .system_prompts import get_expense_parsing_system_prompt
             system_prompt = get_expense_parsing_system_prompt()
 
-            # Build message
-            messages = [{
+            # Build messages with conversation history
+            messages = []
+
+            # Add previous conversation messages for context
+            for msg in conversation_messages:
+                messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", "")
+                })
+
+            # Add current user message
+            messages.append({
                 "role": "user",
                 "content": chat_message.message
-            }]
+            })
 
             # Call Claude API with tools
             anthropic_client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
@@ -1376,7 +1433,6 @@ async def chat_stream(
 
                 for content in api_response.content:
                     if content.type == 'text':
-                        # Capture any text that appears during tool use (though we usually don't stream it per contract)
                         assistant_content.append({
                             "type": "text",
                             "text": content.text
@@ -1415,7 +1471,6 @@ async def chat_stream(
                             result_text = str(result)
 
                         # Emit tool_end event with result
-                        # Try to parse result as JSON for structured data
                         try:
                             parsed_result = json.loads(result_text)
                         except (json.JSONDecodeError, TypeError):
@@ -1466,34 +1521,36 @@ async def chat_stream(
                 )
 
             # Process final response (no more tool calls)
-            print(f"🔍 Final response stop_reason: {api_response.stop_reason}")
-            print(f"🔍 Final response content count: {len(api_response.content)}")
-
             for content in api_response.content:
-                print(f"🔍 Content type: {content.type}")
                 if content.type == 'text':
                     text = content.text
-                    print(f"🔍 Text content length: {len(text)}")
-                    print(f"🔍 Text preview: {text[:100]}...")
+                    final_response_text.append(text)
 
-                    # Send entire text as one event (or chunk into reasonable sizes)
-                    # API contract allows chunking for smooth streaming
                     if len(text) > 0:
-                        # Send text in larger chunks (or all at once)
                         text_event = {
                             "type": "text",
                             "content": text
                         }
                         yield f"data: {json.dumps(text_event)}\n\n"
-                    else:
-                        print("⚠️ Empty text content!")
+
+            # Save messages to Firestore conversation
+            user_firebase.add_message_to_conversation(conversation_id, "user", chat_message.message)
+            full_response = "\n".join(final_response_text)
+            if full_response:
+                user_firebase.add_message_to_conversation(conversation_id, "assistant", full_response)
+
+            # Update conversation summary from first user message
+            if len(conversation_messages) == 0:
+                # This is the first message, set summary
+                summary = chat_message.message[:50]
+                if len(chat_message.message) > 50:
+                    summary += "..."
+                user_firebase.update_conversation_summary(conversation_id, summary)
 
             # Send done signal
-            print("✅ Sending [DONE] signal")
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            # Send error signal
             error_msg = f"[ERROR] {str(e)}"
             yield f"data: {error_msg}\n\n"
             traceback.print_exc()
