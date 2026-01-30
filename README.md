@@ -1,45 +1,39 @@
 # Budget Master
 
-A personal expense tracking + budgeting system with SMS/MMS ingestion (Twilio), a Streamlit web UI, and a FastAPI backend backed by Firebase. The project is mid-migration from OpenAI parsing to a Claude + MCP architecture that enables conversational expense management (edit/delete/query) over SMS.
+A personal expense tracking and budgeting app with conversational AI capabilities powered by Claude + MCP (Model Context Protocol). Features a React web UI and FastAPI backend, all backed by Firebase.
 
 ## What this repo contains
 
-- **FastAPI backend** for SMS/MMS webhooks, Streamlit requests, analytics, and MCP chat endpoints.
-- **Streamlit frontend** with chat-like entry, dashboards, and history export.
+- **FastAPI backend** for expense processing, analytics, and MCP chat endpoints.
+- **React frontend** with chat interface, dashboard, and expense management.
 - **Firebase integration** for Firestore data + Storage for audio uploads.
-- **MCP migration** that adds Claude-driven tools for CRUD + analytics over expenses.
+- **MCP architecture** with Claude-driven tools for conversational expense CRUD + analytics.
 
 ## Key features
 
-- **Multi-input expense capture**: SMS text, MMS receipt images, Streamlit text/image, and voice transcription.
-- **Automatic parsing**: merchant/amount/date/category extraction with LLMs.
+- **Multi-input expense capture**: text, receipt images (Claude Vision), and voice transcription (Whisper).
+- **Automatic parsing**: merchant/amount/date/category extraction via Claude.
 - **Budget tracking**: category + overall caps with threshold warnings (50/90/95/100%).
 - **Recurring expenses**: templates, pending confirmations, and projection views.
-- **Conversational management (MCP)**: edit, delete, query, and analyze expenses via SMS.
+- **Conversational management**: natural language to edit, delete, query, and analyze expenses ("delete that last expense", "how much did I spend on food last week?").
 
 ## Architecture overview
 
 ### Primary runtime services
-- **FastAPI** (`backend/api.py`): Twilio webhook endpoints, Streamlit processing, budgets, and MCP chat APIs.
-- **Streamlit UI** (`frontend/app.py`): interactive dashboard + expense entry.
+- **FastAPI** (`backend/api.py`): expense processing, budgets, and MCP chat APIs.
+- **React UI** (`frontend/`): chat interface, dashboard, and expense management.
 - **Firebase**: Firestore collections for expenses/budgets + Storage for audio.
-
-### OpenAI vs MCP backends
-The code currently supports **dual backends**:
-- **OpenAI backend** (`backend/expense_parser.py`, `backend/endpoints.py`)
-- **MCP backend** (`backend/mcp/` + `backend/system_prompts.py`)
-
-A feature flag `USE_MCP_BACKEND` determines which path is used for SMS processing.
+- **MCP Server** (`backend/mcp/`): 17 expense management tools powered by Claude.
 
 ## Repository layout
 
 ```
-backend/                 FastAPI backend, parsers, Firebase, MCP tools
-frontend/                Streamlit UI
+backend/                 FastAPI backend, Firebase client, MCP tools
+frontend/                React UI (Vite + TypeScript)
 tests/                   Budget manager tests
 scripts/                 Seed and maintenance scripts
 docs/                    Build plan and migration docs
-BACKEND_API_CONTRACT.md  MCP chat frontend contract
+legacy/                  Archived OpenAI code (not used)
 CLAUDE.md                Canonical repo guidance and architecture notes
 ```
 
@@ -48,21 +42,14 @@ CLAUDE.md                Canonical repo guidance and architecture notes
 Create a `.env` file (do **not** edit one committed to the repo) with the following keys:
 
 ```bash
-# OpenAI (legacy parsing + Whisper)
-OPENAI_API_KEY=
+# Claude API (expense parsing and chat)
+ANTHROPIC_API_KEY=
 
 # Firebase
 FIREBASE_KEY=
 
-# Twilio
-TWILIO_ACCOUNT_SID=
-TWILIO_ACCOUNT_TOKEN=
-TWILIO_SECRET_SID=
-TWILIO_SECRET_KEY=
-
-# MCP migration
-ANTHROPIC_API_KEY=
-USE_MCP_BACKEND=false
+# OpenAI (Whisper audio transcription only)
+OPENAI_API_KEY=
 ```
 
 ## Install dependencies
@@ -78,9 +65,9 @@ pip install -r requirements.txt
 uvicorn backend.api:app --reload --port 8000
 ```
 
-### Start the Streamlit UI
+### Start the React frontend
 ```bash
-streamlit run frontend/app.py
+cd frontend && npm run dev
 ```
 
 ### Run tests
@@ -93,61 +80,54 @@ python tests/test_budget_manager.py
 python scripts/seed_firestore.py
 ```
 
-## Frontend behavior (Streamlit)
+## Frontend (React)
 
-The Streamlit app (`frontend/app.py`) is the primary desktop/web UI and mirrors much of the SMS flow. Key UI areas and behaviors:
+The React app (`frontend/`) provides the main web interface:
 
-- **Chat-like expense entry**: A conversational input area that accepts free-form text and optional receipt images. Submissions call the backend to parse and save expenses.
-- **Manual entry form**: Structured inputs for name/amount/date/category, plus optional image upload.
-- **Voice capture**: Audio upload is supported (stored in Firebase) and intended for transcription-based entry.
-- **Dashboard view**: Budget summaries, category progress bars, and warnings at key thresholds.
-- **History view**: Filterable table of expenses with CSV export.
-- **Recurring tab**: Shows templates and pending confirmations for recurring expenses.
-
-The Streamlit UI is currently tied to the OpenAI parsing flow for chat-style entry; the MCP migration includes a future task to route Streamlit chat to MCP for editing/deleting/querying expenses.
+- **Chat page**: Conversational expense entry with text, image upload, and voice recording. Supports natural language commands for creating, editing, deleting, and querying expenses.
+- **Dashboard page**: Budget summaries, category progress bars, and spending analytics.
+- **Expenses page**: Filterable expense history with search and management.
+- **Login page**: Authentication via Firebase.
 
 ## Execution flows
 
-### 1) SMS/MMS expense capture (Twilio)
-1. User sends an SMS or MMS receipt to the Twilio number.
-2. Twilio posts to `POST /twilio/webhook` (OpenAI) or `POST /twilio/webhook-mcp` (MCP).
-3. Backend downloads media (if present) and parses the message/image.
-4. Expense is saved to Firestore (`expenses/`).
-5. Budget warnings are computed and returned via SMS.
+### Text/image expense entry
+1. User submits text and/or image from the React chat interface.
+2. Frontend calls `POST /chat/stream` with content payloads.
+3. MCP client sends to Claude API with expense tools.
+4. Claude calls appropriate MCP tools (save_expense, get_budget_status, etc.).
+5. Expense is saved to Firestore and response streamed back to UI.
 
-### 2) Streamlit text/image entry
-1. User submits text and/or image from the Streamlit UI.
-2. Streamlit calls `POST /streamlit/process` with content payloads.
-3. Backend parses inputs and saves expense to Firestore.
-4. Streamlit renders the confirmation and updated budget summary.
+### Voice expense entry
+1. User records audio from the React chat interface.
+2. Audio is transcribed via Whisper API.
+3. Transcription is processed as text through the MCP flow.
+4. Expense is saved to Firestore and response returned.
 
-### 3) Streamlit voice entry
-1. User uploads audio from the Streamlit UI.
-2. Audio is stored in Firebase Storage.
-3. Backend transcribes audio (Whisper path) and parses the transcription.
-4. Expense is saved to Firestore and returned to the UI.
-
-### 4) MCP conversational edits/queries (SMS)
-1. User sends a natural language edit/query (e.g., “Actually make that $6”).
-2. MCP backend uses conversation cache + tools to update/query Firestore.
-3. Response summarizes the change or query results via SMS.
+### Conversational edits/queries
+1. User sends a natural language command (e.g., "Actually make that $6", "How much did I spend on food?").
+2. MCP client uses conversation cache + Claude to interpret intent.
+3. Claude calls appropriate tools (update_expense, query_expenses, etc.).
+4. Response summarizes the change or query results.
 
 ## API surface
 
-### Core backend endpoints
-- `POST /twilio/webhook` — OpenAI-backed SMS/MMS ingestion
-- `POST /twilio/webhook-mcp` — MCP-backed SMS/MMS ingestion
-- `POST /streamlit/process` — Streamlit input processing
-- `GET /expenses` — filtered expense list
-- `GET /budget` — budget caps + summaries
+### Core endpoints
+- `POST /mcp/process_expense` — Main expense processing (text/image/audio)
+- `POST /chat/stream` — Streaming chat with MCP tools (SSE)
+- `GET /expenses` — Filtered expense list
+- `GET /budget` — Budget caps + summaries
+- `PUT /budget-caps/bulk-update` — Update budget caps
+- `GET /recurring` — Recurring expense templates
+- `GET /pending` — Pending expenses awaiting confirmation
+- `POST /pending/{id}/confirm` — Confirm a pending expense
+- `DELETE /pending/{id}` — Skip/delete a pending expense
 
-### MCP chat endpoints
-The MCP chat endpoints are documented in `BACKEND_API_CONTRACT.md` and include:
-- `GET /servers`
-- `POST /connect/{server_id}`
-- `GET /status`
-- `POST /disconnect`
-- `POST /chat/stream`
+### MCP server endpoints
+- `GET /servers` — List available MCP servers
+- `POST /connect/{server_id}` — Connect to an MCP server
+- `GET /status` — Get MCP connection status
+- `POST /disconnect` — Disconnect from MCP server
 
 ## Data model (Firestore)
 
@@ -169,18 +149,17 @@ The MCP server (`backend/mcp/expense_server.py`) exposes tools for:
 - **Budgets**: `get_budget_status`, `get_budget_remaining`
 - **Recurring**: `create_recurring_expense`, `list_recurring_expenses`, `delete_recurring_expense`
 
-## Migration status (MCP)
+## Status
 
-Migration is **in progress**. The MCP backend is feature-complete through CRUD + analytics, but the Streamlit chat path is not yet migrated. See `docs/build_plan.md` and `CLAUDE.md` for detailed status and next steps.
+MCP backend is **complete** with full CRUD, analytics, and recurring expense support. The React frontend provides chat, dashboard, and expense management interfaces. See `CLAUDE.md` for architecture details.
 
-## Notes & tips
+## Notes
 
-- **Do not remove OpenAI code** until MCP cutover is complete.
-- **Feature flag**: switch `USE_MCP_BACKEND` to `true` to route SMS through MCP.
-- **Twilio local testing**: use ngrok to expose the backend to Twilio webhooks.
+- **Legacy code** in `legacy/` folder is archived for reference but not used.
+- **MCP architecture** uses Claude for all expense parsing and conversational features.
+- **Deployment** is configured for Google Cloud Run (see Dockerfile).
 
 ## Related docs
 
 - `CLAUDE.md` — comprehensive architecture and design notes
-- `BACKEND_API_CONTRACT.md` — MCP chat frontend contract
-- `docs/build_plan.md` — migration roadmap and status
+- `docs/build_plan.md` — development history and migration notes

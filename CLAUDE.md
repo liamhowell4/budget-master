@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A personal expense tracking and budgeting app with conversational AI capabilities powered by Claude + MCP (Model Context Protocol).
 
 **Input Methods:**
-- Web UI (React frontend - in development)
+- Web UI (React frontend)
 - API endpoint for text/image/audio expense submission
 
 **Core Features:**
@@ -55,8 +55,14 @@ finance_bot/
 │       ├── server_config.py       # Server configuration
 │       └── connection_manager.py  # Connection management
 │
-├── frontend/            # Streamlit UI (being replaced with React)
-│   └── app.py          # Legacy Streamlit dashboard
+├── frontend/            # React frontend (Vite + TypeScript)
+│   └── src/
+│       ├── components/  # UI components (chat, layout, ui)
+│       ├── contexts/    # React contexts (Auth, Server, Theme)
+│       ├── hooks/       # Custom hooks
+│       ├── pages/       # Page components (Chat, Dashboard, Expenses, Login)
+│       ├── services/    # API services
+│       └── types/       # TypeScript types
 │
 ├── tests/              # Test suite
 │   └── test_budget_manager.py
@@ -67,10 +73,7 @@ finance_bot/
 ├── legacy/             # Archived code (do not use)
 │   ├── expense_parser.py  # Old OpenAI expense parsing
 │   ├── endpoints.py       # Old OpenAI client config
-│   ├── twilio_handler.py  # Old Twilio SMS handling
-│   ├── bot_handler.py     # Teams Bot Framework
-│   ├── adaptive_cards.py  # Teams Adaptive Cards
-│   └── function_app.py    # Azure Functions
+│   └── twilio_handler.py  # Old Twilio SMS handling
 │
 └── [config files]      # .env, firebase.json, requirements.txt, etc.
 ```
@@ -303,16 +306,15 @@ The MCP server handles:
 - ✅ Budget tracking with warnings
 - ✅ Image parsing via Claude Vision
 - ✅ Audio transcription via Whisper
+- ✅ React frontend with chat, dashboard, and expense management
 
-### In Progress
-- 🔄 React frontend (replacing Streamlit)
-- 🔄 Multi-user support
+### Future
+- 🔄 Multi-user support (migrate conversation cache to Redis)
 
 ### Legacy (Archived)
 The following have been moved to `legacy/` and are no longer used:
-- Twilio SMS integration
 - OpenAI expense parsing
-- Teams Bot Framework integration
+- Old Twilio SMS handling
 
 ## Testing
 
