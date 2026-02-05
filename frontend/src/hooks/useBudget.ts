@@ -50,6 +50,18 @@ export function useBudget(year?: number, month?: number) {
     fetchBudget()
   }, [cacheKey, cachedData, fetchBudget])
 
+  // Listen for onboarding completion to invalidate cache and refetch
+  useEffect(() => {
+    const handleOnboardingComplete = () => {
+      budgetCache.clear()
+      fetchBudget(true)
+    }
+    window.addEventListener('onboarding-complete', handleOnboardingComplete)
+    return () => {
+      window.removeEventListener('onboarding-complete', handleOnboardingComplete)
+    }
+  }, [fetchBudget])
+
   const refetch = useCallback(() => fetchBudget(true), [fetchBudget])
 
   return { budget, loading, error, refetch }

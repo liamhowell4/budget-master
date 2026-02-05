@@ -61,12 +61,12 @@ export function AppearanceTab() {
             'relative w-11 h-6 rounded-full transition-colors',
             useSystemTheme
               ? 'bg-[var(--accent-primary)]'
-              : 'bg-[var(--surface-hover)]'
+              : 'bg-neutral-300 dark:bg-neutral-600'
           )}
         >
           <div
             className={cn(
-              'absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform',
+              'absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform pointer-events-none',
               useSystemTheme ? 'translate-x-6' : 'translate-x-1'
             )}
           />

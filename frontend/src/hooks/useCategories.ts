@@ -52,6 +52,17 @@ export function useCategories(): UseCategoriesReturn {
     fetchCategories()
   }, [fetchCategories])
 
+  // Listen for onboarding completion to refetch data
+  useEffect(() => {
+    const handleOnboardingComplete = () => {
+      fetchCategories()
+    }
+    window.addEventListener('onboarding-complete', handleOnboardingComplete)
+    return () => {
+      window.removeEventListener('onboarding-complete', handleOnboardingComplete)
+    }
+  }, [fetchCategories])
+
   const createCategory = useCallback(
     async (data: CategoryCreate) => {
       try {

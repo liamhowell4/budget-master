@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
   type ReactNode,
 } from 'react'
 import {
@@ -11,10 +12,18 @@ import {
   signInWithGithub,
   signInWithEmail,
   signUpWithEmail,
-  signOut,
+  signOut as firebaseSignOut,
   getIdToken,
   type User,
 } from '@/lib/firebase'
+import { invalidateBudgetCache } from '@/hooks/useBudget'
+import { invalidateExpensesCache } from '@/hooks/useExpenses'
+
+// Clear all user-specific data caches
+function clearAllUserCaches() {
+  invalidateBudgetCache()
+  invalidateExpensesCache()
+}
 
 interface AuthContextValue {
   user: User | null
@@ -36,10 +45,20 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const previousUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    const unsubscribe = onAuthChange((user) => {
-      setUser(user)
+    const unsubscribe = onAuthChange((newUser) => {
+      const newUserId = newUser?.uid ?? null
+      const previousUserId = previousUserIdRef.current
+
+      // Clear caches when user changes (different user or logout)
+      if (previousUserId !== null && previousUserId !== newUserId) {
+        clearAllUserCaches()
+      }
+
+      previousUserIdRef.current = newUserId
+      setUser(newUser)
       setLoading(false)
     })
 
@@ -63,7 +82,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   const handleSignOut = async () => {
-    await signOut()
+    // Clear all cached user data before signing out
+    clearAllUserCaches()
+    await firebaseSignOut()
   }
 
   const getToken = async () => {

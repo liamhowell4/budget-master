@@ -1105,6 +1105,101 @@ async def update_total_budget(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== Onboarding Endpoints ====================
+
+class CustomCategoryInput(BaseModel):
+    """Input model for a custom category during onboarding."""
+    display_name: str
+    icon: str
+    color: str
+    monthly_cap: float = 0
+
+
+class OnboardingCompleteRequest(BaseModel):
+    """Request model for completing onboarding."""
+    total_budget: float
+    selected_category_ids: List[str]
+    category_caps: dict  # Dict[str, float] - category_id -> cap
+    custom_categories: Optional[List[CustomCategoryInput]] = None
+
+
+@app.post("/onboarding/complete")
+async def complete_onboarding(
+    request: OnboardingCompleteRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Complete the onboarding wizard by setting up budget and categories.
+
+    1. Set total monthly budget
+    2. Initialize selected categories from defaults
+    3. Create any custom categories
+    4. Update caps for each category
+    5. Recalculate OTHER cap for unallocated budget
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+
+        # Validate total budget
+        if request.total_budget <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Total budget must be greater than 0"
+            )
+
+        # Calculate total caps including custom categories
+        total_caps = sum(request.category_caps.values())
+        if request.custom_categories:
+            total_caps += sum(c.monthly_cap for c in request.custom_categories)
+
+        if total_caps > request.total_budget:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Category caps (${total_caps:.2f}) exceed total budget (${request.total_budget:.2f})"
+            )
+
+        # Initialize categories with selected defaults
+        user_firebase.initialize_default_categories(
+            total_budget=request.total_budget,
+            selected_ids=request.selected_category_ids
+        )
+
+        # Update caps for default categories
+        for category_id, cap in request.category_caps.items():
+            # Skip custom category IDs (they start with CUSTOM_)
+            if not category_id.startswith("CUSTOM_"):
+                user_firebase.update_category(category_id, {"monthly_cap": cap})
+
+        # Create custom categories
+        custom_created = 0
+        if request.custom_categories:
+            for custom in request.custom_categories:
+                user_firebase.create_category({
+                    "display_name": custom.display_name,
+                    "icon": custom.icon,
+                    "color": custom.color,
+                    "monthly_cap": custom.monthly_cap
+                })
+                custom_created += 1
+
+        # Recalculate OTHER cap (gets the unallocated budget)
+        other_cap = user_firebase.recalculate_other_cap()
+
+        return {
+            "success": True,
+            "total_budget": request.total_budget,
+            "categories_created": len(request.selected_category_ids) + custom_created,
+            "other_cap": other_cap,
+            "message": "Onboarding complete! Your budget is set up."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in POST /onboarding/complete: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== Recurring Expense Endpoints ====================
 
 @app.get("/recurring")

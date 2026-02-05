@@ -1,13 +1,26 @@
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { Spinner, LiquidGlassFilter } from '@/components/ui'
 import { Header } from '@/components/layout'
 import { LoginPage, ChatPage, DashboardPage, ExpensesPage, SettingsPage } from '@/pages'
+import { OnboardingWizard } from '@/components/onboarding'
+import { useOnboardingCheck } from '@/hooks/useOnboardingCheck'
 
 function ProtectedLayout() {
-  const { user, loading } = useAuth()
+  const { user, loading: authLoading } = useAuth()
+  const { needsOnboarding, loading: onboardingLoading, recheckOnboarding } = useOnboardingCheck()
+  const [showWizard, setShowWizard] = useState(false)
 
-  if (loading) {
+  // Show wizard when onboarding is needed
+  useEffect(() => {
+    if (needsOnboarding === true) {
+      setShowWizard(true)
+    }
+  }, [needsOnboarding])
+
+  // Loading state
+  if (authLoading || onboardingLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
         <Spinner size="lg" />
@@ -19,13 +32,32 @@ function ProtectedLayout() {
     return <Navigate to="/login" replace />
   }
 
+  const handleOnboardingComplete = () => {
+    setShowWizard(false)
+    recheckOnboarding()
+    // Dispatch event to notify hooks to refetch data
+    window.dispatchEvent(new CustomEvent('onboarding-complete'))
+  }
+
+  const handleOnboardingSkip = () => {
+    setShowWizard(false)
+  }
+
   return (
-    <div className="min-h-[100dvh] bg-[var(--bg-primary)]">
-      <Header />
-      <main className="flex-1">
-        <Outlet />
-      </main>
-    </div>
+    <>
+      {showWizard && (
+        <OnboardingWizard
+          onComplete={handleOnboardingComplete}
+          onSkip={handleOnboardingSkip}
+        />
+      )}
+      <div className="min-h-[100dvh] bg-[var(--bg-primary)]">
+        <Header />
+        <main className="flex-1">
+          <Outlet />
+        </main>
+      </div>
+    </>
   )
 }
 

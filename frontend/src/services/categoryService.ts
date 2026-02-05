@@ -81,6 +81,30 @@ export const categoryService = {
     const response = await api.put('/budget/total', { total_monthly_budget: totalMonthlyBudget })
     return response.data
   },
+
+  /**
+   * Complete onboarding by setting up budget and categories
+   */
+  async completeOnboarding(data: {
+    total_budget: number
+    selected_category_ids: string[]
+    category_caps: Record<string, number>
+    custom_categories?: Array<{
+      display_name: string
+      icon: string
+      color: string
+      monthly_cap: number
+    }>
+  }): Promise<{
+    success: boolean
+    total_budget: number
+    categories_created: number
+    other_cap: number
+    message: string
+  }> {
+    const response = await api.post('/onboarding/complete', data)
+    return response.data
+  },
 }
 
 export default categoryService

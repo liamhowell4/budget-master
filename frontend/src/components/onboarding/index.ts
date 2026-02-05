@@ -1,0 +1,7 @@
+export { OnboardingWizard } from './OnboardingWizard'
+export { StepIndicator } from './StepIndicator'
+export { WelcomeStep } from './WelcomeStep'
+export { TotalBudgetStep } from './TotalBudgetStep'
+export { CategoriesStep, type CustomCategory } from './CategoriesStep'
+export { CapsStep } from './CapsStep'
+export { ReviewStep } from './ReviewStep'

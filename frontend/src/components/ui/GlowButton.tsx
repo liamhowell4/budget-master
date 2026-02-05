@@ -25,22 +25,24 @@ export const GlowButton = forwardRef<HTMLButtonElement, GlowButtonProps>(
     if (variant === 'primary') {
       return (
         <div className="group relative inline-block">
-          {/* Glow effect */}
+          {/* Subtle glow effect */}
           <div
             className={cn(
-              'absolute -inset-1 rounded-xl glow-gradient blur-lg',
-              'opacity-50 transition-opacity duration-300',
-              'group-hover:opacity-70',
-              'group-active:opacity-80'
+              'absolute -inset-1 rounded-xl bg-blue-500 blur-lg',
+              'opacity-0 transition-opacity duration-300',
+              'group-hover:opacity-30',
+              'group-active:opacity-40',
+              props.disabled && 'group-hover:opacity-0'
             )}
           />
           <button
             ref={ref}
             className={cn(
               'relative rounded-xl font-medium',
-              'glow-gradient text-white',
+              'bg-blue-600 hover:bg-blue-700 text-white',
               'transition-all duration-200',
               'active:scale-[0.98]',
+              'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600',
               sizeClasses[size],
               className
             )}
