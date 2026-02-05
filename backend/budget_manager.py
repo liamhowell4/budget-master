@@ -2,7 +2,7 @@
 Budget Manager - Handles budget calculations and warning generation.
 """
 
-from typing import Optional, Dict
+from typing import Optional, Dict, Union
 from datetime import datetime
 
 from .firebase_client import FirebaseClient
@@ -21,19 +21,47 @@ class BudgetManager:
         """
         self.firebase = firebase_client or FirebaseClient()
 
-    def calculate_monthly_spending(self, category: ExpenseType, year: int, month: int) -> float:
+    def calculate_monthly_spending(self, category: Union[ExpenseType, str], year: int, month: int) -> float:
         """
         Calculate total spending for a specific category in a given month.
 
         Args:
-            category: The expense category
+            category: The expense category (ExpenseType or string ID)
             year: Year (e.g., 2025)
             month: Month (1-12)
 
         Returns:
             Total amount spent in the category for the month
         """
-        return self.firebase.calculate_monthly_total(year, month, category)
+        # Handle both ExpenseType and string
+        if isinstance(category, ExpenseType):
+            return self.firebase.calculate_monthly_total(year, month, category)
+        else:
+            # String category ID - calculate from monthly expenses
+            return self.calculate_monthly_spending_for_category_id(category, year, month)
+
+    def calculate_monthly_spending_for_category_id(self, category_id: str, year: int, month: int) -> float:
+        """
+        Calculate total spending for a category by string ID.
+
+        Args:
+            category_id: The category ID string (e.g., "FOOD_OUT", "PET_SUPPLIES")
+            year: Year (e.g., 2025)
+            month: Month (1-12)
+
+        Returns:
+            Total amount spent in the category for the month
+        """
+        # Get all expenses for the month
+        expenses = self.firebase.get_monthly_expenses(year, month, category=None)
+
+        # Sum amounts for matching category
+        total = 0
+        for expense in expenses:
+            if expense.get("category") == category_id:
+                total += expense.get("amount", 0)
+
+        return total
 
     def calculate_total_monthly_spending(self, year: int, month: int) -> float:
         """
@@ -98,7 +126,31 @@ class BudgetManager:
         Overall budget: Warn only ONCE per threshold (except 100%+ warns every time)
 
         Args:
-            category: The expense category
+            category: The expense category (ExpenseType)
+            amount: The new expense amount to add
+            year: Year (e.g., 2025)
+            month: Month (1-12)
+
+        Returns:
+            Warning message string (empty if no warnings)
+        """
+        # Delegate to string-based method
+        return self.get_budget_warning_for_category(category.name, amount, year, month)
+
+    def get_budget_warning_for_category(
+        self,
+        category_id: str,
+        amount: float,
+        year: int,
+        month: int
+    ) -> str:
+        """
+        Generate budget warning message for a new expense using string category ID.
+
+        Supports custom user-defined categories.
+
+        Args:
+            category_id: The expense category ID string (e.g., "FOOD_OUT", "PET_SUPPLIES")
             amount: The new expense amount to add
             year: Year (e.g., 2025)
             month: Month (1-12)
@@ -109,10 +161,18 @@ class BudgetManager:
         warnings = []
 
         # ==================== Category Budget Check ====================
-        # Category warnings: ALWAYS warn when at threshold (current behavior)
-        category_cap = self.firebase.get_budget_cap(category.name)
+        # Try to get cap from custom categories first, then fall back to budget_caps
+        category_cap = None
+
+        # Check custom categories (for users with custom categories set up)
+        if self.firebase.user_id and self.firebase.has_categories_setup():
+            category_cap = self.firebase.get_category_cap(category_id)
+        else:
+            # Fallback to legacy budget_caps
+            category_cap = self.firebase.get_budget_cap(category_id)
+
         if category_cap and category_cap > 0:
-            current_category_spending = self.calculate_monthly_spending(category, year, month)
+            current_category_spending = self.calculate_monthly_spending_for_category_id(category_id, year, month)
             projected_category_spending = current_category_spending + amount
 
             category_percentage = (projected_category_spending / category_cap) * 100
@@ -121,7 +181,7 @@ class BudgetManager:
             category_warning = self._format_warning(
                 percentage=category_percentage,
                 remaining=category_remaining,
-                budget_type=f"{category.name} budget",
+                budget_type=f"{category_id} budget",
                 cap=category_cap
             )
 
@@ -129,9 +189,12 @@ class BudgetManager:
                 warnings.append(category_warning)
 
         # ==================== Total Monthly Budget Check ====================
-        # Overall budget warnings: ONE warning per threshold (50, 90, 95, 100)
-        # After 100%, warn every time
-        total_cap = self.firebase.get_budget_cap("TOTAL")
+        # Get total cap from user doc or legacy budget_caps
+        if self.firebase.user_id and self.firebase.has_categories_setup():
+            total_cap = self.firebase.get_total_monthly_budget()
+        else:
+            total_cap = self.firebase.get_budget_cap("TOTAL")
+
         if total_cap and total_cap > 0:
             current_total_spending = self.calculate_total_monthly_spending(year, month)
             projected_total_spending = current_total_spending + amount

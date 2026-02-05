@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Pencil, Trash2, Check, X } from 'lucide-react'
+import { Pencil, Trash2, Check, X, ChevronDown } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '@/utils/constants'
 import { CategoryIcon } from '@/components/ui/CategoryIcon'
+import { useCategories } from '@/hooks/useCategories'
 import type { ExpenseType } from '@/types/expense'
 
 // Result from save_expense MCP tool
@@ -24,7 +25,7 @@ interface ExpenseCardProps {
   result: SaveExpenseResult
   budgetWarning?: string
   onDelete?: (expenseId: string) => void
-  onEdit?: (expenseId: string, updates: { name?: string; amount?: number }) => void
+  onEdit?: (expenseId: string, updates: { name?: string; amount?: number; category?: string }) => void
 }
 
 // Parse budget warning string into structured alerts
@@ -61,16 +62,20 @@ function parseBudgetWarning(warning?: string): BudgetAlert[] {
 }
 
 export function ExpenseCard({ result, budgetWarning, onDelete, onEdit }: ExpenseCardProps) {
+  const { categories } = useCategories()
   const [isEditing, setIsEditing] = useState(false)
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const [editName, setEditName] = useState(result.expense_name)
   const [editAmount, setEditAmount] = useState(result.amount.toString())
+  const [editCategory, setEditCategory] = useState(result.category)
+  const [isCategoryOpen, setIsCategoryOpen] = useState(false)
   const [isDeleted, setIsDeleted] = useState(false)
 
-  const category = result.category as ExpenseType
+  const category = (isEditing ? editCategory : result.category) as ExpenseType
   const colors = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.OTHER
   const label = CATEGORY_LABELS[category] ?? 'Other'
   const budgetAlerts = parseBudgetWarning(budgetWarning)
+  const selectedCat = categories.find((c) => c.category_id === editCategory)
 
   const formatDate = () => {
     if (!result.date) {
@@ -109,14 +114,18 @@ export function ExpenseCard({ result, budgetWarning, onDelete, onEdit }: Expense
     onEdit?.(result.expense_id, {
       name: editName !== result.expense_name ? editName : undefined,
       amount: newAmount !== result.amount ? newAmount : undefined,
+      category: editCategory !== result.category ? editCategory : undefined,
     })
     setIsEditing(false)
+    setIsCategoryOpen(false)
   }
 
   const handleCancelEdit = () => {
     setEditName(result.expense_name)
     setEditAmount(result.amount.toString())
+    setEditCategory(result.category)
     setIsEditing(false)
+    setIsCategoryOpen(false)
   }
 
   if (isDeleted) {
@@ -179,6 +188,69 @@ export function ExpenseCard({ result, budgetWarning, onDelete, onEdit }: Expense
                 'text-neutral-900 dark:text-neutral-100'
               )}
             />
+          </div>
+          {/* Category dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsCategoryOpen(!isCategoryOpen)}
+              className={cn(
+                'w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm',
+                'bg-white/80 dark:bg-neutral-900/50',
+                'border border-neutral-300 dark:border-neutral-600',
+                'focus:outline-none focus:ring-1 focus:ring-neutral-400',
+                'text-neutral-900 dark:text-neutral-100'
+              )}
+            >
+              <div className="flex items-center gap-2">
+                {selectedCat && (
+                  <span
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: selectedCat.color }}
+                  />
+                )}
+                <span>{selectedCat?.display_name || editCategory}</span>
+              </div>
+              <ChevronDown
+                className={cn(
+                  'h-3.5 w-3.5 text-neutral-400 transition-transform',
+                  isCategoryOpen && 'rotate-180'
+                )}
+              />
+            </button>
+            {isCategoryOpen && (
+              <div
+                className={cn(
+                  'absolute z-10 mt-1 w-full max-h-40 overflow-y-auto rounded-md',
+                  'bg-white dark:bg-neutral-800',
+                  'border border-neutral-200 dark:border-neutral-600',
+                  'shadow-lg'
+                )}
+              >
+                {categories.map((cat) => (
+                  <button
+                    key={cat.category_id}
+                    type="button"
+                    onClick={() => {
+                      setEditCategory(cat.category_id)
+                      setIsCategoryOpen(false)
+                    }}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-2 py-1.5 text-sm text-left',
+                      'hover:bg-neutral-100 dark:hover:bg-neutral-700',
+                      'text-neutral-900 dark:text-neutral-100',
+                      editCategory === cat.category_id && 'bg-neutral-100 dark:bg-neutral-700'
+                    )}
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: cat.color }}
+                    />
+                    <span>{cat.display_name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex gap-2 pt-1">
             <button

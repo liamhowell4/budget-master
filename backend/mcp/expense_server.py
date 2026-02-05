@@ -121,6 +121,31 @@ def get_user_budget_manager(arguments: dict) -> BudgetManager:
     return BudgetManager(firebase)
 
 
+def validate_category(category_str: str, firebase: FirebaseClient) -> bool:
+    """
+    Validate that a category exists for the user.
+
+    Args:
+        category_str: Category ID to validate
+        firebase: User-scoped FirebaseClient
+
+    Returns:
+        True if category exists, False otherwise
+    """
+    # Check if user has custom categories set up
+    if firebase.has_categories_setup():
+        categories = firebase.get_user_categories()
+        valid_ids = [c.get("category_id") for c in categories]
+        return category_str in valid_ids
+    else:
+        # Fallback to ExpenseType enum for backward compatibility
+        try:
+            ExpenseType[category_str]
+            return True
+        except KeyError:
+            return False
+
+
 @server.list_tools()
 async def handle_list_tools() -> list[Tool]:
     """
@@ -207,14 +232,16 @@ async def handle_list_tools() -> list[Tool]:
         Tool(
             name="get_categories",
             description=(
-                "Get all valid expense categories with their descriptions. "
+                "Get all valid expense categories for the user. "
                 "Use this to understand which category to assign to an expense."
             ),
             annotations=ToolAnnotations(title="Get Categories"),
             inputSchema={
                 "type": "object",
-                "properties": {},
-                "required": []
+                "properties": {
+                    "auth_token": AUTH_TOKEN_PROPERTY
+                },
+                "required": ["auth_token"]
             }
         ),
         Tool(
@@ -750,14 +777,25 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
         year=date_dict["year"]
     )
 
-    # Parse category
-    try:
-        category = ExpenseType[category_str]
-    except KeyError:
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
+    # Validate category against user's categories
+    if not validate_category(category_str, firebase):
         return [TextContent(
             type="text",
             text=f"Error: Invalid category '{category_str}'. Use get_categories to see valid options."
         )]
+
+    # Parse category for backward compatibility with ExpenseType
+    # If user has custom categories, we still try to match to ExpenseType
+    # but fall back to OTHER if not found
+    try:
+        category = ExpenseType[category_str]
+    except KeyError:
+        # Custom category not in ExpenseType, use OTHER for Pydantic model
+        # but save the actual category_str to Firestore
+        category = ExpenseType.OTHER
 
     # Create Expense object
     expense = Expense(
@@ -767,9 +805,8 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
         category=category
     )
 
-    # Get user-scoped Firebase client and save
-    firebase = get_user_firebase(arguments)
-    expense_id = firebase.save_expense(expense, input_type="mcp")
+    # Save expense - override category in save to use string
+    expense_id = firebase.save_expense_with_category_str(expense, category_str, input_type="mcp")
 
     # Return success response
     result = {
@@ -799,15 +836,18 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
     Returns:
         TextContent with budget warning message (if any)
     """
+    import json
+
     category_str = arguments["category"]
     amount = float(arguments["amount"])
     year = int(arguments["year"])
     month = int(arguments["month"])
 
-    # Parse category
-    try:
-        category = ExpenseType[category_str]
-    except KeyError:
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
+    # Validate category
+    if not validate_category(category_str, firebase):
         return [TextContent(
             type="text",
             text=f"Error: Invalid category '{category_str}'"
@@ -815,8 +855,8 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
 
     # Get user-scoped budget manager and get warning
     user_budget_manager = get_user_budget_manager(arguments)
-    warning = user_budget_manager.get_budget_warning(
-        category=category,
+    warning = user_budget_manager.get_budget_warning_for_category(
+        category_id=category_str,
         amount=amount,
         year=year,
         month=month
@@ -827,28 +867,43 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
         "budget_warning": warning if warning else ""
     }
 
-    import json
     return [TextContent(type="text", text=json.dumps(result))]
 
 
 async def _get_categories(arguments: dict) -> list[TextContent]:
     """
-    Get all valid expense categories.
+    Get all valid expense categories for the user.
 
     Args:
-        arguments: {} (no arguments needed)
+        arguments: {"auth_token": str}
 
     Returns:
         TextContent with category list
     """
-    categories = []
-    for expense_type in ExpenseType:
-        categories.append({
-            "key": expense_type.name,
-            "description": expense_type.value
-        })
-
     import json
+
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
+    # Check if user has custom categories
+    if firebase.has_categories_setup():
+        user_categories = firebase.get_user_categories()
+        categories = []
+        for cat in user_categories:
+            categories.append({
+                "key": cat.get("category_id"),
+                "display_name": cat.get("display_name", cat.get("category_id")),
+                "description": cat.get("description", "")
+            })
+    else:
+        # Fallback to ExpenseType enum for backward compatibility
+        categories = []
+        for expense_type in ExpenseType:
+            categories.append({
+                "key": expense_type.name,
+                "description": expense_type.value
+            })
+
     return [TextContent(type="text", text=json.dumps({"categories": categories}))]
 
 
@@ -885,19 +940,24 @@ async def _update_expense(arguments: dict) -> list[TextContent]:
             year=date_dict["year"]
         )
 
-    # Convert category string to ExpenseType if provided
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
+    # Validate category if provided
+    if category_str and not validate_category(category_str, firebase):
+        return [TextContent(
+            type="text",
+            text=f"Error: Invalid category '{category_str}'"
+        )]
+
+    # Convert category string to ExpenseType if provided (for backward compat)
     category_obj = None
     if category_str:
         try:
             category_obj = ExpenseType[category_str]
         except KeyError:
-            return [TextContent(
-                type="text",
-                text=f"Error: Invalid category '{category_str}'"
-            )]
-
-    # Get user-scoped Firebase client
-    firebase = get_user_firebase(arguments)
+            # Custom category - update directly using string
+            pass
 
     # Update expense
     success = firebase.update_expense(
@@ -905,7 +965,8 @@ async def _update_expense(arguments: dict) -> list[TextContent]:
         expense_name=expense_name,
         amount=amount,
         date=date_obj,
-        category=category_obj
+        category=category_obj,
+        category_str=category_str  # Pass string for custom categories
     )
 
     if not success:
@@ -1120,14 +1181,22 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
     day_of_week = arguments.get("day_of_week")
     last_of_month = arguments.get("last_of_month", False)
 
-    # Convert category string to ExpenseType enum
-    try:
-        category = ExpenseType[category_str]
-    except KeyError:
+    # Get user-scoped Firebase client
+    firebase = get_user_firebase(arguments)
+
+    # Validate category against user's categories
+    if not validate_category(category_str, firebase):
         return [TextContent(type="text", text=json.dumps({
             "success": False,
             "error": f"Invalid category: {category_str}"
         }))]
+
+    # Convert category string to ExpenseType enum (for Pydantic model)
+    try:
+        category = ExpenseType[category_str]
+    except KeyError:
+        # Custom category - use OTHER for model, actual category saved as string
+        category = ExpenseType.OTHER
 
     # Convert frequency string to FrequencyType enum
     try:
@@ -1170,9 +1239,8 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
         active=True
     )
 
-    # Get user-scoped Firebase client and save
-    firebase = get_user_firebase(arguments)
-    template_id = firebase.save_recurring_expense(recurring)
+    # Save recurring expense with custom category string
+    template_id = firebase.save_recurring_expense_with_category_str(recurring, category_str)
 
     result = {
         "success": True,

@@ -1,15 +1,15 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { Spinner } from '@/components/ui'
+import { Spinner, LiquidGlassFilter } from '@/components/ui'
 import { Header } from '@/components/layout'
-import { LoginPage, ChatPage, DashboardPage, ExpensesPage } from '@/pages'
+import { LoginPage, ChatPage, DashboardPage, ExpensesPage, SettingsPage } from '@/pages'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-white dark:bg-neutral-950">
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
         <Spinner size="lg" />
       </div>
     )
@@ -20,7 +20,7 @@ function ProtectedLayout() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-white dark:bg-neutral-950">
+    <div className="min-h-[100dvh] bg-[var(--bg-primary)]">
       <Header />
       <main className="flex-1">
         <Outlet />
@@ -34,7 +34,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-white dark:bg-neutral-950">
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
         <Spinner size="lg" />
       </div>
     )
@@ -50,6 +50,9 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 function App() {
   return (
     <BrowserRouter>
+      {/* SVG filters for liquid glass refraction effect */}
+      <LiquidGlassFilter />
+
       <Routes>
         {/* Public routes */}
         <Route
@@ -66,6 +69,7 @@ function App() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/expenses" element={<ExpensesPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
         </Route>
 
         {/* Default redirect */}

@@ -17,10 +17,10 @@ export function ProgressBar({
   const clampedPercentage = Math.min(Math.max(percentage, 0), 100)
 
   const getBarColor = () => {
-    if (percentage >= BUDGET_THRESHOLDS.DANGER) return 'bg-red-500'
-    if (percentage >= BUDGET_THRESHOLDS.WARNING) return 'bg-amber-500'
+    if (percentage >= BUDGET_THRESHOLDS.DANGER) return 'bg-[var(--error)]'
+    if (percentage >= BUDGET_THRESHOLDS.WARNING) return 'bg-[var(--warning)]'
     if (percentage >= BUDGET_THRESHOLDS.INFO) return 'bg-amber-400'
-    return 'bg-emerald-500'
+    return 'bg-[var(--success)]'
   }
 
   const heightClass = size === 'sm' ? 'h-1' : 'h-1.5'
@@ -30,7 +30,7 @@ export function ProgressBar({
       <div
         className={cn(
           'w-full rounded-full overflow-hidden',
-          'bg-neutral-200 dark:bg-neutral-700',
+          'bg-[var(--surface-secondary)]',
           heightClass
         )}
       >
@@ -44,7 +44,7 @@ export function ProgressBar({
         />
       </div>
       {showLabel && (
-        <span className="mt-1 text-xs text-neutral-400 dark:text-neutral-500">
+        <span className="mt-1 text-xs text-[var(--text-muted)]">
           {percentage.toFixed(0)}%
         </span>
       )}

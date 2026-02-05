@@ -98,6 +98,36 @@ class ExpenseMCPClient:
             'expense_server.py'
         )
 
+    def _patch_category_enum(self, input_schema: dict, category_ids: list) -> dict:
+        """
+        Recursively patch category enum values in a tool's input schema.
+
+        This allows dynamic categories to be used in MCP tools instead of
+        the hardcoded ExpenseType enum.
+
+        Args:
+            input_schema: The tool's input schema (JSON Schema format)
+            category_ids: List of user's category IDs
+
+        Returns:
+            Patched schema with updated category enum
+        """
+        import copy
+
+        schema = copy.deepcopy(input_schema)
+
+        def patch_properties(properties: dict):
+            for prop_name, prop_schema in properties.items():
+                # Check if this property is a category field with enum
+                if prop_name == "category" and "enum" in prop_schema:
+                    prop_schema["enum"] = category_ids
+
+        # Patch top-level properties
+        if "properties" in schema:
+            patch_properties(schema["properties"])
+
+        return schema
+
     async def startup(self):
         """
         Start the MCP client and connect to expense server.
@@ -206,6 +236,14 @@ class ExpenseMCPClient:
         if user_firebase and conversation_id:
             recent_expenses = user_firebase.get_conversation_recent_expenses(conversation_id, limit=5)
 
+        # Get user's custom categories for dynamic prompts and tool schemas
+        user_categories = None
+        if user_firebase:
+            # Ensure categories are set up (silent migration)
+            if not user_firebase.has_categories_setup():
+                user_firebase.migrate_from_budget_caps()
+            user_categories = user_firebase.get_user_categories()
+
         # Build message content
         message_content = []
 
@@ -248,16 +286,28 @@ class ExpenseMCPClient:
                 }
             })
 
-        # Get system prompt
-        system_prompt = get_expense_parsing_system_prompt()
+        # Get system prompt with user's categories
+        system_prompt = get_expense_parsing_system_prompt(user_categories)
 
         # Get available tools from MCP server
         response = await self.client.session.list_tools()
-        available_tools = [{
-            "name": tool.name,
-            "description": tool.description,
-            "input_schema": tool.inputSchema
-        } for tool in response.tools]
+        available_tools = []
+
+        # Build category enum from user's categories (or fallback to ExpenseType)
+        if user_categories:
+            category_enum = [cat.get("category_id") for cat in user_categories]
+        else:
+            from backend.output_schemas import ExpenseType
+            category_enum = [e.name for e in ExpenseType]
+
+        # Patch tool schemas to use user's dynamic categories
+        for tool in response.tools:
+            tool_schema = {
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": self._patch_category_enum(tool.inputSchema, category_enum)
+            }
+            available_tools.append(tool_schema)
 
         # Build messages with conversation history
         messages = []
@@ -315,7 +365,7 @@ class ExpenseMCPClient:
                     # Inject auth_token into tool arguments for multi-user support
                     # Claude doesn't know the auth token, so we inject it here
                     # MCP server will verify the token with Firebase Auth
-                    if auth_token and tool_name != "get_categories":
+                    if auth_token:
                         tool_args = {**tool_args, "auth_token": auth_token}
 
                     # Execute tool call via MCP

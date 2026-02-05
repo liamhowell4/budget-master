@@ -10,9 +10,52 @@ This module contains all system prompts for Claude API calls, making it easy to:
 
 import os
 from datetime import datetime
+from typing import Optional, List, Dict
 import pytz
 
-def get_expense_parsing_system_prompt() -> str:
+
+def _format_category_list(user_categories: Optional[List[Dict]] = None) -> str:
+    """
+    Format category list for system prompt.
+
+    If user_categories is provided, uses those. Otherwise falls back to hardcoded defaults.
+
+    Args:
+        user_categories: List of user's custom categories with category_id and display_name
+
+    Returns:
+        Formatted category list string for the prompt
+    """
+    if user_categories:
+        # Use user's custom categories
+        lines = []
+        for cat in user_categories:
+            cat_id = cat.get("category_id", "")
+            display = cat.get("display_name", cat_id)
+            # Include description if available
+            desc = cat.get("description", "")
+            if desc:
+                lines.append(f"   - {cat_id}: {display} - {desc}")
+            else:
+                lines.append(f"   - {cat_id}: {display}")
+        return "\n".join(lines)
+    else:
+        # Fallback to hardcoded defaults for backward compatibility
+        return """   - FOOD_OUT: dinner/lunch/breakfast/snacks, etc at a restaurant. Does NOT include coffee shops or buying coffee
+   - COFFEE: coffee shops, buying coffee, etc.
+   - GROCERIES: groceries (food, household items, etc.)
+   - RENT: apartment rent
+   - UTILITIES: utilities (electricity, water, internet, etc.)
+   - MEDICAL: medical (doctor, dentist, etc.) and prescription costs
+   - GAS: gas (gasoline, diesel, etc. for the car)
+   - RIDE_SHARE: taxi/lyft/uber
+   - HOTEL: hotel stays
+   - TECH: technology (software subscriptions, AI subscriptions, etc.)
+   - TRAVEL: airfare (airline tickets)/Hotel/Travel Agency/rental car etc.
+   - OTHER: anything that doesn't fit the categories above"""
+
+
+def get_expense_parsing_system_prompt(user_categories: Optional[List[Dict]] = None) -> str:
     """
     Get the system prompt for expense parsing with MCP.
 
@@ -21,6 +64,10 @@ def get_expense_parsing_system_prompt() -> str:
     - Use MCP tools to save expenses and check budgets
     - Handle natural language dates
     - Choose appropriate categories
+
+    Args:
+        user_categories: Optional list of user's custom categories. If provided,
+                        these will be used instead of the hardcoded defaults.
 
     Returns:
         System prompt string
@@ -31,6 +78,9 @@ def get_expense_parsing_system_prompt() -> str:
 
     # Get today's date in the user's timezone
     today = datetime.now(tz).date()
+
+    # Get formatted category list (dynamic or fallback)
+    category_list = _format_category_list(user_categories)
 
     return f"""You are an expense tracking assistant. Your job is to help users track their personal expenses via SMS or chat.
 
@@ -62,18 +112,7 @@ When a user sends you an expense (as text and/or a receipt image), you should:
 3. Choose the correct category:
    You MUST use one of these exact category keys (not the descriptions):
 
-   - FOOD_OUT: dinner/lunch/breakfast/snacks, etc at a restaurant. Does NOT include coffee shops or buying coffee
-   - COFFEE: coffee shops, buying coffee, etc.
-   - GROCERIES: groceries (food, household items, etc.)
-   - RENT: apartment rent
-   - UTILITIES: utilities (electricity, water, internet, etc.)
-   - MEDICAL: medical (doctor, dentist, etc.) and prescription costs
-   - GAS: gas (gasoline, diesel, etc. for the car)
-   - RIDE_SHARE: taxi/lyft/uber
-   - HOTEL: hotel stays
-   - TECH: technology (software subscriptions, AI subscriptions, etc.)
-   - TRAVEL: airfare (airline tickets)/Hotel/Travel Agency/rental car etc.
-   - OTHER: anything that doesn't fit the categories above
+{category_list}
 
 4. Use the available tools:
    - First, call `get_categories` if you need to see the full list of valid categories

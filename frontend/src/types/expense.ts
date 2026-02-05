@@ -1,3 +1,5 @@
+// Legacy ExpenseType for backward compatibility
+// With custom categories, category can be any string
 export const ExpenseType = {
   FOOD_OUT: 'FOOD_OUT',
   COFFEE: 'COFFEE',
@@ -13,7 +15,7 @@ export const ExpenseType = {
   OTHER: 'OTHER',
 } as const
 
-export type ExpenseType = (typeof ExpenseType)[keyof typeof ExpenseType]
+export type ExpenseType = (typeof ExpenseType)[keyof typeof ExpenseType] | string
 
 export interface ExpenseDate {
   day: number
@@ -26,7 +28,7 @@ export interface Expense {
   expense_name: string
   amount: number
   date: ExpenseDate
-  category: ExpenseType
+  category: string  // Changed to string to support custom categories
   timestamp?: string
   input_type?: 'mcp' | 'recurring'
 }

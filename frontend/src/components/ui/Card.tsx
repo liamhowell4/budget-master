@@ -6,9 +6,19 @@ interface CardProps {
   className?: string
   padding?: 'none' | 'sm' | 'md' | 'lg'
   hover?: boolean
+  variant?: 'default' | 'glass' | 'liquid'
+  /** @deprecated Use variant="glass" instead */
+  glass?: boolean
 }
 
-export function Card({ children, className, padding = 'md', hover = false }: CardProps) {
+export function Card({
+  children,
+  className,
+  padding = 'md',
+  hover = false,
+  variant = 'default',
+  glass = false
+}: CardProps) {
   const paddingClasses = {
     none: '',
     sm: 'p-3',
@@ -16,13 +26,23 @@ export function Card({ children, className, padding = 'md', hover = false }: Car
     lg: 'p-6',
   }
 
+  // Support legacy glass prop
+  const effectiveVariant = glass ? 'glass' : variant
+
+  const variantClasses = {
+    default: 'bg-[var(--surface-primary)] border border-[var(--border-primary)]',
+    glass: 'glass-effect',
+    liquid: 'liquid-glass-card',
+  }
+
   return (
     <div
       className={cn(
         'rounded-lg',
-        'bg-neutral-50 dark:bg-neutral-900',
-        'border border-neutral-200 dark:border-neutral-800',
-        hover && 'transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer',
+        variantClasses[effectiveVariant],
+        hover && effectiveVariant === 'default' && 'transition-colors hover:bg-[var(--surface-hover)] cursor-pointer',
+        hover && effectiveVariant === 'glass' && 'transition-all hover:bg-[var(--surface-hover)] cursor-pointer',
+        hover && effectiveVariant === 'liquid' && 'transition-all cursor-pointer hover:shadow-lg',
         paddingClasses[padding],
         className
       )}
@@ -43,11 +63,11 @@ export function CardHeader({ title, description, action, className }: CardHeader
   return (
     <div className={cn('flex items-start justify-between', className)}>
       <div>
-        <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+        <h3 className="text-sm font-medium text-[var(--text-primary)]">
           {title}
         </h3>
         {description && (
-          <p className="mt-0.5 text-sm text-neutral-500 dark:text-neutral-400">
+          <p className="mt-0.5 text-sm text-[var(--text-muted)]">
             {description}
           </p>
         )}

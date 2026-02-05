@@ -1,7 +1,640 @@
 @import "tailwindcss";
 
-/* Use class-based dark mode instead of media query */
+/* ================================================================
+   THEME SYSTEM - 9 Color Schemes
+   ================================================================
+   Light Themes:
+   - light-original: Clean neutral grays
+   - light-apple: iOS-inspired, subtle blue accents
+   - light-vibrant: Bold RGB primary colors
+   - light-glass: Glassmorphism with blur effects
+   - light-soft: Muted pastels, calming
+
+   Dark Themes:
+   - dark-original: Neutral grays + purple/orange glow
+   - dark-midnight: Deep purple accents, true black
+   - dark-sunset: Warm orange/coral accents
+   - dark-glass: Glassmorphism with frosted blur
+   ================================================================ */
+
+/* Use class-based theme switching */
 @variant dark (&:where(.dark, .dark *));
+
+/* ================================================================
+   CSS CUSTOM PROPERTIES - Theme Variables
+   ================================================================ */
+
+:root {
+  /* Default: light-original */
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f5f5f5;
+  --bg-elevated: #ffffff;
+
+  --surface-primary: #ffffff;
+  --surface-secondary: #f5f5f5;
+  --surface-hover: #f0f0f0;
+  --surface-active: #e5e5e5;
+
+  --text-primary: #171717;
+  --text-secondary: #525252;
+  --text-muted: #a3a3a3;
+  --text-inverted: #ffffff;
+
+  --border-primary: #e5e5e5;
+  --border-secondary: #d4d4d4;
+  --border-focus: #a3a3a3;
+
+  --accent-primary: #3b82f6;
+  --accent-secondary: #60a5fa;
+  --accent-muted: rgba(59, 130, 246, 0.1);
+
+  --success: #22c55e;
+  --success-muted: rgba(34, 197, 94, 0.1);
+  --warning: #f59e0b;
+  --warning-muted: rgba(245, 158, 11, 0.1);
+  --error: #ef4444;
+  --error-muted: rgba(239, 68, 68, 0.1);
+
+  --glow-start: #6366f1;
+  --glow-mid: #a855f7;
+  --glow-end: #fb923c;
+
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.3);
+  --glass-blur: 0px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #d4d4d4;
+  --scrollbar-thumb-hover: #a3a3a3;
+}
+
+/* ================================================================
+   LIGHT THEMES
+   ================================================================ */
+
+/* Light Original - Clean neutral grays (default) */
+.theme-light-original {
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f5f5f5;
+  --bg-elevated: #ffffff;
+
+  --surface-primary: #ffffff;
+  --surface-secondary: #f5f5f5;
+  --surface-hover: #f0f0f0;
+  --surface-active: #e5e5e5;
+
+  --text-primary: #171717;
+  --text-secondary: #525252;
+  --text-muted: #a3a3a3;
+  --text-inverted: #ffffff;
+
+  --border-primary: #e5e5e5;
+  --border-secondary: #d4d4d4;
+  --border-focus: #a3a3a3;
+
+  --accent-primary: #3b82f6;
+  --accent-secondary: #60a5fa;
+  --accent-muted: rgba(59, 130, 246, 0.1);
+
+  --glow-start: #6366f1;
+  --glow-mid: #a855f7;
+  --glow-end: #fb923c;
+
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(0, 0, 0, 0.05);
+  --glass-blur: 0px;
+}
+
+/* Light Apple - iOS-inspired, subtle blue accents */
+.theme-light-apple {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f2f2f7;
+  --bg-tertiary: #e5e5ea;
+  --bg-elevated: #ffffff;
+
+  --surface-primary: #ffffff;
+  --surface-secondary: #f2f2f7;
+  --surface-hover: #e5e5ea;
+  --surface-active: #d1d1d6;
+
+  --text-primary: #000000;
+  --text-secondary: #3c3c43;
+  --text-muted: #8e8e93;
+  --text-inverted: #ffffff;
+
+  --border-primary: #c6c6c8;
+  --border-secondary: #d1d1d6;
+  --border-focus: #007aff;
+
+  --accent-primary: #007aff;
+  --accent-secondary: #5ac8fa;
+  --accent-muted: rgba(0, 122, 255, 0.1);
+
+  --success: #34c759;
+  --success-muted: rgba(52, 199, 89, 0.1);
+  --warning: #ff9500;
+  --warning-muted: rgba(255, 149, 0, 0.1);
+  --error: #ff3b30;
+  --error-muted: rgba(255, 59, 48, 0.1);
+
+  --glow-start: #007aff;
+  --glow-mid: #5856d6;
+  --glow-end: #af52de;
+
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(0, 0, 0, 0.04);
+  --glass-blur: 0px;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Light Vibrant - Bold RGB primary colors */
+.theme-light-vibrant {
+  --bg-primary: #ffffff;
+  --bg-secondary: #fafafa;
+  --bg-tertiary: #f0f0f0;
+  --bg-elevated: #ffffff;
+
+  --surface-primary: #ffffff;
+  --surface-secondary: #f5f5f5;
+  --surface-hover: #ebebeb;
+  --surface-active: #e0e0e0;
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-muted: #8a8a8a;
+  --text-inverted: #ffffff;
+
+  --border-primary: #e0e0e0;
+  --border-secondary: #cccccc;
+  --border-focus: #2563eb;
+
+  --accent-primary: #2563eb;
+  --accent-secondary: #3b82f6;
+  --accent-muted: rgba(37, 99, 235, 0.1);
+
+  --success: #16a34a;
+  --success-muted: rgba(22, 163, 74, 0.1);
+  --warning: #ea580c;
+  --warning-muted: rgba(234, 88, 12, 0.1);
+  --error: #dc2626;
+  --error-muted: rgba(220, 38, 38, 0.1);
+
+  --glow-start: #dc2626;
+  --glow-mid: #2563eb;
+  --glow-end: #16a34a;
+
+  --glass-bg: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-blur: 0px;
+}
+
+/* Light Glass - Glassmorphism with blur effects */
+.theme-light-glass {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-tertiary: #e2e8f0;
+  --bg-elevated: rgba(255, 255, 255, 0.7);
+
+  --surface-primary: rgba(255, 255, 255, 0.6);
+  --surface-secondary: rgba(241, 245, 249, 0.7);
+  --surface-hover: rgba(255, 255, 255, 0.8);
+  --surface-active: rgba(226, 232, 240, 0.8);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverted: #ffffff;
+
+  --border-primary: rgba(148, 163, 184, 0.3);
+  --border-secondary: rgba(148, 163, 184, 0.4);
+  --border-focus: #6366f1;
+
+  --accent-primary: #6366f1;
+  --accent-secondary: #818cf8;
+  --accent-muted: rgba(99, 102, 241, 0.15);
+
+  --success: #10b981;
+  --success-muted: rgba(16, 185, 129, 0.15);
+  --warning: #f59e0b;
+  --warning-muted: rgba(245, 158, 11, 0.15);
+  --error: #ef4444;
+  --error-muted: rgba(239, 68, 68, 0.15);
+
+  --glow-start: #6366f1;
+  --glow-mid: #a855f7;
+  --glow-end: #ec4899;
+
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.4);
+  --glass-blur: 12px;
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+/* Light Soft - Muted pastels, calming */
+.theme-light-soft {
+  --bg-primary: #fefdfb;
+  --bg-secondary: #f9f7f4;
+  --bg-tertiary: #f3f0eb;
+  --bg-elevated: #ffffff;
+
+  --surface-primary: #ffffff;
+  --surface-secondary: #f9f7f4;
+  --surface-hover: #f3f0eb;
+  --surface-active: #ebe7e0;
+
+  --text-primary: #3d3a36;
+  --text-secondary: #6b6560;
+  --text-muted: #9c9590;
+  --text-inverted: #ffffff;
+
+  --border-primary: #e8e4dd;
+  --border-secondary: #ddd8d0;
+  --border-focus: #8b9a83;
+
+  --accent-primary: #8b9a83;
+  --accent-secondary: #a3b29b;
+  --accent-muted: rgba(139, 154, 131, 0.15);
+
+  --success: #7a9a6e;
+  --success-muted: rgba(122, 154, 110, 0.15);
+  --warning: #c9a86c;
+  --warning-muted: rgba(201, 168, 108, 0.15);
+  --error: #c47d7d;
+  --error-muted: rgba(196, 125, 125, 0.15);
+
+  --glow-start: #b8a9c9;
+  --glow-mid: #d4a5a5;
+  --glow-end: #a5c4d4;
+
+  --glass-bg: rgba(254, 253, 251, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.04);
+  --glass-blur: 0px;
+
+  --shadow-sm: 0 1px 3px rgba(61, 58, 54, 0.04);
+  --shadow-md: 0 3px 8px rgba(61, 58, 54, 0.06);
+  --shadow-lg: 0 6px 16px rgba(61, 58, 54, 0.08);
+}
+
+/* ================================================================
+   DARK THEMES
+   ================================================================ */
+
+/* Dark Original - Neutral grays + purple/orange glow */
+.theme-dark-original {
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #171717;
+  --bg-elevated: #0a0a0a;
+
+  --surface-primary: #0a0a0a;
+  --surface-secondary: #171717;
+  --surface-hover: #1f1f1f;
+  --surface-active: #262626;
+
+  --text-primary: #fafafa;
+  --text-secondary: #a3a3a3;
+  --text-muted: #525252;
+  --text-inverted: #000000;
+
+  --border-primary: #262626;
+  --border-secondary: #303030;
+  --border-focus: #525252;
+
+  --accent-primary: #818cf8;
+  --accent-secondary: #a5b4fc;
+  --accent-muted: rgba(129, 140, 248, 0.15);
+
+  --success: #4ade80;
+  --success-muted: rgba(74, 222, 128, 0.15);
+  --warning: #fbbf24;
+  --warning-muted: rgba(251, 191, 36, 0.15);
+  --error: #f87171;
+  --error-muted: rgba(248, 113, 113, 0.15);
+
+  --glow-start: #7c3aed;
+  --glow-mid: #a855f7;
+  --glow-end: #f97316;
+
+  --glass-bg: rgba(10, 10, 10, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: 0px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.6);
+
+  --scrollbar-thumb: #404040;
+  --scrollbar-thumb-hover: #525252;
+}
+
+/* Dark Midnight - Deep purple accents, true black */
+.theme-dark-midnight {
+  --bg-primary: #000000;
+  --bg-secondary: #050510;
+  --bg-tertiary: #0c0c1d;
+  --bg-elevated: #0a0a18;
+
+  --surface-primary: #0a0a18;
+  --surface-secondary: #12122a;
+  --surface-hover: #1a1a3a;
+  --surface-active: #22224a;
+
+  --text-primary: #f0f0ff;
+  --text-secondary: #a0a0c0;
+  --text-muted: #606080;
+  --text-inverted: #000000;
+
+  --border-primary: #1e1e3c;
+  --border-secondary: #2a2a50;
+  --border-focus: #6366f1;
+
+  --accent-primary: #8b5cf6;
+  --accent-secondary: #a78bfa;
+  --accent-muted: rgba(139, 92, 246, 0.2);
+
+  --success: #a3e635;
+  --success-muted: rgba(163, 230, 53, 0.15);
+  --warning: #c084fc;
+  --warning-muted: rgba(192, 132, 252, 0.15);
+  --error: #f472b6;
+  --error-muted: rgba(244, 114, 182, 0.15);
+
+  --glow-start: #6366f1;
+  --glow-mid: #8b5cf6;
+  --glow-end: #c084fc;
+
+  --glass-bg: rgba(10, 10, 24, 0.85);
+  --glass-border: rgba(139, 92, 246, 0.15);
+  --glass-blur: 0px;
+
+  --shadow-sm: 0 1px 3px rgba(99, 102, 241, 0.1);
+  --shadow-md: 0 4px 8px rgba(99, 102, 241, 0.15);
+  --shadow-lg: 0 8px 16px rgba(99, 102, 241, 0.2);
+
+  --scrollbar-thumb: #2a2a50;
+  --scrollbar-thumb-hover: #3a3a70;
+}
+
+/* Dark Sunset - Warm orange/coral accents */
+.theme-dark-sunset {
+  --bg-primary: #000000;
+  --bg-secondary: #0a0705;
+  --bg-tertiary: #150f0a;
+  --bg-elevated: #0d0906;
+
+  --surface-primary: #0d0906;
+  --surface-secondary: #1a120c;
+  --surface-hover: #261a12;
+  --surface-active: #332218;
+
+  --text-primary: #fff8f0;
+  --text-secondary: #c4a890;
+  --text-muted: #7a6050;
+  --text-inverted: #000000;
+
+  --border-primary: #2a1c14;
+  --border-secondary: #3d2a1e;
+  --border-focus: #f97316;
+
+  --accent-primary: #f97316;
+  --accent-secondary: #fb923c;
+  --accent-muted: rgba(249, 115, 22, 0.2);
+
+  --success: #84cc16;
+  --success-muted: rgba(132, 204, 22, 0.15);
+  --warning: #fbbf24;
+  --warning-muted: rgba(251, 191, 36, 0.15);
+  --error: #f43f5e;
+  --error-muted: rgba(244, 63, 94, 0.15);
+
+  --glow-start: #f97316;
+  --glow-mid: #fb923c;
+  --glow-end: #fbbf24;
+
+  --glass-bg: rgba(13, 9, 6, 0.85);
+  --glass-border: rgba(249, 115, 22, 0.15);
+  --glass-blur: 0px;
+
+  --shadow-sm: 0 1px 3px rgba(249, 115, 22, 0.1);
+  --shadow-md: 0 4px 8px rgba(249, 115, 22, 0.12);
+  --shadow-lg: 0 8px 16px rgba(249, 115, 22, 0.15);
+
+  --scrollbar-thumb: #3d2a1e;
+  --scrollbar-thumb-hover: #4d3a2e;
+}
+
+/* Dark Glass - Glassmorphism with frosted blur */
+.theme-dark-glass {
+  --bg-primary: #000000;
+  --bg-secondary: #050505;
+  --bg-tertiary: #0f0f0f;
+  --bg-elevated: rgba(20, 20, 20, 0.6);
+
+  --surface-primary: rgba(20, 20, 20, 0.5);
+  --surface-secondary: rgba(30, 30, 30, 0.6);
+  --surface-hover: rgba(40, 40, 40, 0.7);
+  --surface-active: rgba(50, 50, 50, 0.8);
+
+  --text-primary: #ffffff;
+  --text-secondary: #b0b0b0;
+  --text-muted: #606060;
+  --text-inverted: #000000;
+
+  --border-primary: rgba(255, 255, 255, 0.08);
+  --border-secondary: rgba(255, 255, 255, 0.12);
+  --border-focus: rgba(139, 92, 246, 0.5);
+
+  --accent-primary: #a78bfa;
+  --accent-secondary: #c4b5fd;
+  --accent-muted: rgba(167, 139, 250, 0.2);
+
+  --success: #4ade80;
+  --success-muted: rgba(74, 222, 128, 0.15);
+  --warning: #fcd34d;
+  --warning-muted: rgba(252, 211, 77, 0.15);
+  --error: #fb7185;
+  --error-muted: rgba(251, 113, 133, 0.15);
+
+  --glow-start: #8b5cf6;
+  --glow-mid: #ec4899;
+  --glow-end: #06b6d4;
+
+  --glass-bg: rgba(20, 20, 20, 0.5);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-blur: 16px;
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+}
+
+/* ================================================================
+   LIQUID GLASS THEMES - Apple iOS 26 Inspired
+   ================================================================
+   Features:
+   - Three-layer system (highlight, shadow, illumination)
+   - Refraction-like blur with saturation boost
+   - Specular highlights via inset shadows
+   - Apple system colors (Blue, Purple, Indigo, Teal)
+   ================================================================ */
+
+/* Light Liquid Glass */
+.theme-light-liquid {
+  --bg-primary: #f2f2f7;
+  --bg-secondary: #e5e5ea;
+  --bg-tertiary: #d1d1d6;
+  --bg-elevated: rgba(255, 255, 255, 0.72);
+
+  --surface-primary: rgba(255, 255, 255, 0.65);
+  --surface-secondary: rgba(255, 255, 255, 0.45);
+  --surface-hover: rgba(255, 255, 255, 0.8);
+  --surface-active: rgba(255, 255, 255, 0.9);
+
+  --text-primary: #1c1c1e;
+  --text-secondary: #3c3c43;
+  --text-muted: #8e8e93;
+  --text-inverted: #ffffff;
+
+  --border-primary: rgba(255, 255, 255, 0.6);
+  --border-secondary: rgba(255, 255, 255, 0.8);
+  --border-focus: #007aff;
+
+  /* Apple system colors */
+  --accent-primary: #007aff;
+  --accent-secondary: #5ac8fa;
+  --accent-muted: rgba(0, 122, 255, 0.12);
+
+  --success: #34c759;
+  --success-muted: rgba(52, 199, 89, 0.12);
+  --warning: #ff9500;
+  --warning-muted: rgba(255, 149, 0, 0.12);
+  --error: #ff3b30;
+  --error-muted: rgba(255, 59, 48, 0.12);
+
+  /* Liquid glass glow - Apple's purple/blue/teal */
+  --glow-start: #5856d6;
+  --glow-mid: #af52de;
+  --glow-end: #5ac8fa;
+
+  /* Liquid glass properties */
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.8);
+  --glass-blur: 20px;
+  --glass-saturate: 180%;
+  --glass-shine: rgba(255, 255, 255, 0.7);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 32px rgba(31, 38, 135, 0.15);
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+}
+
+/* Dark Liquid Glass */
+.theme-dark-liquid {
+  --bg-primary: #000000;
+  --bg-secondary: #1c1c1e;
+  --bg-tertiary: #2c2c2e;
+  --bg-elevated: rgba(28, 28, 30, 0.72);
+
+  --surface-primary: rgba(44, 44, 46, 0.65);
+  --surface-secondary: rgba(58, 58, 60, 0.45);
+  --surface-hover: rgba(72, 72, 74, 0.7);
+  --surface-active: rgba(99, 99, 102, 0.8);
+
+  --text-primary: #ffffff;
+  --text-secondary: #ebebf5;
+  --text-muted: #8e8e93;
+  --text-inverted: #000000;
+
+  --border-primary: rgba(255, 255, 255, 0.16);
+  --border-secondary: rgba(255, 255, 255, 0.24);
+  --border-focus: #0a84ff;
+
+  /* Apple system colors (dark mode variants) */
+  --accent-primary: #0a84ff;
+  --accent-secondary: #64d2ff;
+  --accent-muted: rgba(10, 132, 255, 0.2);
+
+  --success: #30d158;
+  --success-muted: rgba(48, 209, 88, 0.2);
+  --warning: #ff9f0a;
+  --warning-muted: rgba(255, 159, 10, 0.2);
+  --error: #ff453a;
+  --error-muted: rgba(255, 69, 58, 0.2);
+
+  /* Liquid glass glow - vibrant for dark mode */
+  --glow-start: #5e5ce6;
+  --glow-mid: #bf5af2;
+  --glow-end: #64d2ff;
+
+  /* Liquid glass properties */
+  --glass-bg: rgba(44, 44, 46, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-blur: 20px;
+  --glass-saturate: 180%;
+  --glass-shine: rgba(255, 255, 255, 0.15);
+
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+}
+
+/* ================================================================
+   LEGACY DARK MODE SUPPORT (for .dark class fallback)
+   ================================================================ */
+.dark:not([class*="theme-"]) {
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #171717;
+  --bg-elevated: #0a0a0a;
+
+  --surface-primary: #0a0a0a;
+  --surface-secondary: #171717;
+  --surface-hover: #1f1f1f;
+  --surface-active: #262626;
+
+  --text-primary: #fafafa;
+  --text-secondary: #a3a3a3;
+  --text-muted: #525252;
+  --text-inverted: #000000;
+
+  --border-primary: #262626;
+  --border-secondary: #303030;
+  --border-focus: #525252;
+
+  --accent-primary: #818cf8;
+  --accent-secondary: #a5b4fc;
+  --accent-muted: rgba(129, 140, 248, 0.15);
+
+  --scrollbar-thumb: #404040;
+  --scrollbar-thumb-hover: #525252;
+}
+
+/* ================================================================
+   BASE STYLES
+   ================================================================ */
 
 @layer base {
   /* Remove focus outline from textareas (custom glow used instead) */
@@ -20,7 +653,6 @@ html {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Prevent text size adjustment on orientation change */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -28,13 +660,13 @@ html {
 body {
   min-height: 100dvh;
   line-height: 1.5;
-  /* Prevent double-tap zoom */
   touch-action: manipulation;
-  /* Safe area padding for notched devices */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  /* Prevent horizontal scroll on mobile */
   overflow-x: hidden;
   width: 100%;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Prevent iOS zoom on input focus - ensure 16px minimum */
@@ -70,54 +702,213 @@ h1, h2, h3, h4, h5, h6 {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Scrollbar styling - subtle */
+/* ================================================================
+   SCROLLBAR STYLING
+   ================================================================ */
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d4d4d4;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a3a3a3;
+  background: var(--scrollbar-thumb-hover);
 }
 
-.dark ::-webkit-scrollbar-thumb {
-  background: #404040;
-}
+/* ================================================================
+   SELECTION STYLING
+   ================================================================ */
 
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #525252;
-}
-
-/* Focus visible styles disabled - using custom focus indicators */
-
-/* Selection */
 ::selection {
-  background-color: rgba(0, 112, 243, 0.2);
+  background-color: var(--accent-muted);
 }
 
-.dark ::selection {
-  background-color: rgba(0, 112, 243, 0.3);
+/* ================================================================
+   GLASSMORPHISM UTILITIES
+   ================================================================ */
+
+.glass-effect {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
 }
 
-/* Apple Intelligence gradient glow */
+/* ================================================================
+   LIQUID GLASS EFFECT - Apple iOS 26 Style
+   ================================================================
+   Three-layer system:
+   - Main element: backdrop blur + saturation
+   - ::before: Inner highlights (specular shine)
+   - ::after: Subtle shadow/depth layer
+   ================================================================ */
+
+.liquid-glass {
+  position: relative;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.65));
+  backdrop-filter: blur(var(--glass-blur, 20px)) saturate(var(--glass-saturate, 180%));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 20px)) saturate(var(--glass-saturate, 180%));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.6));
+  border-radius: inherit;
+  box-shadow:
+    0 8px 32px rgba(31, 38, 135, 0.15),
+    inset 0 1px 0 var(--glass-shine, rgba(255, 255, 255, 0.7));
+  overflow: hidden;
+}
+
+/* Specular highlight layer - top shine */
+.liquid-glass::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(
+    180deg,
+    var(--glass-shine, rgba(255, 255, 255, 0.5)) 0%,
+    transparent 100%
+  );
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Animated liquid shine effect */
+.liquid-glass-animated {
+  position: relative;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.65));
+  backdrop-filter: blur(var(--glass-blur, 20px)) saturate(var(--glass-saturate, 180%));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 20px)) saturate(var(--glass-saturate, 180%));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.6));
+  box-shadow:
+    0 8px 32px rgba(31, 38, 135, 0.15),
+    inset 0 1px 0 var(--glass-shine, rgba(255, 255, 255, 0.7));
+  overflow: hidden;
+}
+
+.liquid-glass-animated::before {
+  content: '';
+  position: absolute;
+  top: -100%;
+  left: -100%;
+  width: 300%;
+  height: 300%;
+  background: radial-gradient(
+    ellipse at center,
+    var(--glass-shine, rgba(255, 255, 255, 0.4)) 0%,
+    transparent 60%
+  );
+  animation: liquid-shine-move 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes liquid-shine-move {
+  0%, 100% {
+    transform: translate(0%, 0%) rotate(0deg);
+    opacity: 0.4;
+  }
+  25% {
+    transform: translate(20%, 10%) rotate(5deg);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate(10%, 20%) rotate(-3deg);
+    opacity: 0.5;
+  }
+  75% {
+    transform: translate(-10%, 5%) rotate(2deg);
+    opacity: 0.7;
+  }
+}
+
+/* Liquid glass button variant - smaller, more subtle */
+.liquid-glass-button {
+  position: relative;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.5));
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.5));
+  box-shadow:
+    0 2px 8px rgba(31, 38, 135, 0.1),
+    inset 0 1px 0 var(--glass-shine, rgba(255, 255, 255, 0.6));
+  transition: all 0.2s ease;
+}
+
+.liquid-glass-button:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.7));
+  box-shadow:
+    0 4px 12px rgba(31, 38, 135, 0.15),
+    inset 0 1px 0 var(--glass-shine, rgba(255, 255, 255, 0.8));
+}
+
+.liquid-glass-button:active {
+  transform: scale(0.98);
+  box-shadow:
+    0 1px 4px rgba(31, 38, 135, 0.1),
+    inset 0 1px 0 var(--glass-shine, rgba(255, 255, 255, 0.4));
+}
+
+/* Liquid glass card - panels and containers */
+.liquid-glass-card {
+  position: relative;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.65));
+  backdrop-filter: blur(var(--glass-blur, 20px)) saturate(var(--glass-saturate, 180%));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 20px)) saturate(var(--glass-saturate, 180%));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.6));
+  border-radius: 20px;
+  box-shadow:
+    0 8px 32px rgba(31, 38, 135, 0.12),
+    inset 0 1px 0 var(--glass-shine, rgba(255, 255, 255, 0.7)),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+/* Inner content of liquid glass should have subtle background */
+.liquid-glass-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    var(--glass-shine, rgba(255, 255, 255, 0.1)) 0%,
+    transparent 50%,
+    rgba(0, 0, 0, 0.02) 100%
+  );
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Liquid glass navigation bar */
+.liquid-glass-nav {
+  background: var(--glass-bg, rgba(255, 255, 255, 0.72));
+  backdrop-filter: blur(var(--glass-blur, 20px)) saturate(var(--glass-saturate, 180%));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 20px)) saturate(var(--glass-saturate, 180%));
+  border-bottom: 1px solid var(--glass-border, rgba(255, 255, 255, 0.3));
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.08),
+    inset 0 -1px 0 var(--glass-shine, rgba(255, 255, 255, 0.5));
+}
+
+/* ================================================================
+   APPLE INTELLIGENCE GRADIENT GLOW
+   ================================================================ */
+
 .glow-gradient {
   background: linear-gradient(
     135deg,
-    #6366f1 0%,
-    #8b5cf6 20%,
-    #a855f7 40%,
-    #ec4899 60%,
-    #f43f5e 80%,
-    #fb923c 100%
+    var(--glow-start) 0%,
+    var(--glow-mid) 50%,
+    var(--glow-end) 100%
   );
 }
 
@@ -161,23 +952,11 @@ h1, h2, h3, h4, h5, h6 {
   inset: -50%;
   background: conic-gradient(
     from 0deg,
-    #7c3aed,
-    #8b5cf6,
-    #a78bfa,
-    #c084fc,
-    #e879f9,
-    #f472b6,
-    #fb7185,
-    #f97316,
-    #fbbf24,
-    #f97316,
-    #fb7185,
-    #f472b6,
-    #e879f9,
-    #c084fc,
-    #a78bfa,
-    #8b5cf6,
-    #7c3aed
+    var(--glow-start),
+    var(--glow-mid),
+    var(--glow-end),
+    var(--glow-mid),
+    var(--glow-start)
   );
   animation: apple-glow-spin-and-fade 0.625s ease-out forwards;
   filter: blur(20px);
@@ -191,19 +970,176 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: inherit;
   background: linear-gradient(
     135deg,
-    rgba(139, 92, 246, 0.875),
-    rgba(168, 85, 247, 0.875),
-    rgba(236, 72, 153, 0.875),
-    rgba(249, 115, 22, 0.7)
+    color-mix(in srgb, var(--glow-start) 87.5%, transparent),
+    color-mix(in srgb, var(--glow-mid) 87.5%, transparent),
+    color-mix(in srgb, var(--glow-end) 70%, transparent)
   );
   filter: blur(12px);
   opacity: 1;
 }
 
-/* Nuclear override for textarea focus - placed last for highest priority */
+/* ================================================================
+   TEXTAREA FOCUS OVERRIDE
+   ================================================================ */
+
 textarea, textarea:focus, textarea:focus-visible, textarea:focus-within {
   outline: none !important;
   outline-width: 0 !important;
   outline-style: none !important;
   box-shadow: none !important;
+}
+
+/* ================================================================
+   AUTOMATIC LIQUID GLASS THEME ENHANCEMENTS
+   ================================================================
+   When liquid glass theme is active, automatically enhance
+   certain elements with the liquid glass effect.
+   ================================================================ */
+
+/* Modal backgrounds get enhanced blur */
+.theme-light-liquid .fixed.inset-0.bg-black\/40,
+.theme-dark-liquid .fixed.inset-0.bg-black\/40 {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Sidebars get liquid treatment */
+.theme-light-liquid aside,
+.theme-dark-liquid aside {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate)) !important;
+  box-shadow: inset 0 1px 0 var(--glass-shine) !important;
+}
+
+/* Cards within liquid theme get enhanced styling */
+.theme-light-liquid .rounded-lg[class*="surface"],
+.theme-dark-liquid .rounded-lg[class*="surface"] {
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  box-shadow:
+    0 4px 16px rgba(31, 38, 135, 0.08),
+    inset 0 1px 0 var(--glass-shine);
+}
+
+/* Input areas get liquid glass effect */
+.theme-light-liquid form .rounded-lg,
+.theme-dark-liquid form .rounded-lg {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow:
+    0 4px 16px rgba(31, 38, 135, 0.1),
+    inset 0 1px 0 var(--glass-shine) !important;
+}
+
+/* Buttons in liquid theme */
+.theme-light-liquid button[type="submit"],
+.theme-dark-liquid button[type="submit"] {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Dropdown menus get liquid glass */
+.theme-light-liquid [class*="absolute"][class*="rounded-lg"][class*="shadow"],
+.theme-dark-liquid [class*="absolute"][class*="rounded-lg"][class*="shadow"] {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow:
+    0 8px 32px rgba(31, 38, 135, 0.15),
+    inset 0 1px 0 var(--glass-shine) !important;
+}
+
+/* ================================================================
+   MOTION-RESPONSIVE LIQUID SHINE
+   ================================================================
+   The shine position is controlled via CSS custom properties
+   that can be updated via JavaScript based on mouse/device motion.
+   ================================================================ */
+
+.liquid-glass-motion {
+  --shine-x: 50%;
+  --shine-y: 0%;
+  --shine-intensity: 0.5;
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-glass-motion::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(
+    ellipse 80% 50% at var(--shine-x) var(--shine-y),
+    var(--glass-shine, rgba(255, 255, 255, 0.6)) 0%,
+    transparent 50%
+  );
+  opacity: var(--shine-intensity);
+  pointer-events: none;
+  transform: translate(-25%, -25%);
+  transition: opacity 0.3s ease;
+}
+
+/* ================================================================
+   SVG REFRACTION FILTER
+   ================================================================
+   True lens distortion effect using SVG displacement map.
+   Only works in Chromium browsers (Chrome, Edge, Brave).
+   Applied via progressive enhancement.
+   ================================================================ */
+
+/* Refraction-enabled liquid glass (Chrome/Edge only) */
+@supports (backdrop-filter: url(#liquid-refraction)) {
+  .liquid-glass-refraction {
+    position: relative;
+    backdrop-filter: url(#liquid-refraction) blur(2px) saturate(180%);
+    -webkit-backdrop-filter: url(#liquid-refraction) blur(2px) saturate(180%);
+  }
+}
+
+/* Fallback for browsers that don't support SVG backdrop filters */
+@supports not (backdrop-filter: url(#liquid-refraction)) {
+  .liquid-glass-refraction {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+  }
+}
+
+/* ================================================================
+   LIQUID GLASS ENHANCED COMPONENTS
+   ================================================================ */
+
+/* Enhanced segmented control for liquid theme */
+.theme-light-liquid .rounded-full[class*="inline-flex"],
+.theme-dark-liquid .rounded-full[class*="inline-flex"] {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(12px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(150%) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: inset 0 1px 0 var(--glass-shine) !important;
+}
+
+/* Progress bars get subtle glass effect */
+.theme-light-liquid .rounded-full.overflow-hidden,
+.theme-dark-liquid .rounded-full.overflow-hidden {
+  background: rgba(0, 0, 0, 0.1) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Modal content gets liquid glass treatment */
+.theme-light-liquid [role="dialog"],
+.theme-dark-liquid [role="dialog"] {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow:
+    0 25px 50px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 var(--glass-shine) !important;
 }

@@ -9,9 +9,10 @@ interface ModalProps {
   children: ReactNode
   title?: string
   className?: string
+  glass?: boolean
 }
 
-export function Modal({ isOpen, onClose, children, title, className }: ModalProps) {
+export function Modal({ isOpen, onClose, children, title, className, glass = false }: ModalProps) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -43,8 +44,9 @@ export function Modal({ isOpen, onClose, children, title, className }: ModalProp
           className={cn(
             'relative w-full max-w-md',
             'rounded-lg',
-            'bg-white dark:bg-neutral-900',
-            'border border-neutral-200 dark:border-neutral-800',
+            glass
+              ? 'glass-effect'
+              : 'bg-[var(--surface-primary)] border border-[var(--border-primary)]',
             'shadow-lg',
             className
           )}
@@ -53,10 +55,10 @@ export function Modal({ isOpen, onClose, children, title, className }: ModalProp
           aria-labelledby={title ? 'modal-title' : undefined}
         >
           {title && (
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 px-5 py-4">
+            <div className="flex items-center justify-between border-b border-[var(--border-primary)] px-5 py-4">
               <h2
                 id="modal-title"
-                className="text-sm font-medium text-neutral-900 dark:text-neutral-100"
+                className="text-sm font-medium text-[var(--text-primary)]"
               >
                 {title}
               </h2>
@@ -64,9 +66,8 @@ export function Modal({ isOpen, onClose, children, title, className }: ModalProp
                 onClick={onClose}
                 className={cn(
                   'rounded p-1',
-                  'text-neutral-400 hover:text-neutral-600',
-                  'dark:text-neutral-500 dark:hover:text-neutral-300',
-                  'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                  'text-[var(--text-muted)] hover:text-[var(--text-secondary)]',
+                  'hover:bg-[var(--surface-hover)]',
                   'transition-colors'
                 )}
                 aria-label="Close"

@@ -13,7 +13,8 @@ import firebase_admin
 from firebase_admin import credentials, firestore, storage
 from google.cloud.firestore_v1.base_query import FieldFilter
 
-from .output_schemas import Expense, ExpenseType, Date, RecurringExpense, PendingExpense, FrequencyType
+from .output_schemas import Expense, ExpenseType, Date, RecurringExpense, PendingExpense, FrequencyType, Category, generate_category_id
+from .category_defaults import DEFAULT_CATEGORIES, MAX_CATEGORIES
 
 # Load .env from project root (parent of backend/)
 env_path = Path(__file__).parent.parent / ".env"
@@ -31,10 +32,11 @@ class FirebaseClient:
         "recurring_expenses",
         "pending_expenses",
         "conversations",
+        "categories",  # Now user-scoped for custom categories
     }
 
     # Collections that remain global (shared across all users)
-    GLOBAL_COLLECTIONS = {"categories"}
+    GLOBAL_COLLECTIONS = {"global_categories"}  # Legacy, not used for custom categories
 
     def __init__(self, user_id: Optional[str] = None):
         """
@@ -121,6 +123,38 @@ class FirebaseClient:
                 "year": expense.date.year
             },
             "category": expense.category.name,  # Store enum key
+            "timestamp": firestore.SERVER_TIMESTAMP,
+            "input_type": input_type
+        }
+
+        # Add to Firestore
+        doc_ref = self.db.collection(self._get_collection_path("expenses")).add(expense_data)
+        return doc_ref[1].id
+
+    def save_expense_with_category_str(self, expense: Expense, category_str: str, input_type: str = "text") -> str:
+        """
+        Save an expense to Firestore with a custom category string.
+
+        This allows saving expenses with user-defined category IDs that may not
+        be in the ExpenseType enum.
+
+        Args:
+            expense: The Expense object to save
+            category_str: The category ID string (e.g., "FOOD_OUT", "PET_SUPPLIES")
+            input_type: Type of input ("sms", "voice", "image", "text", "mcp")
+
+        Returns:
+            Document ID of the saved expense
+        """
+        expense_data = {
+            "expense_name": expense.expense_name,
+            "amount": expense.amount,
+            "date": {
+                "day": expense.date.day,
+                "month": expense.date.month,
+                "year": expense.date.year
+            },
+            "category": category_str,  # Store custom category string
             "timestamp": firestore.SERVER_TIMESTAMP,
             "input_type": input_type
         }
@@ -242,7 +276,8 @@ class FirebaseClient:
         expense_name: Optional[str] = None,
         amount: Optional[float] = None,
         date: Optional[Date] = None,
-        category: Optional[ExpenseType] = None
+        category: Optional[ExpenseType] = None,
+        category_str: Optional[str] = None
     ) -> bool:
         """
         Update an expense's fields (partial update).
@@ -252,7 +287,8 @@ class FirebaseClient:
             expense_name: New expense name (optional)
             amount: New amount (optional)
             date: New date (optional)
-            category: New category (optional)
+            category: New category as ExpenseType (optional, for backward compat)
+            category_str: New category as string (optional, for custom categories)
 
         Returns:
             True if updated, False if expense not found
@@ -275,7 +311,10 @@ class FirebaseClient:
                 "month": date.month,
                 "year": date.year
             }
-        if category is not None:
+        # Prefer category_str if provided (custom categories), otherwise use ExpenseType
+        if category_str is not None:
+            updates["category"] = category_str
+        elif category is not None:
             updates["category"] = category.name
 
         # Perform update (keep original timestamp)
@@ -618,12 +657,12 @@ class FirebaseClient:
 
     def get_category_data(self) -> List[Dict]:
         """
-        Get all expense categories from Firestore.
+        Get all expense categories from Firestore (legacy method for global categories).
 
         Returns:
             List of category dictionaries with id, display_value, and optional emoji
         """
-        docs = self.db.collection("categories").stream()
+        docs = self.db.collection("global_categories").stream()
 
         categories = []
         for doc in docs:
@@ -662,9 +701,429 @@ class FirebaseClient:
             }
 
             # Use category_id as document ID
-            self.db.collection("categories").document(expense_type.name).set(category_data)
+            self.db.collection("global_categories").document(expense_type.name).set(category_data)
 
         print(f"✅ Seeded {len(ExpenseType)} categories to Firestore")
+
+    # ==================== User Custom Category Operations ====================
+
+    def get_user_categories(self) -> List[Dict]:
+        """
+        Get all expense categories for the current user.
+
+        Returns:
+            List of category dictionaries sorted by sort_order
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for user-scoped categories")
+
+        docs = self.db.collection(self._get_collection_path("categories")).stream()
+
+        categories = []
+        for doc in docs:
+            category_data = doc.to_dict()
+            category_data["category_id"] = doc.id
+            # Ensure exclude_from_total has a default value for backwards compatibility
+            if "exclude_from_total" not in category_data:
+                category_data["exclude_from_total"] = False
+            categories.append(category_data)
+
+        # Sort by sort_order
+        categories.sort(key=lambda x: x.get("sort_order", 0))
+        return categories
+
+    def get_category(self, category_id: str) -> Optional[Dict]:
+        """
+        Get a specific category by ID.
+
+        Args:
+            category_id: The category ID (e.g., "FOOD_OUT")
+
+        Returns:
+            Category dict or None if not found
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for user-scoped categories")
+
+        doc = self.db.collection(self._get_collection_path("categories")).document(category_id).get()
+
+        if not doc.exists:
+            return None
+
+        category_data = doc.to_dict()
+        category_data["category_id"] = doc.id
+        return category_data
+
+    def create_category(self, category_data: Dict) -> str:
+        """
+        Create a new category for the user.
+
+        Args:
+            category_data: Category data including display_name, icon, color, monthly_cap
+
+        Returns:
+            The new category ID
+
+        Raises:
+            ValueError: If max categories reached or name already exists
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for user-scoped categories")
+
+        # Check max categories limit
+        existing = self.get_user_categories()
+        if len(existing) >= MAX_CATEGORIES:
+            raise ValueError(f"Maximum of {MAX_CATEGORIES} categories allowed")
+
+        # Generate category ID from display name
+        category_id = generate_category_id(category_data["display_name"])
+
+        # Check for duplicate name (case-insensitive)
+        display_name_lower = category_data["display_name"].lower()
+        for cat in existing:
+            if cat.get("display_name", "").lower() == display_name_lower:
+                raise ValueError(f"Category '{category_data['display_name']}' already exists")
+
+        # Get next sort_order
+        max_sort = max([c.get("sort_order", 0) for c in existing], default=-1)
+
+        # Prepare document data
+        doc_data = {
+            "display_name": category_data["display_name"],
+            "icon": category_data["icon"],
+            "color": category_data["color"],
+            "monthly_cap": category_data["monthly_cap"],
+            "is_system": category_data.get("is_system", False),
+            "sort_order": max_sort + 1,
+            "created_at": firestore.SERVER_TIMESTAMP,
+            "exclude_from_total": category_data.get("exclude_from_total", False)
+        }
+
+        # Save to Firestore
+        self.db.collection(self._get_collection_path("categories")).document(category_id).set(doc_data)
+
+        return category_id
+
+    def update_category(self, category_id: str, updates: Dict) -> bool:
+        """
+        Update a category's fields.
+
+        Args:
+            category_id: The category ID
+            updates: Dictionary of fields to update
+
+        Returns:
+            True if updated, False if category not found
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for user-scoped categories")
+
+        doc_ref = self.db.collection(self._get_collection_path("categories")).document(category_id)
+
+        if not doc_ref.get().exists:
+            return False
+
+        # Filter out None values
+        filtered_updates = {k: v for k, v in updates.items() if v is not None}
+
+        if filtered_updates:
+            doc_ref.update(filtered_updates)
+
+        return True
+
+    def delete_category(self, category_id: str, reassign_to: str = "OTHER") -> int:
+        """
+        Delete a category and reassign its expenses to another category.
+
+        Args:
+            category_id: The category to delete
+            reassign_to: The category to reassign expenses to (default: OTHER)
+
+        Returns:
+            Number of expenses reassigned
+
+        Raises:
+            ValueError: If trying to delete the OTHER category
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for user-scoped categories")
+
+        # Cannot delete OTHER category
+        if category_id == "OTHER":
+            raise ValueError("Cannot delete the OTHER category")
+
+        # Get category to verify it exists
+        category = self.get_category(category_id)
+        if not category:
+            raise ValueError(f"Category '{category_id}' not found")
+
+        if category.get("is_system"):
+            raise ValueError("Cannot delete system categories")
+
+        # Reassign all expenses with this category to the target category
+        expenses_ref = self.db.collection(self._get_collection_path("expenses"))
+        expenses_to_update = expenses_ref.where(
+            filter=FieldFilter("category", "==", category_id)
+        ).stream()
+
+        reassigned_count = 0
+        for expense_doc in expenses_to_update:
+            expense_doc.reference.update({"category": reassign_to})
+            reassigned_count += 1
+
+        # Also update recurring expenses
+        recurring_ref = self.db.collection(self._get_collection_path("recurring_expenses"))
+        recurring_to_update = recurring_ref.where(
+            filter=FieldFilter("category", "==", category_id)
+        ).stream()
+
+        for recurring_doc in recurring_to_update:
+            recurring_doc.reference.update({"category": reassign_to})
+
+        # Delete the category
+        self.db.collection(self._get_collection_path("categories")).document(category_id).delete()
+
+        return reassigned_count
+
+    def reorder_categories(self, category_ids: List[str]) -> bool:
+        """
+        Update the sort order of categories.
+
+        Args:
+            category_ids: List of category IDs in desired order
+
+        Returns:
+            True if successful
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for user-scoped categories")
+
+        # Update each category's sort_order
+        for index, category_id in enumerate(category_ids):
+            doc_ref = self.db.collection(self._get_collection_path("categories")).document(category_id)
+            if doc_ref.get().exists:
+                doc_ref.update({"sort_order": index})
+
+        return True
+
+    # ==================== Total Budget Operations ====================
+
+    def get_total_monthly_budget(self) -> float:
+        """
+        Get the user's total monthly budget.
+
+        Returns:
+            Total monthly budget amount
+        """
+        if not self.user_id:
+            # Fallback to old TOTAL cap
+            return self.get_budget_cap("TOTAL") or 0
+
+        user_doc = self.db.collection("users").document(self.user_id).get()
+
+        if user_doc.exists:
+            data = user_doc.to_dict()
+            return data.get("total_monthly_budget", 0)
+
+        return 0
+
+    def set_total_monthly_budget(self, amount: float) -> bool:
+        """
+        Set the user's total monthly budget.
+
+        Args:
+            amount: The total monthly budget
+
+        Returns:
+            True if successful
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for total budget")
+
+        self.db.collection("users").document(self.user_id).set({
+            "total_monthly_budget": amount
+        }, merge=True)
+
+        return True
+
+    def recalculate_other_cap(self) -> float:
+        """
+        Recalculate the OTHER category cap based on total budget minus other caps.
+
+        OTHER cap = total_budget - sum(all_other_category_caps)
+
+        Returns:
+            The new OTHER cap value
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for recalculate")
+
+        total_budget = self.get_total_monthly_budget()
+        categories = self.get_user_categories()
+
+        # Sum all caps except OTHER
+        allocated = sum(
+            cat.get("monthly_cap", 0)
+            for cat in categories
+            if cat.get("category_id") != "OTHER"
+        )
+
+        # OTHER gets the remainder (can be 0 or negative if over-allocated)
+        other_cap = max(0, total_budget - allocated)
+
+        # Update OTHER category
+        self.update_category("OTHER", {"monthly_cap": other_cap})
+
+        return other_cap
+
+    # ==================== Category Migration Operations ====================
+
+    def has_categories_setup(self) -> bool:
+        """
+        Check if the user has custom categories set up.
+
+        Returns:
+            True if user has categories in their categories collection
+        """
+        if not self.user_id:
+            return False
+
+        # Check if categories collection has documents
+        categories_ref = self.db.collection(self._get_collection_path("categories"))
+        docs = categories_ref.limit(1).stream()
+
+        return any(True for _ in docs)
+
+    def migrate_from_budget_caps(self) -> bool:
+        """
+        Migrate user from old budget_caps collection to new categories collection.
+
+        1. Read existing budget_caps
+        2. Create category docs with icons/colors from defaults
+        3. Set total_monthly_budget from TOTAL cap
+        4. Ensure OTHER exists
+
+        Returns:
+            True if migration performed, False if already migrated
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for migration")
+
+        # Check if already migrated
+        if self.has_categories_setup():
+            return False
+
+        # Get existing budget caps
+        old_caps = self.get_all_budget_caps()
+
+        if not old_caps:
+            # No old data, initialize with defaults
+            return self.initialize_default_categories(0, list(DEFAULT_CATEGORIES.keys()))
+
+        # Extract total budget
+        total_budget = old_caps.pop("TOTAL", 0)
+
+        # Create categories from old caps
+        sort_order = 0
+        for category_id, cap in old_caps.items():
+            defaults = DEFAULT_CATEGORIES.get(category_id, {})
+
+            category_data = {
+                "display_name": defaults.get("display_name", category_id.replace("_", " ").title()),
+                "icon": defaults.get("icon", "circle"),
+                "color": defaults.get("color", "#6B7280"),
+                "monthly_cap": cap,
+                "is_system": defaults.get("is_system", False),
+                "sort_order": sort_order,
+                "created_at": firestore.SERVER_TIMESTAMP,
+                "exclude_from_total": False
+            }
+
+            self.db.collection(self._get_collection_path("categories")).document(category_id).set(category_data)
+            sort_order += 1
+
+        # Ensure OTHER exists
+        if "OTHER" not in old_caps:
+            other_defaults = DEFAULT_CATEGORIES.get("OTHER", {})
+            other_data = {
+                "display_name": other_defaults.get("display_name", "Other"),
+                "icon": other_defaults.get("icon", "more-horizontal"),
+                "color": other_defaults.get("color", "#6B7280"),
+                "monthly_cap": 0,
+                "is_system": True,
+                "sort_order": sort_order,
+                "created_at": firestore.SERVER_TIMESTAMP,
+                "exclude_from_total": False
+            }
+            self.db.collection(self._get_collection_path("categories")).document("OTHER").set(other_data)
+
+        # Set total budget
+        self.set_total_monthly_budget(total_budget)
+
+        # Recalculate OTHER cap
+        self.recalculate_other_cap()
+
+        return True
+
+    def initialize_default_categories(self, total_budget: float, selected_ids: List[str]) -> bool:
+        """
+        Initialize categories for a new user with selected defaults.
+
+        Args:
+            total_budget: The total monthly budget
+            selected_ids: List of default category IDs to create
+
+        Returns:
+            True if successful
+        """
+        if not self.user_id:
+            raise ValueError("User ID required for initialization")
+
+        # Ensure OTHER is always included
+        if "OTHER" not in selected_ids:
+            selected_ids.append("OTHER")
+
+        # Create selected categories
+        sort_order = 0
+        for category_id in selected_ids:
+            defaults = DEFAULT_CATEGORIES.get(category_id, {})
+
+            if not defaults:
+                continue
+
+            category_data = {
+                "display_name": defaults.get("display_name", category_id.replace("_", " ").title()),
+                "icon": defaults.get("icon", "circle"),
+                "color": defaults.get("color", "#6B7280"),
+                "monthly_cap": 0,  # Start with 0, user will allocate
+                "is_system": defaults.get("is_system", False),
+                "sort_order": sort_order,
+                "created_at": firestore.SERVER_TIMESTAMP,
+                "exclude_from_total": False
+            }
+
+            self.db.collection(self._get_collection_path("categories")).document(category_id).set(category_data)
+            sort_order += 1
+
+        # Set total budget
+        self.set_total_monthly_budget(total_budget)
+
+        return True
+
+    def get_category_cap(self, category_id: str) -> Optional[float]:
+        """
+        Get the budget cap for a specific category.
+
+        Args:
+            category_id: The category ID
+
+        Returns:
+            Monthly cap amount or None if category not found
+        """
+        category = self.get_category(category_id)
+        if category:
+            return category.get("monthly_cap")
+        return None
 
     # ==================== Firebase Storage Operations ====================
 
@@ -722,6 +1181,43 @@ class FirebaseClient:
             "expense_name": recurring.expense_name,
             "amount": recurring.amount,
             "category": recurring.category.name,
+            "frequency": recurring.frequency.value,
+            "day_of_month": recurring.day_of_month,
+            "day_of_week": recurring.day_of_week,
+            "last_of_month": recurring.last_of_month,
+            "last_reminded": {
+                "day": recurring.last_reminded.day,
+                "month": recurring.last_reminded.month,
+                "year": recurring.last_reminded.year
+            } if recurring.last_reminded else None,
+            "last_user_action": {
+                "day": recurring.last_user_action.day,
+                "month": recurring.last_user_action.month,
+                "year": recurring.last_user_action.year
+            } if recurring.last_user_action else None,
+            "active": recurring.active,
+            "created_at": firestore.SERVER_TIMESTAMP
+        }
+
+        # Add to Firestore
+        doc_ref = self.db.collection(self._get_collection_path("recurring_expenses")).add(recurring_data)
+        return doc_ref[1].id
+
+    def save_recurring_expense_with_category_str(self, recurring: RecurringExpense, category_str: str) -> str:
+        """
+        Save a recurring expense template with a custom category string.
+
+        Args:
+            recurring: RecurringExpense object
+            category_str: The category ID string (e.g., "FOOD_OUT", "PET_SUPPLIES")
+
+        Returns:
+            Document ID of the saved recurring expense
+        """
+        recurring_data = {
+            "expense_name": recurring.expense_name,
+            "amount": recurring.amount,
+            "category": category_str,  # Use custom category string
             "frequency": recurring.frequency.value,
             "day_of_month": recurring.day_of_month,
             "day_of_week": recurring.day_of_week,

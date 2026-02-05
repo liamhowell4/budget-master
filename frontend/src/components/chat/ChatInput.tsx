@@ -59,8 +59,8 @@ export function ChatInput({ onSendMessage, onSendAudio, disabled }: ChatInputPro
       <div
         className={cn(
           'relative flex items-end gap-2 rounded-lg',
-          'bg-neutral-50 dark:bg-neutral-900',
-          'border border-neutral-200 dark:border-neutral-800',
+          'bg-[var(--surface-secondary)]',
+          'border border-[var(--border-primary)]',
           'transition-colors',
           'p-2'
         )}
@@ -77,8 +77,8 @@ export function ChatInput({ onSendMessage, onSendAudio, disabled }: ChatInputPro
           rows={1}
           className={cn(
             'flex-1 bg-transparent px-2 py-1.5 resize-none',
-            'text-sm text-neutral-900 dark:text-neutral-100',
-            'placeholder:text-neutral-400 dark:placeholder:text-neutral-500',
+            'text-sm text-[var(--text-primary)]',
+            'placeholder:text-[var(--text-muted)]',
             'disabled:opacity-50',
             'max-h-32'
           )}
@@ -100,8 +100,8 @@ export function ChatInput({ onSendMessage, onSendAudio, disabled }: ChatInputPro
               'flex items-center justify-center',
               'h-8 w-8 rounded-md transition-colors',
               message.trim() && !disabled
-                ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900'
-                : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed'
+                ? 'bg-[var(--text-primary)] text-[var(--text-inverted)]'
+                : 'bg-[var(--surface-secondary)] text-[var(--text-muted)] cursor-not-allowed'
             )}
             aria-label="Send message"
           >

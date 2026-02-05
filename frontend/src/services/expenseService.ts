@@ -31,12 +31,13 @@ interface UpdateExpenseResponse {
   updated_fields: {
     expense_name?: string
     amount?: number
+    category?: string
   }
 }
 
 export async function updateExpense(
   expenseId: string,
-  updates: { expense_name?: string; amount?: number }
+  updates: { expense_name?: string; amount?: number; category?: string }
 ): Promise<UpdateExpenseResponse> {
   const response = await api.put<UpdateExpenseResponse>(`/expenses/${expenseId}`, updates)
   return response.data

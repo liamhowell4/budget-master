@@ -31,9 +31,10 @@ from pydantic import BaseModel
 
 from .firebase_client import FirebaseClient
 from .budget_manager import BudgetManager
-from .output_schemas import ExpenseType, Date
+from .output_schemas import ExpenseType, Date, CategoryCreate, CategoryUpdate, CategoryReorder
 from .recurring_manager import RecurringManager
 from .auth import get_current_user, get_optional_user, AuthenticatedUser
+from .category_defaults import DEFAULT_CATEGORIES, MAX_CATEGORIES
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -312,6 +313,7 @@ class BudgetStatusResponse(BaseModel):
     total_cap: float
     total_percentage: float
     total_remaining: float
+    excluded_categories: List[str] = []  # Category IDs excluded from total calculation
 
 
 class BulkBudgetUpdateRequest(BaseModel):
@@ -536,6 +538,7 @@ class ExpenseUpdateRequest(BaseModel):
     """Request body for updating an expense."""
     expense_name: Optional[str] = None
     amount: Optional[float] = None
+    category: Optional[str] = None
 
 
 @app.put("/expenses/{expense_id}")
@@ -566,7 +569,8 @@ async def update_expense(
         updated = user_firebase.update_expense(
             expense_id=expense_id,
             expense_name=update_data.expense_name,
-            amount=update_data.amount
+            amount=update_data.amount,
+            category_str=update_data.category
         )
 
         if not updated:
@@ -603,6 +607,7 @@ async def get_budget_status(
     - month: Month to check (defaults to current month)
 
     Returns budget data for all categories with spending/cap/percentage.
+    Total spending excludes categories marked with exclude_from_total=true.
     """
     try:
         # Create user-scoped Firebase client and budget manager
@@ -617,49 +622,80 @@ async def get_budget_status(
 
         month_name = datetime(year, month, 1).strftime("%B %Y")
 
-        # Get category emoji mapping (global, not user-scoped)
-        categories_data = firebase_client.get_category_data()
-        emoji_map = {cat["category_id"]: cat.get("emoji", "📦") for cat in categories_data}
+        # Silent migration if needed
+        if not user_firebase.has_categories_setup():
+            user_firebase.migrate_from_budget_caps()
 
-        # Build category list
+        # Get user's custom categories
+        user_categories = user_firebase.get_user_categories()
+
+        # Build a map of category_id -> category data for quick lookup
+        category_map = {cat["category_id"]: cat for cat in user_categories}
+
+        # Get spending by category for the month
+        from .output_schemas import Date as DateModel
+        start_date = DateModel(day=1, month=month, year=year)
+        # Get last day of month
+        if month == 12:
+            end_day = 31
+        else:
+            from calendar import monthrange
+            end_day = monthrange(year, month)[1]
+        end_date = DateModel(day=end_day, month=month, year=year)
+
+        spending_by_category = user_firebase.get_spending_by_category(start_date, end_date)
+
+        # Build category list and track excluded categories
         category_list = []
+        excluded_categories = []
+        total_spending_filtered = 0.0
+        excluded_cap_total = 0.0
 
-        for expense_type in ExpenseType:
-            spending = user_budget_manager.calculate_monthly_spending(expense_type, year, month)
-            cap = user_firebase.get_budget_cap(expense_type.name)
+        for cat in user_categories:
+            category_id = cat["category_id"]
+            spending = spending_by_category.get(category_id, 0)
+            cap = cat.get("monthly_cap", 0)
+            is_excluded = cat.get("exclude_from_total", False)
 
-            if cap is None or cap == 0:
-                cap = 0
+            if cap > 0:
+                percentage = (spending / cap) * 100
+                remaining = cap - spending
+            else:
                 percentage = 0
                 remaining = 0
-            else:
-                percentage = (spending / cap) * 100 if cap > 0 else 0
-                remaining = cap - spending
 
             category_list.append(BudgetCategory(
-                category=expense_type.name,
+                category=category_id,
                 spending=spending,
                 cap=cap,
                 percentage=percentage,
                 remaining=remaining,
-                emoji=emoji_map.get(expense_type.name, "📦")
+                emoji=cat.get("icon", "📦")  # Use icon as emoji for backwards compatibility
             ))
 
-        # Get total budget
-        total_spending = user_budget_manager.calculate_total_monthly_spending(year, month)
-        total_cap = user_firebase.get_budget_cap("TOTAL") or 0
-        total_percentage = (total_spending / total_cap) * 100 if total_cap > 0 else 0
-        total_remaining = total_cap - total_spending
+            # Track excluded categories and calculate filtered totals
+            if is_excluded:
+                excluded_categories.append(category_id)
+                excluded_cap_total += cap
+            else:
+                total_spending_filtered += spending
+
+        # Get total budget cap and subtract excluded category caps
+        total_cap_raw = user_firebase.get_total_monthly_budget() or 0
+        total_cap = total_cap_raw - excluded_cap_total
+        total_percentage = (total_spending_filtered / total_cap) * 100 if total_cap > 0 else 0
+        total_remaining = total_cap - total_spending_filtered
 
         return BudgetStatusResponse(
             year=year,
             month=month,
             month_name=month_name,
             categories=category_list,
-            total_spending=total_spending,
+            total_spending=total_spending_filtered,
             total_cap=total_cap,
             total_percentage=total_percentage,
-            total_remaining=total_remaining
+            total_remaining=total_remaining,
+            excluded_categories=excluded_categories
         )
 
     except Exception as e:
@@ -741,6 +777,335 @@ async def bulk_update_budget_caps(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ==================== Category Endpoints ====================
+
+@app.get("/categories")
+async def get_categories(
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Get all categories for the authenticated user.
+
+    Performs silent migration from budget_caps if needed.
+    Returns list of categories sorted by sort_order.
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+
+        # Silent migration if needed
+        if not user_firebase.has_categories_setup():
+            user_firebase.migrate_from_budget_caps()
+
+        categories = user_firebase.get_user_categories()
+        total_budget = user_firebase.get_total_monthly_budget()
+
+        return {
+            "categories": categories,
+            "total_monthly_budget": total_budget,
+            "max_categories": MAX_CATEGORIES
+        }
+    except Exception as e:
+        print(f"Error in GET /categories: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/categories")
+async def create_category(
+    category: CategoryCreate,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Create a new category for the authenticated user.
+
+    Validates:
+    - Max 15 categories
+    - Unique name (case-insensitive)
+    - Cap <= available budget
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+
+        # Ensure categories are set up
+        if not user_firebase.has_categories_setup():
+            user_firebase.migrate_from_budget_caps()
+
+        # Check available budget
+        total_budget = user_firebase.get_total_monthly_budget()
+        categories = user_firebase.get_user_categories()
+        allocated = sum(cat.get("monthly_cap", 0) for cat in categories)
+        available = total_budget - allocated
+
+        if category.monthly_cap > available:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Monthly cap ${category.monthly_cap:.2f} exceeds available budget ${available:.2f}"
+            )
+
+        # Create category
+        category_id = user_firebase.create_category({
+            "display_name": category.display_name,
+            "icon": category.icon,
+            "color": category.color,
+            "monthly_cap": category.monthly_cap
+        })
+
+        # Recalculate OTHER cap
+        user_firebase.recalculate_other_cap()
+
+        return {
+            "success": True,
+            "category_id": category_id,
+            "message": f"Created category '{category.display_name}'"
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in POST /categories: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# NOTE: /categories/reorder and /categories/defaults MUST be before /categories/{category_id}
+# otherwise FastAPI will match "reorder" and "defaults" as category IDs
+
+@app.put("/categories/reorder")
+async def reorder_categories(
+    reorder: CategoryReorder,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Update the sort order of categories.
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+
+        success = user_firebase.reorder_categories(reorder.category_ids)
+
+        return {
+            "success": success,
+            "message": "Categories reordered"
+        }
+    except Exception as e:
+        print(f"Error in PUT /categories/reorder: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/categories/defaults")
+async def get_default_categories():
+    """
+    Get the list of default categories (for new user setup).
+
+    Does not require authentication.
+    """
+    defaults = []
+    for category_id, config in DEFAULT_CATEGORIES.items():
+        defaults.append({
+            "category_id": category_id,
+            "display_name": config.get("display_name", category_id),
+            "icon": config.get("icon", "circle"),
+            "color": config.get("color", "#6B7280"),
+            "description": config.get("description", ""),
+            "is_system": config.get("is_system", False)
+        })
+
+    return {
+        "defaults": defaults,
+        "max_categories": MAX_CATEGORIES
+    }
+
+
+@app.put("/categories/{category_id}")
+async def update_category(
+    category_id: str,
+    updates: CategoryUpdate,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Update a category for the authenticated user.
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+
+        # Get existing category
+        existing = user_firebase.get_category(category_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Category not found")
+
+        # If updating monthly_cap, validate against available budget
+        if updates.monthly_cap is not None:
+            total_budget = user_firebase.get_total_monthly_budget()
+            categories = user_firebase.get_user_categories()
+
+            # Calculate allocated (excluding this category)
+            allocated = sum(
+                cat.get("monthly_cap", 0)
+                for cat in categories
+                if cat.get("category_id") != category_id
+            )
+            available = total_budget - allocated
+
+            if updates.monthly_cap > available:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Monthly cap ${updates.monthly_cap:.2f} exceeds available budget ${available:.2f}"
+                )
+
+        # Update category
+        update_dict = updates.model_dump(exclude_none=True)
+        success = user_firebase.update_category(category_id, update_dict)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Category not found")
+
+        # Recalculate OTHER cap if monthly_cap was updated
+        if updates.monthly_cap is not None:
+            user_firebase.recalculate_other_cap()
+
+        return {
+            "success": True,
+            "category_id": category_id,
+            "message": "Category updated"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in PUT /categories/{category_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/categories/{category_id}")
+async def delete_category(
+    category_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    reassign_to: str = "OTHER"
+):
+    """
+    Delete a category and reassign its expenses.
+
+    Query Parameters:
+    - reassign_to: Category to reassign expenses to (default: OTHER)
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+
+        # Verify reassign_to category exists
+        if reassign_to != "OTHER":
+            target = user_firebase.get_category(reassign_to)
+            if not target:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Target category '{reassign_to}' not found"
+                )
+
+        # Delete category
+        reassigned_count = user_firebase.delete_category(category_id, reassign_to)
+
+        # Recalculate OTHER cap
+        user_firebase.recalculate_other_cap()
+
+        return {
+            "success": True,
+            "category_id": category_id,
+            "reassigned_count": reassigned_count,
+            "reassigned_to": reassign_to,
+            "message": f"Deleted category, reassigned {reassigned_count} expense(s) to {reassign_to}"
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in DELETE /categories/{category_id}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Total Budget Endpoints ====================
+
+@app.get("/budget/total")
+async def get_total_budget(
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Get the user's total monthly budget.
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+
+        # Ensure categories are set up
+        if not user_firebase.has_categories_setup():
+            user_firebase.migrate_from_budget_caps()
+
+        total_budget = user_firebase.get_total_monthly_budget()
+        categories = user_firebase.get_user_categories()
+        allocated = sum(cat.get("monthly_cap", 0) for cat in categories)
+
+        return {
+            "total_monthly_budget": total_budget,
+            "allocated": allocated,
+            "available": total_budget - allocated
+        }
+    except Exception as e:
+        print(f"Error in GET /budget/total: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class TotalBudgetUpdate(BaseModel):
+    """Request model for updating total budget."""
+    total_monthly_budget: float
+
+
+@app.put("/budget/total")
+async def update_total_budget(
+    update: TotalBudgetUpdate,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Update the user's total monthly budget.
+
+    Recalculates OTHER category cap.
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+
+        # Ensure categories are set up
+        if not user_firebase.has_categories_setup():
+            user_firebase.migrate_from_budget_caps()
+
+        if update.total_monthly_budget < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Total budget must be non-negative"
+            )
+
+        # Update total budget
+        user_firebase.set_total_monthly_budget(update.total_monthly_budget)
+
+        # Recalculate OTHER cap
+        other_cap = user_firebase.recalculate_other_cap()
+
+        return {
+            "success": True,
+            "total_monthly_budget": update.total_monthly_budget,
+            "other_cap": other_cap,
+            "message": "Total budget updated"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in PUT /budget/total: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Recurring Expense Endpoints ====================
 
 @app.get("/recurring")
 async def get_recurring_expenses(
@@ -1143,12 +1508,20 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "version": "3.1.0",
+        "version": "3.2.0",
         "endpoints": [
             "POST /mcp/process_expense",
             "GET /expenses",
             "GET /budget",
             "PUT /budget-caps/bulk-update",
+            "GET /categories",
+            "POST /categories",
+            "PUT /categories/{id}",
+            "DELETE /categories/{id}",
+            "PUT /categories/reorder",
+            "GET /categories/defaults",
+            "GET /budget/total",
+            "PUT /budget/total",
             "GET /recurring",
             "GET /pending",
             "POST /pending/{id}/confirm",
