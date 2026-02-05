@@ -1,20 +1,20 @@
 import { useState } from 'react'
 import { cn } from '@/utils/cn'
 import { CategoriesTab } from '@/components/settings/CategoriesTab'
-import { Tag } from 'lucide-react'
+import { AppearanceTab } from '@/components/settings/AppearanceTab'
+import { ProfileTab } from '@/components/settings/ProfileTab'
+import { Tag, Palette, User } from 'lucide-react'
 
 const tabs = [
+  { id: 'profile', label: 'Profile', icon: User },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'categories', label: 'Categories', icon: Tag },
-  // Future tabs can be added here:
-  // { id: 'notifications', label: 'Notifications', icon: Bell },
-  // { id: 'account', label: 'Account', icon: User },
-  // { id: 'privacy', label: 'Privacy', icon: Shield },
 ] as const
 
 type TabId = typeof tabs[number]['id']
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('categories')
+  const [activeTab, setActiveTab] = useState<TabId>('profile')
 
   return (
     <div className="min-h-[calc(100dvh-3.5rem)] bg-neutral-50 dark:bg-neutral-950">
@@ -53,6 +53,8 @@ export function SettingsPage() {
           {/* Content area */}
           <div className="flex-1 min-w-0">
             <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
+              {activeTab === 'profile' && <ProfileTab />}
+              {activeTab === 'appearance' && <AppearanceTab />}
               {activeTab === 'categories' && <CategoriesTab />}
             </div>
           </div>

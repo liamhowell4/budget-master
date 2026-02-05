@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+VERY IMPORTANT: when dealing with Firebase, remember to use the project "budget-master-lh"
+
 ## Project Overview
 
 A personal expense tracking and budgeting app with conversational AI capabilities powered by Claude + MCP (Model Context Protocol).

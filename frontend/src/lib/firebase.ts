@@ -8,6 +8,10 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  updateProfile as firebaseUpdateProfile,
+  updatePassword as firebaseUpdatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
   type User,
   type Auth,
 } from 'firebase/auth'
@@ -71,6 +75,36 @@ export async function getIdToken(): Promise<string | null> {
 
 export function onAuthChange(callback: (user: User | null) => void): () => void {
   return onAuthStateChanged(auth, callback)
+}
+
+export async function updateDisplayName(displayName: string): Promise<void> {
+  const user = auth.currentUser
+  if (!user) throw new Error('No user logged in')
+  await firebaseUpdateProfile(user, { displayName })
+}
+
+export async function updatePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const user = auth.currentUser
+  if (!user || !user.email) throw new Error('No user logged in')
+
+  // Re-authenticate with current password first
+  const credential = EmailAuthProvider.credential(user.email, currentPassword)
+  await reauthenticateWithCredential(user, credential)
+
+  // Then update password
+  await firebaseUpdatePassword(user, newPassword)
+}
+
+export function getAuthProvider(user: User | null): 'email' | 'google' | 'github' | null {
+  if (!user) return null
+  const providerData = user.providerData
+  if (!providerData.length) return null
+
+  const providerId = providerData[0].providerId
+  if (providerId === 'password') return 'email'
+  if (providerId === 'google.com') return 'google'
+  if (providerId === 'github.com') return 'github'
+  return null
 }
 
 export { auth, app }

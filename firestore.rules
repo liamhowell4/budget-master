@@ -21,6 +21,11 @@ service cloud.firestore {
       allow write: if false;  // Only admin can modify via Admin SDK
     }
 
+    // User preferences - users can only access their own preferences
+    match /user_preferences/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Legacy collections (for migration period) - deny direct access
     // Data should be accessed via users/{userId}/... subcollections
     match /expenses/{expenseId} {
