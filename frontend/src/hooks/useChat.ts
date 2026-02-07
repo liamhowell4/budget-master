@@ -89,6 +89,7 @@ export function useChat() {
           role: msg.role,
           content: msg.content,
           timestamp: new Date(msg.timestamp),
+          toolCalls: msg.tool_calls,
         }))
         setMessages(loadedMessages)
       } catch (err) {
