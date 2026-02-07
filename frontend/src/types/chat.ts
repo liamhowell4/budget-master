@@ -31,6 +31,7 @@ export interface StoredMessage {
   role: MessageRole
   content: string
   timestamp: string
+  tool_calls?: ToolCall[]
 }
 
 export interface Conversation {

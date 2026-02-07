@@ -1849,6 +1849,7 @@ async def chat_stream(
         """Generate SSE events for the chat response."""
         nonlocal conversation_id
         final_response_text = []
+        all_tool_calls = []
 
         try:
             # Send conversation_id first so frontend can track it
@@ -1952,6 +1953,14 @@ async def chat_stream(
                         }
                         yield f"data: {json.dumps(tool_end_event)}\n\n"
 
+                        # Collect tool call for persistence
+                        all_tool_calls.append({
+                            "id": tool_use_id,
+                            "name": tool_name,
+                            "args": {k: v for k, v in tool_args.items() if k != "auth_token"},
+                            "result": parsed_result
+                        })
+
                         # Add tool_use to assistant content
                         assistant_content.append({
                             "type": "tool_use",
@@ -2005,7 +2014,10 @@ async def chat_stream(
             user_firebase.add_message_to_conversation(conversation_id, "user", chat_message.message)
             full_response = "\n".join(final_response_text)
             if full_response:
-                user_firebase.add_message_to_conversation(conversation_id, "assistant", full_response)
+                user_firebase.add_message_to_conversation(
+                    conversation_id, "assistant", full_response,
+                    tool_calls=all_tool_calls if all_tool_calls else None
+                )
 
             # Update conversation summary from first user message
             if len(conversation_messages) == 0:

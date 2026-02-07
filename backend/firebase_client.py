@@ -1557,7 +1557,8 @@ class FirebaseClient:
         self,
         conversation_id: str,
         role: str,
-        content: str
+        content: str,
+        tool_calls: list = None
     ) -> bool:
         """
         Add a message to a conversation.
@@ -1566,6 +1567,7 @@ class FirebaseClient:
             conversation_id: Firestore document ID
             role: Message role ("user" or "assistant")
             content: Message content
+            tool_calls: Optional list of tool call dicts with id, name, args, result
 
         Returns:
             True if successful, False if conversation not found
@@ -1587,6 +1589,9 @@ class FirebaseClient:
             "content": content,
             "timestamp": now.isoformat()
         }
+
+        if tool_calls:
+            message["tool_calls"] = tool_calls
 
         # Use array union to add message
         doc_ref.update({
