@@ -1,6 +1,7 @@
 export { Badge } from './Badge'
 export { Card, CardHeader } from './Card'
 export { CategoryIcon } from './CategoryIcon'
+export { CategoryExpensesModal, getCategoryDisplayName } from './CategoryExpensesModal'
 export { ColorPicker } from './ColorPicker'
 export { ExpenseEditModal } from './ExpenseEditModal'
 export { IconPicker, DynamicIcon } from './IconPicker'
