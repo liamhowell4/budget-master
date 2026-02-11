@@ -1184,6 +1184,7 @@ class FirebaseClient:
             "frequency": recurring.frequency.value,
             "day_of_month": recurring.day_of_month,
             "day_of_week": recurring.day_of_week,
+            "month_of_year": recurring.month_of_year,
             "last_of_month": recurring.last_of_month,
             "last_reminded": {
                 "day": recurring.last_reminded.day,
@@ -1221,6 +1222,7 @@ class FirebaseClient:
             "frequency": recurring.frequency.value,
             "day_of_month": recurring.day_of_month,
             "day_of_week": recurring.day_of_week,
+            "month_of_year": recurring.month_of_year,
             "last_of_month": recurring.last_of_month,
             "last_reminded": {
                 "day": recurring.last_reminded.day,
@@ -1338,6 +1340,7 @@ class FirebaseClient:
             frequency=frequency,
             day_of_month=data.get("day_of_month"),
             day_of_week=data.get("day_of_week"),
+            month_of_year=data.get("month_of_year"),
             last_of_month=data.get("last_of_month", False),
             last_reminded=last_reminded,
             last_user_action=last_user_action,
@@ -1692,6 +1695,51 @@ class FirebaseClient:
         data = doc.to_dict()
         recent_expenses = data.get("recent_expenses", [])
         return recent_expenses[:limit]
+
+    def add_deleted_expense_to_conversation(self, conversation_id: str, expense_id: str) -> bool:
+        """
+        Append an expense ID to a conversation's deleted_expense_ids array.
+
+        Uses Firestore ArrayUnion for an atomic, lightweight update
+        without reading/writing the full messages array.
+
+        Args:
+            conversation_id: Firestore document ID of the conversation
+            expense_id: The expense ID to mark as deleted
+
+        Returns:
+            True if successful, False if conversation not found
+        """
+        doc_ref = self.db.collection(self._get_collection_path("conversations")).document(conversation_id)
+
+        if not doc_ref.get().exists:
+            return False
+
+        doc_ref.update({
+            "deleted_expense_ids": firestore.ArrayUnion([expense_id])
+        })
+        return True
+
+    def verify_expenses_exist(self, expense_ids: list) -> list:
+        """
+        Check which expense IDs still exist in Firestore.
+
+        Args:
+            expense_ids: List of expense document IDs to check
+
+        Returns:
+            List of expense IDs that still exist
+        """
+        if not expense_ids:
+            return []
+
+        existing = []
+        expenses_col = self._get_collection_path("expenses")
+        for eid in expense_ids:
+            doc = self.db.collection(expenses_col).document(eid).get()
+            if doc.exists:
+                existing.append(eid)
+        return existing
 
     def delete_conversation(self, conversation_id: str) -> bool:
         """

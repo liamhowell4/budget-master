@@ -69,6 +69,25 @@ export async function deleteConversation(token: string, conversationId: string):
   }
 }
 
+export async function markExpenseDeleted(
+  token: string,
+  conversationId: string,
+  expenseId: string
+): Promise<void> {
+  const response = await fetch(`${API_URL}/conversations/${conversationId}/deleted-expenses`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ expense_id: expenseId }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to mark expense as deleted: ${response.statusText}`)
+  }
+}
+
 // Check if a conversation is still "active" (within 12 hours of last activity)
 export function isConversationActive(lastActivity: string): boolean {
   const INACTIVITY_THRESHOLD_HOURS = 12

@@ -5,6 +5,7 @@ import { ExpenseCard } from './ExpenseCard'
 interface ToolCallDisplayProps {
   toolCall: ToolCall
   budgetWarning?: string
+  deletedExpenseIds?: Set<string>
   onExpenseDelete?: (expenseId: string) => void
   onExpenseEdit?: (expenseId: string, updates: { name?: string; amount?: number }) => void
 }
@@ -30,7 +31,7 @@ function isSaveExpenseResult(result: unknown): result is SaveExpenseResult {
   )
 }
 
-export function ToolCallDisplay({ toolCall, budgetWarning, onExpenseDelete, onExpenseEdit }: ToolCallDisplayProps) {
+export function ToolCallDisplay({ toolCall, budgetWarning, deletedExpenseIds, onExpenseDelete, onExpenseEdit }: ToolCallDisplayProps) {
   // Render ExpenseCard for successful save_expense calls
   if (toolCall.name === 'save_expense' && isSaveExpenseResult(toolCall.result)) {
     // Include date from tool args if not in result
@@ -38,10 +39,12 @@ export function ToolCallDisplay({ toolCall, budgetWarning, onExpenseDelete, onEx
     if (!result.date && toolCall.args?.date) {
       result.date = toolCall.args.date as { day: number; month: number; year: number }
     }
+    const isDeleted = deletedExpenseIds?.has(result.expense_id) ?? false
     return (
       <ExpenseCard
         result={result}
         budgetWarning={budgetWarning}
+        initialDeleted={isDeleted}
         onDelete={onExpenseDelete}
         onEdit={onExpenseEdit}
       />

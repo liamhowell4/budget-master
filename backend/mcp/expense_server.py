@@ -364,7 +364,7 @@ async def handle_list_tools() -> list[Tool]:
             description=(
                 "Create a recurring expense template for subscriptions, rent, bills, etc. "
                 "The system will automatically create pending expenses on the specified schedule. "
-                "Supports monthly (on specific day), weekly (on specific weekday), and biweekly frequencies. "
+                "Supports monthly (on specific day), weekly (on specific weekday), biweekly, and yearly frequencies. "
                 "NOTE: Recurring expenses must have positive amounts only (no negative/refund recurring expenses)."
             ),
             annotations=ToolAnnotations(title="Create Recurring Expense"),
@@ -389,13 +389,19 @@ async def handle_list_tools() -> list[Tool]:
                     "frequency": {
                         "type": "string",
                         "description": "How often the expense recurs",
-                        "enum": ["monthly", "weekly", "biweekly"]
+                        "enum": ["monthly", "weekly", "biweekly", "yearly"]
                     },
                     "day_of_month": {
                         "type": "integer",
-                        "description": "Day of month (1-31) for monthly recurring expenses. Required if frequency is 'monthly'.",
+                        "description": "Day of month (1-31) for monthly or yearly recurring expenses. Required if frequency is 'monthly' or 'yearly'.",
                         "minimum": 1,
                         "maximum": 31
+                    },
+                    "month_of_year": {
+                        "type": "integer",
+                        "description": "Month of year (1=January, 12=December) for yearly recurring expenses. Required if frequency is 'yearly'.",
+                        "minimum": 1,
+                        "maximum": 12
                     },
                     "day_of_week": {
                         "type": "integer",
@@ -1161,9 +1167,10 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
             "name": str,
             "amount": float,
             "category": str,
-            "frequency": str ("monthly", "weekly", "biweekly"),
-            "day_of_month": int (optional, for monthly),
+            "frequency": str ("monthly", "weekly", "biweekly", "yearly"),
+            "day_of_month": int (optional, for monthly/yearly),
             "day_of_week": int (optional, for weekly/biweekly),
+            "month_of_year": int (optional, for yearly),
             "last_of_month": bool (optional)
         }
 
@@ -1179,6 +1186,7 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
     frequency_str = arguments["frequency"]
     day_of_month = arguments.get("day_of_month")
     day_of_week = arguments.get("day_of_week")
+    month_of_year = arguments.get("month_of_year")
     last_of_month = arguments.get("last_of_month", False)
 
     # Get user-scoped Firebase client
@@ -1214,6 +1222,19 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
             "error": "day_of_month is required for monthly recurring expenses"
         }))]
 
+    # Validate day_of_month and month_of_year for yearly frequency
+    if frequency == FrequencyType.YEARLY:
+        if month_of_year is None:
+            return [TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "month_of_year is required for yearly recurring expenses"
+            }))]
+        if not last_of_month and day_of_month is None:
+            return [TextContent(type="text", text=json.dumps({
+                "success": False,
+                "error": "day_of_month is required for yearly recurring expenses"
+            }))]
+
     # Validate day_of_week for weekly/biweekly
     if frequency in [FrequencyType.WEEKLY, FrequencyType.BIWEEKLY] and day_of_week is None:
         return [TextContent(type="text", text=json.dumps({
@@ -1233,6 +1254,7 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
         frequency=frequency,
         day_of_month=day_of_month,
         day_of_week=day_of_week,
+        month_of_year=month_of_year,
         last_of_month=last_of_month,
         last_reminded=None,  # Will be set when first pending expense is created
         last_user_action=today_date,  # Set to today to avoid immediate retroactive pending

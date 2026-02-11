@@ -22,6 +22,7 @@ class FrequencyType(Enum):
     MONTHLY = "monthly"
     WEEKLY = "weekly"
     BIWEEKLY = "biweekly"
+    YEARLY = "yearly"
 
 class Date(BaseModel):
     day: int
@@ -41,8 +42,9 @@ class RecurringExpense(BaseModel):
     amount: float
     category: ExpenseType
     frequency: FrequencyType
-    day_of_month: Optional[int] = None  # 1-31 for monthly
+    day_of_month: Optional[int] = None  # 1-31 for monthly/yearly
     day_of_week: Optional[int] = None  # 0-6 for weekly/biweekly (0=Monday)
+    month_of_year: Optional[int] = None  # 1-12 for yearly
     last_of_month: bool = False  # True if user specified "last day of month"
     last_reminded: Optional[Date] = None  # When we last created pending expense
     last_user_action: Optional[Date] = None  # When user last confirmed/skipped/edited

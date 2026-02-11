@@ -24,6 +24,7 @@ interface BudgetAlert {
 interface ExpenseCardProps {
   result: SaveExpenseResult
   budgetWarning?: string
+  initialDeleted?: boolean
   onDelete?: (expenseId: string) => void
   onEdit?: (expenseId: string, updates: { name?: string; amount?: number; category?: string }) => void
 }
@@ -61,7 +62,7 @@ function parseBudgetWarning(warning?: string): BudgetAlert[] {
   return alerts
 }
 
-export function ExpenseCard({ result, budgetWarning, onDelete, onEdit }: ExpenseCardProps) {
+export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, onEdit }: ExpenseCardProps) {
   const { categories } = useCategories()
   const [isEditing, setIsEditing] = useState(false)
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
@@ -69,7 +70,7 @@ export function ExpenseCard({ result, budgetWarning, onDelete, onEdit }: Expense
   const [editAmount, setEditAmount] = useState(result.amount.toString())
   const [editCategory, setEditCategory] = useState(result.category)
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
-  const [isDeleted, setIsDeleted] = useState(false)
+  const [isDeleted, setIsDeleted] = useState(initialDeleted ?? false)
 
   const category = (isEditing ? editCategory : result.category) as ExpenseType
   const colors = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.OTHER

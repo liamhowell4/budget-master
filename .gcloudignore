@@ -39,7 +39,11 @@ legacy/
 # Scripts (not needed in production)
 scripts/
 
-# Firebase config (not needed in Cloud Run)
+# Firebase config and local files (not needed in Cloud Run)
 firebase.json
 firestore.indexes.json
 .firebaserc
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log

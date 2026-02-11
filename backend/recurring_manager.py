@@ -60,6 +60,8 @@ class RecurringManager:
             return RecurringManager._calculate_next_weekly(recurring, from_date)
         elif recurring.frequency == FrequencyType.BIWEEKLY:
             return RecurringManager._calculate_next_biweekly(recurring, from_date)
+        elif recurring.frequency == FrequencyType.YEARLY:
+            return RecurringManager._calculate_next_yearly(recurring, from_date)
         else:
             raise ValueError(f"Unsupported frequency: {recurring.frequency}")
 
@@ -150,6 +152,39 @@ class RecurringManager:
         return next_weekly
 
     @staticmethod
+    def _calculate_next_yearly(recurring: RecurringExpense, from_date: date) -> date:
+        """Calculate next yearly trigger date."""
+        target_month = recurring.month_of_year  # 1-12
+        target_day = recurring.day_of_month
+
+        if recurring.last_of_month:
+            # Last day of the target month
+            year = from_date.year
+            last_day = monthrange(year, target_month)[1]
+            trigger_date = date(year, target_month, last_day)
+
+            if trigger_date <= from_date:
+                year += 1
+                last_day = monthrange(year, target_month)[1]
+                trigger_date = date(year, target_month, last_day)
+
+            return trigger_date
+        else:
+            # Specific day of the target month
+            year = from_date.year
+            last_day_of_month = monthrange(year, target_month)[1]
+            actual_day = min(target_day, last_day_of_month)
+            trigger_date = date(year, target_month, actual_day)
+
+            if trigger_date <= from_date:
+                year += 1
+                last_day_of_month = monthrange(year, target_month)[1]
+                actual_day = min(target_day, last_day_of_month)
+                trigger_date = date(year, target_month, actual_day)
+
+            return trigger_date
+
+    @staticmethod
     def calculate_most_recent_trigger_date(recurring: RecurringExpense, as_of_date: Optional[date] = None) -> date:
         """
         Calculate the most recent trigger date that should have occurred.
@@ -172,6 +207,8 @@ class RecurringManager:
             return RecurringManager._calculate_most_recent_weekly(recurring, as_of_date)
         elif recurring.frequency == FrequencyType.BIWEEKLY:
             return RecurringManager._calculate_most_recent_biweekly(recurring, as_of_date)
+        elif recurring.frequency == FrequencyType.YEARLY:
+            return RecurringManager._calculate_most_recent_yearly(recurring, as_of_date)
         else:
             raise ValueError(f"Unsupported frequency: {recurring.frequency}")
 
@@ -257,6 +294,37 @@ class RecurringManager:
                 return most_recent_weekly - timedelta(days=7)
 
         return most_recent_weekly
+
+    @staticmethod
+    def _calculate_most_recent_yearly(recurring: RecurringExpense, as_of_date: date) -> date:
+        """Calculate most recent yearly trigger date."""
+        target_month = recurring.month_of_year
+        target_day = recurring.day_of_month
+
+        if recurring.last_of_month:
+            year = as_of_date.year
+            last_day = monthrange(year, target_month)[1]
+            trigger_date = date(year, target_month, last_day)
+
+            if trigger_date > as_of_date:
+                year -= 1
+                last_day = monthrange(year, target_month)[1]
+                trigger_date = date(year, target_month, last_day)
+
+            return trigger_date
+        else:
+            year = as_of_date.year
+            last_day_of_month = monthrange(year, target_month)[1]
+            actual_day = min(target_day, last_day_of_month)
+            trigger_date = date(year, target_month, actual_day)
+
+            if trigger_date > as_of_date:
+                year -= 1
+                last_day_of_month = monthrange(year, target_month)[1]
+                actual_day = min(target_day, last_day_of_month)
+                trigger_date = date(year, target_month, actual_day)
+
+            return trigger_date
 
     @staticmethod
     def should_create_pending(recurring: RecurringExpense) -> Tuple[bool, Optional[date]]:

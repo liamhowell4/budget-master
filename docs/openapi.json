@@ -1,0 +1,1869 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Personal Expense Tracker API",
+    "description": "API for tracking personal expenses via SMS/MMS and Streamlit UI",
+    "version": "2.0.0"
+  },
+  "paths": {
+    "/mcp/process_expense": {
+      "post": {
+        "summary": "Mcp Process Expense",
+        "description": "Process expenses via MCP backend.\n\nRequires authentication via Firebase Auth token in Authorization header.\nAccepts text, image, and/or audio inputs and processes them via Claude + MCP.\n\nArgs:\n    current_user: Authenticated user from Firebase Auth token\n    text: Optional text description of expense\n    image: Optional receipt image file\n    audio: Optional voice recording (WAV, MP3, etc.) for Whisper transcription\n\nReturns:\n    ExpenseResponse with structured expense data",
+        "operationId": "mcp_process_expense_mcp_process_expense_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_mcp_process_expense_mcp_process_expense_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/expenses": {
+      "get": {
+        "summary": "Get Expenses",
+        "description": "Get expense history with optional filters.\n\nRequires authentication via Firebase Auth token.\n\nQuery Parameters:\n- year: Filter by year (e.g., 2025)\n- month: Filter by month (1-12)\n- category: Filter by category (e.g., \"FOOD_OUT\")\n\nReturns list of expenses matching filters.",
+        "operationId": "get_expenses_expenses_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/expenses/{expense_id}": {
+      "delete": {
+        "summary": "Delete Expense",
+        "description": "Delete an expense by ID.\n\nRequires authentication via Firebase Auth token.\n\nPath Parameters:\n- expense_id: The Firestore document ID of the expense to delete\n\nReturns success status.",
+        "operationId": "delete_expense_expenses__expense_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Expense Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Expense",
+        "description": "Update an expense by ID.\n\nRequires authentication via Firebase Auth token.\n\nPath Parameters:\n- expense_id: The Firestore document ID of the expense to update\n\nRequest Body:\n- expense_name: New name (optional)\n- amount: New amount (optional)\n\nReturns success status with updated fields.",
+        "operationId": "update_expense_expenses__expense_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "expense_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Expense Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/budget": {
+      "get": {
+        "summary": "Get Budget Status",
+        "description": "Get current budget status for all categories.\n\nRequires authentication via Firebase Auth token.\n\nQuery Parameters:\n- year: Year to check (defaults to current year)\n- month: Month to check (defaults to current month)\n\nReturns budget data for all categories with spending/cap/percentage.\nTotal spending excludes categories marked with exclude_from_total=true.",
+        "operationId": "get_budget_status_budget_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Month"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/budget-caps/bulk-update": {
+      "put": {
+        "summary": "Bulk Update Budget Caps",
+        "description": "Bulk update all budget caps.\n\nRequires authentication via Firebase Auth token.\n\nRequest body:\n{\n    \"total_budget\": 2000.0,\n    \"category_budgets\": {\n        \"FOOD_OUT\": 500.0,\n        \"RENT\": 1200.0,\n        \"GROCERIES\": 150.0,\n        ...\n    }\n}\n\nValidates:\n- sum(category_budgets) <= total_budget\n- All category keys are valid ExpenseType enum values\n\nUpdates all budget caps in user's budget_caps/ collection.",
+        "operationId": "bulk_update_budget_caps_budget_caps_bulk_update_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkBudgetUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkBudgetUpdateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/categories": {
+      "get": {
+        "summary": "Get Categories",
+        "description": "Get all categories for the authenticated user.\n\nPerforms silent migration from budget_caps if needed.\nReturns list of categories sorted by sort_order.",
+        "operationId": "get_categories_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "Create Category",
+        "description": "Create a new category for the authenticated user.\n\nValidates:\n- Max 15 categories\n- Unique name (case-insensitive)\n- Cap <= available budget",
+        "operationId": "create_category_categories_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/categories/reorder": {
+      "put": {
+        "summary": "Reorder Categories",
+        "description": "Update the sort order of categories.",
+        "operationId": "reorder_categories_categories_reorder_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryReorder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/categories/defaults": {
+      "get": {
+        "summary": "Get Default Categories",
+        "description": "Get the list of default categories (for new user setup).\n\nDoes not require authentication.",
+        "operationId": "get_default_categories_categories_defaults_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/categories/{category_id}": {
+      "put": {
+        "summary": "Update Category",
+        "description": "Update a category for the authenticated user.",
+        "operationId": "update_category_categories__category_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Category Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Category",
+        "description": "Delete a category and reassign its expenses.\n\nQuery Parameters:\n- reassign_to: Category to reassign expenses to (default: OTHER)",
+        "operationId": "delete_category_categories__category_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "reassign_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "OTHER",
+              "title": "Reassign To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/budget/total": {
+      "get": {
+        "summary": "Get Total Budget",
+        "description": "Get the user's total monthly budget.",
+        "operationId": "get_total_budget_budget_total_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "Update Total Budget",
+        "description": "Update the user's total monthly budget.\n\nRecalculates OTHER category cap.",
+        "operationId": "update_total_budget_budget_total_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotalBudgetUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/onboarding/complete": {
+      "post": {
+        "summary": "Complete Onboarding",
+        "description": "Complete the onboarding wizard by setting up budget and categories.\n\n1. Set total monthly budget\n2. Initialize selected categories from defaults\n3. Create any custom categories\n4. Update caps for each category\n5. Recalculate OTHER cap for unallocated budget",
+        "operationId": "complete_onboarding_onboarding_complete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/recurring": {
+      "get": {
+        "summary": "Get Recurring Expenses",
+        "description": "Get all recurring expense templates. Requires authentication.",
+        "operationId": "get_recurring_expenses_recurring_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/pending": {
+      "get": {
+        "summary": "Get Pending Expenses",
+        "description": "Get all pending expenses awaiting confirmation. Requires authentication.",
+        "operationId": "get_pending_expenses_pending_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/pending/{pending_id}/confirm": {
+      "post": {
+        "summary": "Confirm Pending Expense",
+        "description": "Confirm a pending expense and save it as a regular expense. Requires authentication.",
+        "operationId": "confirm_pending_expense_pending__pending_id__confirm_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pending_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pending Id"
+            }
+          },
+          {
+            "name": "adjusted_amount",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Adjusted Amount"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pending/{pending_id}": {
+      "delete": {
+        "summary": "Delete Pending Expense",
+        "description": "Skip/delete a pending expense. Requires authentication.",
+        "operationId": "delete_pending_expense_pending__pending_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "pending_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pending Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recurring/{template_id}": {
+      "delete": {
+        "summary": "Delete Recurring Template",
+        "description": "Delete/deactivate a recurring expense template. Requires authentication.",
+        "operationId": "delete_recurring_template_recurring__template_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations": {
+      "get": {
+        "summary": "List Conversations",
+        "description": "List recent conversations for the authenticated user.\n\nQuery Parameters:\n- limit: Maximum number of conversations to return (default 20)\n\nReturns list of conversations ordered by last activity (most recent first).",
+        "operationId": "list_conversations_conversations_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Conversation",
+        "description": "Create a new conversation.\n\nReturns the new conversation ID.",
+        "operationId": "create_conversation_conversations_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{conversation_id}": {
+      "get": {
+        "summary": "Get Conversation",
+        "description": "Get a specific conversation by ID.\n\nReturns the conversation with all messages and metadata.",
+        "operationId": "get_conversation_conversations__conversation_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Conversation",
+        "description": "Delete a specific conversation. Requires authentication.",
+        "operationId": "delete_conversation_conversations__conversation_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/check-recurring": {
+      "post": {
+        "summary": "Admin Check Recurring",
+        "description": "Check for due recurring expenses and create pending expenses for ALL users.\n\nThis endpoint is designed to be called by Cloud Scheduler daily.\nRequires ADMIN_API_KEY header for authentication.\n\nHeaders:\n    X-API-Key: The admin API key (must match ADMIN_API_KEY env var)\n\nReturns:\n    JSON with total created_count and per-user details",
+        "operationId": "admin_check_recurring_admin_check_recurring_post",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/cleanup-conversations": {
+      "post": {
+        "summary": "Admin Cleanup Conversations",
+        "description": "Delete old conversations for ALL users.\n\nThis endpoint is designed to be called by Cloud Scheduler daily.\nRequires ADMIN_API_KEY header for authentication.\n\nHeaders:\n    X-API-Key: The admin API key (must match ADMIN_API_KEY env var)\n\nQuery Parameters:\n    ttl_hours: Delete conversations older than this many hours (default 1440 = 60 days)\n\nReturns:\n    JSON with total deleted count and per-user details",
+        "operationId": "admin_cleanup_conversations_admin_cleanup_conversations_post",
+        "parameters": [
+          {
+            "name": "ttl_hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1440,
+              "title": "Ttl Hours"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint.",
+        "operationId": "health_check_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/servers": {
+      "get": {
+        "summary": "List Servers",
+        "description": "List all available MCP servers.\n\nReturns list of server configurations that can be connected to.\nFollows BACKEND_API_CONTRACT.md specification.",
+        "operationId": "list_servers_servers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connect/{server_id}": {
+      "post": {
+        "summary": "Connect To Server",
+        "description": "Connect to a specific MCP server.\n\nIf already connected to the requested server, returns existing connection.\nOtherwise disconnects from current server (if any) and establishes connection\nto the requested server. Returns tools available on the server.\n\nFollows BACKEND_API_CONTRACT.md specification.",
+        "operationId": "connect_to_server_connect__server_id__post",
+        "parameters": [
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Server Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "summary": "Get Connection Status",
+        "description": "Get current MCP server connection status.\n\nReturns connection state including server ID and available tools.\nFollows BACKEND_API_CONTRACT.md specification.",
+        "operationId": "get_connection_status_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/disconnect": {
+      "post": {
+        "summary": "Disconnect From Server",
+        "description": "Disconnect from current MCP server.\n\nFollows BACKEND_API_CONTRACT.md specification.",
+        "operationId": "disconnect_from_server_disconnect_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/stream": {
+      "post": {
+        "summary": "Chat Stream",
+        "description": "Process a chat message and stream response with tool calls.\n\nRequires authentication via Firebase Auth token.\n\nUses Server-Sent Events (SSE) to stream:\n- conversation_id event at start (for frontend to track)\n- tool_start events when tools begin execution\n- tool_end events when tools finish\n- text events for response chunks\n- [DONE] signal when complete\n- [ERROR] signal on errors\n\nFollows BACKEND_API_CONTRACT.md specification.",
+        "operationId": "chat_stream_chat_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatMessage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_mcp_process_expense_mcp_process_expense_post": {
+        "properties": {
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "Text description of expense"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "binary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image",
+            "description": "Receipt image"
+          },
+          "audio": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "binary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio",
+            "description": "Voice recording for transcription"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "Conversation ID for context continuity"
+          }
+        },
+        "type": "object",
+        "title": "Body_mcp_process_expense_mcp_process_expense_post"
+      },
+      "BudgetCategory": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "spending": {
+            "type": "number",
+            "title": "Spending"
+          },
+          "cap": {
+            "type": "number",
+            "title": "Cap"
+          },
+          "percentage": {
+            "type": "number",
+            "title": "Percentage"
+          },
+          "remaining": {
+            "type": "number",
+            "title": "Remaining"
+          },
+          "emoji": {
+            "type": "string",
+            "title": "Emoji"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "spending",
+          "cap",
+          "percentage",
+          "remaining",
+          "emoji"
+        ],
+        "title": "BudgetCategory",
+        "description": "Budget status for a single category."
+      },
+      "BudgetStatusResponse": {
+        "properties": {
+          "year": {
+            "type": "integer",
+            "title": "Year"
+          },
+          "month": {
+            "type": "integer",
+            "title": "Month"
+          },
+          "month_name": {
+            "type": "string",
+            "title": "Month Name"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/BudgetCategory"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "total_spending": {
+            "type": "number",
+            "title": "Total Spending"
+          },
+          "total_cap": {
+            "type": "number",
+            "title": "Total Cap"
+          },
+          "total_percentage": {
+            "type": "number",
+            "title": "Total Percentage"
+          },
+          "total_remaining": {
+            "type": "number",
+            "title": "Total Remaining"
+          },
+          "excluded_categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded Categories",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "year",
+          "month",
+          "month_name",
+          "categories",
+          "total_spending",
+          "total_cap",
+          "total_percentage",
+          "total_remaining"
+        ],
+        "title": "BudgetStatusResponse",
+        "description": "Response model for budget status."
+      },
+      "BulkBudgetUpdateRequest": {
+        "properties": {
+          "total_budget": {
+            "type": "number",
+            "title": "Total Budget"
+          },
+          "category_budgets": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Category Budgets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_budget",
+          "category_budgets"
+        ],
+        "title": "BulkBudgetUpdateRequest",
+        "description": "Request model for bulk budget cap updates."
+      },
+      "BulkBudgetUpdateResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "updated_caps": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Updated Caps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "updated_caps"
+        ],
+        "title": "BulkBudgetUpdateResponse",
+        "description": "Response model for bulk budget cap updates."
+      },
+      "CategoryCreate": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "icon": {
+            "type": "string",
+            "title": "Icon"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "monthly_cap": {
+            "type": "number",
+            "title": "Monthly Cap"
+          }
+        },
+        "type": "object",
+        "required": [
+          "display_name",
+          "icon",
+          "color",
+          "monthly_cap"
+        ],
+        "title": "CategoryCreate",
+        "description": "Request model for creating a new category."
+      },
+      "CategoryReorder": {
+        "properties": {
+          "category_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Category Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category_ids"
+        ],
+        "title": "CategoryReorder",
+        "description": "Request model for reordering categories."
+      },
+      "CategoryUpdate": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "monthly_cap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Cap"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          },
+          "exclude_from_total": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclude From Total"
+          }
+        },
+        "type": "object",
+        "title": "CategoryUpdate",
+        "description": "Request model for updating a category."
+      },
+      "ChatMessage": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ChatMessage",
+        "description": "Request model for chat messages."
+      },
+      "CustomCategoryInput": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "icon": {
+            "type": "string",
+            "title": "Icon"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "monthly_cap": {
+            "type": "number",
+            "title": "Monthly Cap",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "display_name",
+          "icon",
+          "color"
+        ],
+        "title": "CustomCategoryInput",
+        "description": "Input model for a custom category during onboarding."
+      },
+      "ExpenseResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "expense_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Id"
+          },
+          "expense_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Name"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "budget_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Warning"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "ExpenseResponse",
+        "description": "Response model for expense submission."
+      },
+      "ExpenseUpdateRequest": {
+        "properties": {
+          "expense_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expense Name"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          }
+        },
+        "type": "object",
+        "title": "ExpenseUpdateRequest",
+        "description": "Request body for updating an expense."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "OnboardingCompleteRequest": {
+        "properties": {
+          "total_budget": {
+            "type": "number",
+            "title": "Total Budget"
+          },
+          "selected_category_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Selected Category Ids"
+          },
+          "category_caps": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Category Caps"
+          },
+          "custom_categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CustomCategoryInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custom Categories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_budget",
+          "selected_category_ids",
+          "category_caps"
+        ],
+        "title": "OnboardingCompleteRequest",
+        "description": "Request model for completing onboarding."
+      },
+      "TotalBudgetUpdate": {
+        "properties": {
+          "total_monthly_budget": {
+            "type": "number",
+            "title": "Total Monthly Budget"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_monthly_budget"
+        ],
+        "title": "TotalBudgetUpdate",
+        "description": "Request model for updating total budget."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

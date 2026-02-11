@@ -1,6 +1,6 @@
 import type { ExpenseDate, ExpenseType } from './expense'
 
-export type Frequency = 'monthly' | 'weekly' | 'biweekly'
+export type Frequency = 'monthly' | 'weekly' | 'biweekly' | 'yearly'
 
 export interface RecurringExpense {
   template_id: string
@@ -10,6 +10,7 @@ export interface RecurringExpense {
   frequency: Frequency
   day_of_month?: number | null
   day_of_week?: number | null
+  month_of_year?: number | null
   last_of_month: boolean
   last_reminded?: ExpenseDate | null
   last_user_action?: ExpenseDate | null

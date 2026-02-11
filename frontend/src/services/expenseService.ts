@@ -15,6 +15,13 @@ export async function getExpenses(
   return response.data
 }
 
+export async function verifyExpenses(expenseIds: string[]): Promise<string[]> {
+  const response = await api.post<{ existing_ids: string[] }>('/expenses/verify', {
+    expense_ids: expenseIds,
+  })
+  return response.data.existing_ids
+}
+
 interface DeleteExpenseResponse {
   success: boolean
   expense_id: string

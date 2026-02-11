@@ -6,7 +6,8 @@ import { useBudget, invalidateBudgetCache } from '@/hooks/useBudget'
 import { useExpenses, invalidateExpensesCache } from '@/hooks/useExpenses'
 import { useCategories } from '@/hooks/useCategories'
 import { deleteExpense, updateExpense } from '@/services/expenseService'
-import { formatConversationTitle } from '@/services/conversationService'
+import { formatConversationTitle, markExpenseDeleted } from '@/services/conversationService'
+import { useAuth } from '@/contexts/AuthContext'
 import { useServer } from '@/contexts/ServerContext'
 import { Card, ProgressBar, Spinner, CategoryIcon, ExpenseEditModal, Modal } from '@/components/ui'
 import { cn } from '@/utils/cn'
@@ -234,7 +235,10 @@ export function ChatPage() {
     loadConversation,
     startNewConversation,
     removeConversation,
+    deletedExpenseIds,
+    addDeletedExpenseId,
   } = useChat()
+  const { getToken } = useAuth()
   const { budget } = useBudget()
   const { expenses } = useExpenses()
   const { categories } = useCategories()
@@ -263,6 +267,17 @@ export function ChatPage() {
   const handleExpenseDelete = async (expenseId: string) => {
     try {
       await deleteExpense(expenseId)
+      // Track locally for immediate UI feedback
+      addDeletedExpenseId(expenseId)
+      // Persist to conversation so reload shows deleted state
+      if (currentConversationId) {
+        const token = await getToken()
+        if (token) {
+          markExpenseDeleted(token, currentConversationId, expenseId).catch((err) =>
+            console.error('Failed to persist deleted expense to conversation:', err)
+          )
+        }
+      }
       // Invalidate caches so sidebar and other views update
       invalidateExpensesCache()
       invalidateBudgetCache()
@@ -440,6 +455,7 @@ export function ChatPage() {
                     <ChatMessage
                       key={message.id}
                       message={message}
+                      deletedExpenseIds={deletedExpenseIds}
                       onExpenseDelete={handleExpenseDelete}
                       onExpenseEdit={handleExpenseEdit}
                     />

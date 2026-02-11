@@ -37,3 +37,8 @@ yarn-error.log*
 
 # Migration backups (contains sensitive data)
 backups/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/

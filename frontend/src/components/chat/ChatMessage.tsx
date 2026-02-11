@@ -4,6 +4,7 @@ import { ToolCallDisplay } from './ToolCallDisplay'
 
 interface ChatMessageProps {
   message: ChatMessageType
+  deletedExpenseIds?: Set<string>
   onExpenseDelete?: (expenseId: string) => void
   onExpenseEdit?: (expenseId: string, updates: { name?: string; amount?: number }) => void
 }
@@ -27,7 +28,7 @@ function hasSaveExpenseWithBudget(toolCalls: ToolCall[]): boolean {
   return hasSaveExpense && hasBudgetStatus
 }
 
-export function ChatMessage({ message, onExpenseDelete, onExpenseEdit }: ChatMessageProps) {
+export function ChatMessage({ message, deletedExpenseIds, onExpenseDelete, onExpenseEdit }: ChatMessageProps) {
   const isUser = message.role === 'user'
   const hasToolCalls = !isUser && message.toolCalls && message.toolCalls.length > 0
   const hasContent = message.content.trim().length > 0
@@ -56,6 +57,7 @@ export function ChatMessage({ message, onExpenseDelete, onExpenseEdit }: ChatMes
               key={toolCall.id}
               toolCall={toolCall}
               budgetWarning={toolCall.name === 'save_expense' ? budgetWarning : undefined}
+              deletedExpenseIds={deletedExpenseIds}
               onExpenseDelete={onExpenseDelete}
               onExpenseEdit={onExpenseEdit}
             />

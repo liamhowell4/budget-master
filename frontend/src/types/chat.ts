@@ -47,6 +47,7 @@ export interface Conversation {
     category: string
     timestamp: string
   }>
+  deleted_expense_ids?: string[]
 }
 
 export interface ConversationListItem {

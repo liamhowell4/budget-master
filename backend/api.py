@@ -1434,6 +1434,65 @@ async def get_conversation(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class DeletedExpenseRequest(BaseModel):
+    """Request model for marking an expense as deleted in a conversation."""
+    expense_id: str
+
+
+@app.post("/conversations/{conversation_id}/deleted-expenses")
+async def add_deleted_expense(
+    conversation_id: str,
+    request: DeletedExpenseRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Mark an expense as deleted within a conversation.
+
+    Appends the expense_id to the conversation's deleted_expense_ids array
+    so the frontend can render the expense card as deleted on reload.
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+        success = user_firebase.add_deleted_expense_to_conversation(
+            conversation_id, request.expense_id
+        )
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in POST /conversations/{conversation_id}/deleted-expenses: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class VerifyExpensesRequest(BaseModel):
+    """Request model for verifying expense existence."""
+    expense_ids: List[str]
+
+
+@app.post("/expenses/verify")
+async def verify_expenses(
+    request: VerifyExpensesRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Verify which expense IDs still exist in Firestore.
+
+    Returns the subset of provided IDs that still exist.
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+        existing_ids = user_firebase.verify_expenses_exist(request.expense_ids)
+
+        return {"existing_ids": existing_ids}
+    except Exception as e:
+        print(f"Error in POST /expenses/verify: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.delete("/conversations/{conversation_id}")
 async def delete_conversation(
     conversation_id: str,

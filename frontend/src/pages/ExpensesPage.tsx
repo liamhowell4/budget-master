@@ -60,6 +60,7 @@ const FREQUENCY_LABELS: Record<string, string> = {
   monthly: 'Monthly',
   weekly: 'Weekly',
   biweekly: 'Bi-weekly',
+  yearly: 'Yearly',
 }
 
 function getMonthOptions() {
@@ -199,8 +200,14 @@ function getOrdinalSuffix(n: number): string {
   }
 }
 
+const MONTH_LABELS: Record<number, string> = {
+  1: 'January', 2: 'February', 3: 'March', 4: 'April',
+  5: 'May', 6: 'June', 7: 'July', 8: 'August',
+  9: 'September', 10: 'October', 11: 'November', 12: 'December',
+}
+
 function formatSchedule(recurring: RecurringExpense): string {
-  const { frequency, day_of_month, day_of_week, last_of_month } = recurring
+  const { frequency, day_of_month, day_of_week, month_of_year, last_of_month } = recurring
 
   if (frequency === 'monthly') {
     if (last_of_month) {
@@ -224,6 +231,17 @@ function formatSchedule(recurring: RecurringExpense): string {
       return `Every other ${DAY_OF_WEEK_LABELS[day_of_week] || 'week'}`
     }
     return 'Every 2 weeks'
+  }
+
+  if (frequency === 'yearly') {
+    const monthName = month_of_year ? MONTH_LABELS[month_of_year] : ''
+    if (last_of_month && monthName) {
+      return `Last day of ${monthName}`
+    }
+    if (day_of_month && monthName) {
+      return `${monthName} ${day_of_month}${getOrdinalSuffix(day_of_month)}`
+    }
+    return 'Yearly'
   }
 
   return FREQUENCY_LABELS[frequency] || frequency

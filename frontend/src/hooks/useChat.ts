@@ -9,6 +9,7 @@ import {
   getConversation,
   deleteConversation,
 } from '@/services/conversationService'
+import { verifyExpenses } from '@/services/expenseService'
 
 // Tools that modify expense/budget data
 const DATA_MODIFYING_TOOLS = [
@@ -29,6 +30,7 @@ export function useChat() {
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [conversationsLoading, setConversationsLoading] = useState(false)
+  const [deletedExpenseIds, setDeletedExpenseIds] = useState<Set<string>>(new Set())
   const conversationIdRef = useRef<string | null>(null)
 
   // Keep ref in sync with state
@@ -92,6 +94,46 @@ export function useChat() {
           toolCalls: msg.tool_calls,
         }))
         setMessages(loadedMessages)
+
+        // Build deleted expense IDs set
+        // 1. Start with IDs persisted on the conversation doc
+        const deletedIds = new Set<string>(conv.deleted_expense_ids ?? [])
+
+        // 2. Extract expense IDs from save_expense tool calls and verify existence
+        const expenseIdsFromTools: string[] = []
+        for (const msg of conv.messages) {
+          if (msg.tool_calls) {
+            for (const tc of msg.tool_calls) {
+              if (
+                tc.name === 'save_expense' &&
+                tc.result &&
+                typeof tc.result === 'object' &&
+                'expense_id' in tc.result
+              ) {
+                const eid = (tc.result as { expense_id: string }).expense_id
+                if (!deletedIds.has(eid)) {
+                  expenseIdsFromTools.push(eid)
+                }
+              }
+            }
+          }
+        }
+
+        if (expenseIdsFromTools.length > 0) {
+          try {
+            const existingIds = await verifyExpenses(expenseIdsFromTools)
+            const existingSet = new Set(existingIds)
+            for (const eid of expenseIdsFromTools) {
+              if (!existingSet.has(eid)) {
+                deletedIds.add(eid)
+              }
+            }
+          } catch {
+            // Verification failed — rely on persisted deleted_expense_ids only
+          }
+        }
+
+        setDeletedExpenseIds(deletedIds)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load conversation')
       } finally {
@@ -105,6 +147,7 @@ export function useChat() {
   const startNewConversation = useCallback(() => {
     setMessages([])
     setCurrentConversationId(null)
+    setDeletedExpenseIds(new Set())
   }, [])
 
   // Delete a conversation
@@ -260,6 +303,11 @@ export function useChat() {
     setMessages([])
   }, [])
 
+  // Mark an expense as deleted locally (for immediate UI feedback)
+  const addDeletedExpenseId = useCallback((expenseId: string) => {
+    setDeletedExpenseIds((prev) => new Set(prev).add(expenseId))
+  }, [])
+
   return {
     // Chat state
     messages,
@@ -277,5 +325,9 @@ export function useChat() {
     loadConversation,
     startNewConversation,
     removeConversation,
+
+    // Deleted expense tracking
+    deletedExpenseIds,
+    addDeletedExpenseId,
   }
 }
