@@ -35,6 +35,7 @@ from mcp.types import Tool, TextContent, ToolAnnotations
 from backend.firebase_client import FirebaseClient
 from backend.budget_manager import BudgetManager
 from backend.output_schemas import Expense, ExpenseType, Date, RecurringExpense, FrequencyType
+from backend.exceptions import DocumentNotFoundError, InvalidCategoryError
 
 
 # Initialize global Firebase client for categories (read-only, shared)
@@ -121,7 +122,7 @@ def get_user_budget_manager(arguments: dict) -> BudgetManager:
     return BudgetManager(firebase)
 
 
-def validate_category(category_str: str, firebase: FirebaseClient) -> bool:
+def validate_category(category_str: str, firebase: FirebaseClient) -> None:
     """
     Validate that a category exists for the user.
 
@@ -129,21 +130,21 @@ def validate_category(category_str: str, firebase: FirebaseClient) -> bool:
         category_str: Category ID to validate
         firebase: User-scoped FirebaseClient
 
-    Returns:
-        True if category exists, False otherwise
+    Raises:
+        InvalidCategoryError: If category does not exist
     """
     # Check if user has custom categories set up
     if firebase.has_categories_setup():
         categories = firebase.get_user_categories()
         valid_ids = [c.get("category_id") for c in categories]
-        return category_str in valid_ids
+        if category_str not in valid_ids:
+            raise InvalidCategoryError(category_str)
     else:
         # Fallback to ExpenseType enum for backward compatibility
         try:
             ExpenseType[category_str]
-            return True
         except KeyError:
-            return False
+            raise InvalidCategoryError(category_str)
 
 
 @server.list_tools()
@@ -787,7 +788,9 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
     firebase = get_user_firebase(arguments)
 
     # Validate category against user's categories
-    if not validate_category(category_str, firebase):
+    try:
+        validate_category(category_str, firebase)
+    except InvalidCategoryError:
         return [TextContent(
             type="text",
             text=f"Error: Invalid category '{category_str}'. Use get_categories to see valid options."
@@ -812,7 +815,7 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
     )
 
     # Save expense - override category in save to use string
-    expense_id = firebase.save_expense_with_category_str(expense, category_str, input_type="mcp")
+    expense_id = firebase.save_expense(expense, input_type="mcp", category_str=category_str)
 
     # Return success response
     result = {
@@ -853,7 +856,9 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
     firebase = get_user_firebase(arguments)
 
     # Validate category
-    if not validate_category(category_str, firebase):
+    try:
+        validate_category(category_str, firebase)
+    except InvalidCategoryError:
         return [TextContent(
             type="text",
             text=f"Error: Invalid category '{category_str}'"
@@ -950,11 +955,14 @@ async def _update_expense(arguments: dict) -> list[TextContent]:
     firebase = get_user_firebase(arguments)
 
     # Validate category if provided
-    if category_str and not validate_category(category_str, firebase):
-        return [TextContent(
-            type="text",
-            text=f"Error: Invalid category '{category_str}'"
-        )]
+    if category_str:
+        try:
+            validate_category(category_str, firebase)
+        except InvalidCategoryError:
+            return [TextContent(
+                type="text",
+                text=f"Error: Invalid category '{category_str}'"
+            )]
 
     # Convert category string to ExpenseType if provided (for backward compat)
     category_obj = None
@@ -966,16 +974,16 @@ async def _update_expense(arguments: dict) -> list[TextContent]:
             pass
 
     # Update expense
-    success = firebase.update_expense(
-        expense_id=expense_id,
-        expense_name=expense_name,
-        amount=amount,
-        date=date_obj,
-        category=category_obj,
-        category_str=category_str  # Pass string for custom categories
-    )
-
-    if not success:
+    try:
+        firebase.update_expense(
+            expense_id=expense_id,
+            expense_name=expense_name,
+            amount=amount,
+            date=date_obj,
+            category=category_obj,
+            category_str=category_str  # Pass string for custom categories
+        )
+    except DocumentNotFoundError:
         return [TextContent(
             type="text",
             text=f"Error: Expense {expense_id} not found"
@@ -1023,9 +1031,9 @@ async def _delete_expense(arguments: dict) -> list[TextContent]:
         )]
 
     # Delete expense
-    success = firebase.delete_expense(expense_id)
-
-    if not success:
+    try:
+        firebase.delete_expense(expense_id)
+    except DocumentNotFoundError:
         return [TextContent(
             type="text",
             text=f"Error: Failed to delete expense {expense_id}"
@@ -1193,7 +1201,9 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
     firebase = get_user_firebase(arguments)
 
     # Validate category against user's categories
-    if not validate_category(category_str, firebase):
+    try:
+        validate_category(category_str, firebase)
+    except InvalidCategoryError:
         return [TextContent(type="text", text=json.dumps({
             "success": False,
             "error": f"Invalid category: {category_str}"
@@ -1262,7 +1272,7 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
     )
 
     # Save recurring expense with custom category string
-    template_id = firebase.save_recurring_expense_with_category_str(recurring, category_str)
+    template_id = firebase.save_recurring_expense(recurring, category_str=category_str)
 
     result = {
         "success": True,
@@ -1273,6 +1283,38 @@ async def _create_recurring_expense(arguments: dict) -> list[TextContent]:
         "frequency": frequency_str,
         "message": f"Created recurring expense: {name} (${amount:.2f} {frequency_str})"
     }
+
+    # Check if we should immediately log the current period's expense
+    from backend.recurring_manager import RecurringManager
+    should_log, expense_date = RecurringManager.should_log_initial_expense(recurring, today)
+
+    if should_log and expense_date:
+        expense = Expense(
+            expense_name=name,
+            amount=amount,
+            date=Date(day=expense_date.day, month=expense_date.month, year=expense_date.year),
+            category=category
+        )
+        expense_id = firebase.save_expense(expense, input_type="recurring", category_str=category_str)
+
+        # Update recurring template to prevent duplicate pending creation
+        firebase.update_recurring_expense(template_id, {
+            "last_reminded": {
+                "day": today.day,
+                "month": today.month,
+                "year": today.year
+            },
+            "last_user_action": {
+                "day": today.day,
+                "month": today.month,
+                "year": today.year
+            }
+        })
+
+        result["initial_expense_logged"] = True
+        result["expense_id"] = expense_id
+        result["expense_date"] = f"{expense_date.year}-{expense_date.month:02d}-{expense_date.day:02d}"
+        result["message"] += f". Also logged expense for {expense_date.strftime('%b %d, %Y')} (${amount:.2f})"
 
     return [TextContent(type="text", text=json.dumps(result))]
 

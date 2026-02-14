@@ -1,40 +1,53 @@
-# Budget Master
+# BudgetMaster
 
-A personal expense tracking and budgeting app with conversational AI capabilities powered by Claude + MCP (Model Context Protocol). Features a React web UI and FastAPI backend, all backed by Firebase.
+A personal expense tracking and budgeting app with conversational AI. Talk to it in plain English to log expenses, ask spending questions, and manage budgets — via web, voice, or receipt photos.
 
-## What this repo contains
+## Features
 
-- **FastAPI backend** for expense processing, analytics, and MCP chat endpoints.
-- **React frontend** with chat interface, dashboard, and expense management.
-- **Firebase integration** for Firestore data + Storage for audio uploads.
-- **MCP architecture** with Claude-driven tools for conversational expense CRUD + analytics.
+- **Natural language expense entry** — "Coffee $5 yesterday", "Got a $20 refund from Amazon"
+- **Receipt scanning** — Upload a photo and Claude Vision extracts merchant, amount, date, and category
+- **Voice memos** — Record audio, Whisper transcribes it, expense is logged
+- **Conversational editing** — "Actually that was $6", "Delete that last one", "Change it to GROCERIES"
+- **Spending queries** — "How much did I spend on food last week?", "Compare this month to last month"
+- **Budget tracking** — Warnings at 50%, 90%, 95%, and 100%+ of category and overall budgets
+- **Recurring expenses** — Templates for rent, subscriptions, etc. with automatic pending reminders
 
-## Key features
+## Architecture
 
-- **Multi-input expense capture**: text, receipt images (Claude Vision), and voice transcription (Whisper).
-- **Automatic parsing**: merchant/amount/date/category extraction via Claude.
-- **Budget tracking**: category + overall caps with threshold warnings (50/90/95/100%).
-- **Recurring expenses**: templates, pending confirmations, and projection views.
-- **Conversational management**: natural language to edit, delete, query, and analyze expenses ("delete that last expense", "how much did I spend on food last week?").
+```
+User (Web / iOS / API)
+        ↓
+   FastAPI Backend
+        ↓
+   MCP Client → Claude API → MCP Server (17 tools) → Firebase Firestore
+```
 
-## Architecture overview
+The backend uses [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) to give Claude access to expense management tools. Claude decides which tools to call based on the user's message — no rigid intent classification or regex parsing.
 
-### Primary runtime services
-- **FastAPI** (`backend/api.py`): expense processing, budgets, and MCP chat APIs.
-- **React UI** (`frontend/`): chat interface, dashboard, and expense management.
-- **Firebase**: Firestore collections for expenses/budgets + Storage for audio.
-- **MCP Server** (`backend/mcp/`): 17 expense management tools powered by Claude.
+### Tech stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python, FastAPI, Anthropic SDK, MCP |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4 |
+| iOS | Swift, SwiftUI (networking layer complete, UI in progress) |
+| Database | Firebase Firestore |
+| Storage | Firebase Storage (audio files) |
+| AI | Claude (conversation + vision), Whisper (transcription) |
+| Auth | Firebase Authentication |
+| Hosting | Google Cloud Run |
 
 ## Repository layout
 
 ```
 backend/                 FastAPI backend, Firebase client, MCP tools
-frontend/                React UI (Vite + TypeScript)
+frontend/                React frontend (Vite + TypeScript + Tailwind)
+ios/                     iOS app (Swift networking layer + Xcode project)
 tests/                   Budget manager tests
-scripts/                 Seed and maintenance scripts
-docs/                    Build plan and migration docs
+scripts/                 Utility scripts (Firestore seeding)
+docs/                    Implementation plans and notes
 legacy/                  Archived OpenAI code (not used)
-CLAUDE.md                Canonical repo guidance and architecture notes
+CLAUDE.md                Architecture reference and dev guidance
 ```
 
 ## Environment configuration
@@ -84,10 +97,21 @@ python scripts/seed_firestore.py
 
 The React app (`frontend/`) provides the main web interface:
 
-- **Chat page**: Conversational expense entry with text, image upload, and voice recording. Supports natural language commands for creating, editing, deleting, and querying expenses.
-- **Dashboard page**: Budget summaries, category progress bars, and spending analytics.
-- **Expenses page**: Filterable expense history with search and management.
-- **Login page**: Authentication via Firebase.
+- **Chat page** — Conversational expense entry with text, image upload, and voice recording
+- **Dashboard page** — Budget summaries, category progress bars, and spending analytics
+- **Expenses page** — Filterable expense history, pending confirmations, and recurring templates
+- **Login page** — Firebase authentication
+
+## iOS app
+
+The iOS app (`ios/`) targets the same backend API. Current state:
+
+- **Networking layer** — Complete. Actor-based `APIClient`, typed `APIError`, SSE streaming via `SSEClient`, multipart uploads
+- **Models** — All Codable structs matching backend responses (expenses, budgets, categories, chat events, etc.)
+- **Services** — Stateless endpoint wrappers for all 25+ API endpoints
+- **SwiftUI views** — Not yet started
+
+See `docs/ios-networking-layer.md` for architecture details and Xcode setup instructions.
 
 ## Execution flows
 
@@ -149,17 +173,19 @@ The MCP server (`backend/mcp/expense_server.py`) exposes tools for:
 - **Budgets**: `get_budget_status`, `get_budget_remaining`
 - **Recurring**: `create_recurring_expense`, `list_recurring_expenses`, `delete_recurring_expense`
 
-## Status
+## Current status
 
-MCP backend is **complete** with full CRUD, analytics, and recurring expense support. The React frontend provides chat, dashboard, and expense management interfaces. See `CLAUDE.md` for architecture details.
-
-## Notes
-
-- **Legacy code** in `legacy/` folder is archived for reference but not used.
-- **MCP architecture** uses Claude for all expense parsing and conversational features.
-- **Deployment** is configured for Google Cloud Run (see Dockerfile).
+| Component | Status |
+|-----------|--------|
+| **Backend (FastAPI + MCP)** | Complete — 17 MCP tools, conversation context, budget tracking, recurring expenses |
+| **React frontend** | Complete — chat, dashboard, expense management, auth |
+| **iOS app** | In progress — networking layer done (models, services, SSE streaming), SwiftUI views not yet built |
+| **Code cleanup** | In progress — logging migration done, error handling improved, frontend refactoring planned |
+| **Deployment** | Live on Google Cloud Run, recurring checks via Cloud Scheduler |
 
 ## Related docs
 
-- `CLAUDE.md` — comprehensive architecture and design notes
-- `docs/build_plan.md` — development history and migration notes
+- `CLAUDE.md` — architecture reference and development guidance
+- `docs/build_plan.md` — full development history across all phases
+- `docs/ios-networking-layer.md` — iOS networking architecture and setup guide
+- `docs/code-audit-cleanup.md` — ongoing cleanup plan and progress

@@ -44,6 +44,30 @@ export function getMonthName(month: number): string {
 }
 
 /**
+ * Format a timestamp string to a time like "2:30 PM"
+ */
+export function formatExpenseTime(timestamp: string): string {
+  const d = new Date(timestamp)
+  return d.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+/**
+ * Format an ExpenseDate + optional timestamp to "Jan 15, 2026 at 2:30 PM"
+ */
+export function formatExpenseDateTime(date: ExpenseDate, timestamp?: string): string {
+  const dateStr = formatExpenseDate(date)
+  if (timestamp) {
+    const timeStr = formatExpenseTime(timestamp)
+    return `${dateStr} at ${timeStr}`
+  }
+  return dateStr
+}
+
+/**
  * Format percentage with specified decimal places
  */
 export function formatPercentage(value: number, decimals = 1): string {

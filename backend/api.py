@@ -10,12 +10,18 @@ Endpoints:
 """
 
 import os
+import logging
 from datetime import datetime, date
 from typing import Optional, List
 import pytz
 import base64
-import traceback
 import json
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 from pathlib import Path
 from dotenv import load_dotenv
@@ -35,6 +41,11 @@ from .output_schemas import ExpenseType, Date, CategoryCreate, CategoryUpdate, C
 from .recurring_manager import RecurringManager
 from .auth import get_current_user, get_optional_user, AuthenticatedUser
 from .category_defaults import DEFAULT_CATEGORIES, MAX_CATEGORIES
+from .exceptions import DocumentNotFoundError
+from .chat_helpers import (
+    get_or_create_conversation, build_message_context,
+    run_claude_tool_loop, save_conversation_history, ToolLoopResult
+)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -47,12 +58,10 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",   # React Frontend (local)
+        "http://localhost:5173",   # Vite dev server (default)
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",   # React Frontend (alt port)
         "http://127.0.0.1:3000",
-        "http://localhost:3001",   # React Frontend (alt port)
-        "http://127.0.0.1:3001",
-        "http://localhost:8501",   # Streamlit default port
-        "http://127.0.0.1:8501",
         "http://localhost:8000",   # Allow same-origin too
         "http://127.0.0.1:8000",
         "https://budget-master-lh.web.app",      # Firebase Hosting (production)
@@ -72,6 +81,18 @@ _mcp_client = None
 
 # Get user timezone
 USER_TIMEZONE = pytz.timezone(os.getenv("USER_TIMEZONE", "America/Chicago"))
+
+
+# ==================== Helpers ====================
+
+def _format_timestamps(data: dict, fields: list = None) -> None:
+    """Convert Firestore timestamp objects to ISO format strings in-place."""
+    if fields is None:
+        fields = ["created_at", "last_activity"]
+    for field in fields:
+        val = data.get(field)
+        if val and hasattr(val, 'isoformat'):
+            data[field] = val.isoformat()
 
 
 # ==================== Shared MCP Processing Function ====================
@@ -110,7 +131,7 @@ async def process_expense_with_mcp(
     if not auth_token:
         raise ValueError("auth_token is required for authentication")
 
-    print(f"🤖 Processing with MCP: user_id='{user_id}', text='{text}', has_image={image_base64 is not None}, conversation_id={conversation_id}")
+    logger.info("Processing with MCP: user_id='%s', text='%s', has_image=%s, conversation_id=%s", user_id, text, image_base64 is not None, conversation_id)
 
     # Call MCP client - pass auth_token for MCP server verification
     result = await _mcp_client.process_expense_message(
@@ -222,18 +243,17 @@ async def check_recurring_expenses():
     """
     # Skip in production - Cloud Scheduler handles this
     if os.getenv("SKIP_STARTUP_RECURRING_CHECK", "").lower() == "true":
-        print("⏭️  Skipping startup recurring check (SKIP_STARTUP_RECURRING_CHECK=true)")
+        logger.info("Skipping startup recurring check (SKIP_STARTUP_RECURRING_CHECK=true)")
         return
 
     try:
-        print("🔄 Checking for due recurring expenses on startup...")
+        logger.info("Checking for due recurring expenses on startup...")
         result = await _check_recurring_expenses_logic()
-        print(f"✅ {result['message']}")
+        logger.info(result['message'])
         for detail in result.get("details", []):
-            print(f"   {detail}")
-    except Exception as e:
-        print(f"❌ Error checking recurring expenses: {e}")
-        traceback.print_exc()
+            logger.info("  %s", detail)
+    except Exception:
+        logger.exception("Error checking recurring expenses")
 
 
 @app.on_event("startup")
@@ -247,19 +267,18 @@ async def startup_mcp():
     global _mcp_client
 
     try:
-        print("🔄 Initializing MCP client...")
+        logger.info("Initializing MCP client...")
         from .mcp.client import ExpenseMCPClient
 
         _mcp_client = ExpenseMCPClient()
         await _mcp_client.startup()
-        print("✅ MCP backend ready")
-    except Exception as e:
-        print(f"❌ Error initializing MCP backend: {e}")
-        traceback.print_exc()
+        logger.info("MCP backend ready")
+    except Exception:
+        logger.exception("Error initializing MCP backend")
 
     # Pre-connect the ConnectionManager so frontend doesn't wait
     try:
-        print("🔄 Pre-connecting MCP server for frontend...")
+        logger.info("Pre-connecting MCP server for frontend...")
         from .mcp.connection_manager import get_connection_manager
         from .mcp.server_config import get_server_by_id
 
@@ -272,11 +291,11 @@ async def startup_mcp():
                 server_path=server_config.path
             )
             if success:
-                print(f"✅ MCP server pre-connected ({len(tools)} tools available)")
+                logger.info("MCP server pre-connected (%d tools available)", len(tools))
             else:
-                print(f"⚠️ MCP pre-connection failed: {error}")
+                logger.warning("MCP pre-connection failed: %s", error)
     except Exception as e:
-        print(f"⚠️ MCP pre-connection error (non-fatal): {e}")
+        logger.warning("MCP pre-connection error (non-fatal): %s", e)
 
 
 # ==================== Pydantic Models ====================
@@ -369,13 +388,13 @@ async def mcp_process_expense(
             # Validate audio type
             allowed_audio_types = ["audio/wav", "audio/mpeg", "audio/mp3", "audio/webm", "audio/ogg", "audio/mp4", "audio/x-wav"]
             if audio.content_type and audio.content_type not in allowed_audio_types:
-                print(f"⚠️ Audio type {audio.content_type} not in allowed list, proceeding anyway")
+                logger.warning("Audio type %s not in allowed list, proceeding anyway", audio.content_type)
 
             audio_bytes = await audio.read()
-            print(f"🎤 Transcribing audio: {len(audio_bytes)} bytes, type: {audio.content_type}")
+            logger.info("Transcribing audio: %d bytes, type: %s", len(audio_bytes), audio.content_type)
 
             transcription = await transcribe_audio(audio_bytes, audio.filename or "recording.wav")
-            print(f"📝 Transcription: {transcription}")
+            logger.debug("Transcription: %s", transcription)
 
             # Combine transcription with text (transcription first, then user text)
             if transcription:
@@ -410,7 +429,7 @@ async def mcp_process_expense(
             # Use the image content type from upload
             image_base64 = f"data:{image.content_type};base64,{image_base64}"
 
-            print(f"📸 Image uploaded: {len(image_bytes)} bytes, type: {image.content_type}")
+            logger.info("Image uploaded: %d bytes, type: %s", len(image_bytes), image.content_type)
 
         # Call shared MCP processing function
         # Pass auth_token for MCP server verification (defense in depth)
@@ -437,8 +456,7 @@ async def mcp_process_expense(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in /mcp/process_expense: {e}")
-        traceback.print_exc()
+        logger.exception("Error in /mcp/process_expense")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -496,7 +514,7 @@ async def get_expenses(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in /expenses: {e}")
+        logger.error("Error in /expenses: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -520,9 +538,9 @@ async def delete_expense(
         user_firebase = FirebaseClient.for_user(current_user.uid)
 
         # Delete the expense
-        deleted = user_firebase.delete_expense(expense_id)
-
-        if not deleted:
+        try:
+            user_firebase.delete_expense(expense_id)
+        except DocumentNotFoundError:
             raise HTTPException(status_code=404, detail="Expense not found")
 
         return {"success": True, "expense_id": expense_id}
@@ -530,7 +548,7 @@ async def delete_expense(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in DELETE /expenses/{expense_id}: {e}")
+        logger.error("Error in DELETE /expenses/%s: %s", expense_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -539,6 +557,8 @@ class ExpenseUpdateRequest(BaseModel):
     expense_name: Optional[str] = None
     amount: Optional[float] = None
     category: Optional[str] = None
+    date: Optional[dict] = None  # {day: int, month: int, year: int}
+    timestamp: Optional[str] = None  # ISO 8601 string
 
 
 @app.put("/expenses/{expense_id}")
@@ -565,15 +585,43 @@ async def update_expense(
         # Create user-scoped Firebase client
         user_firebase = FirebaseClient.for_user(current_user.uid)
 
-        # Update the expense
-        updated = user_firebase.update_expense(
-            expense_id=expense_id,
-            expense_name=update_data.expense_name,
-            amount=update_data.amount,
-            category_str=update_data.category
-        )
+        # Parse date dict to Date object if provided
+        date_obj = None
+        if update_data.date:
+            try:
+                date_obj = Date(
+                    day=update_data.date["day"],
+                    month=update_data.date["month"],
+                    year=update_data.date["year"]
+                )
+            except (KeyError, TypeError) as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid date format. Expected {{day, month, year}}: {e}"
+                )
 
-        if not updated:
+        # Parse timestamp ISO string to datetime if provided
+        timestamp_dt = None
+        if update_data.timestamp:
+            try:
+                timestamp_dt = datetime.fromisoformat(update_data.timestamp.replace("Z", "+00:00"))
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid timestamp format. Expected ISO 8601: {e}"
+                )
+
+        # Update the expense
+        try:
+            user_firebase.update_expense(
+                expense_id=expense_id,
+                expense_name=update_data.expense_name,
+                amount=update_data.amount,
+                category_str=update_data.category,
+                date=date_obj,
+                timestamp=timestamp_dt
+            )
+        except DocumentNotFoundError:
             raise HTTPException(status_code=404, detail="Expense not found")
 
         return {
@@ -587,7 +635,7 @@ async def update_expense(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in PUT /expenses/{expense_id}: {e}")
+        logger.error("Error in PUT /expenses/%s: %s", expense_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -699,7 +747,7 @@ async def get_budget_status(
         )
 
     except Exception as e:
-        print(f"Error in /budget: {e}")
+        logger.error("Error in /budget: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -773,8 +821,7 @@ async def bulk_update_budget_caps(
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        print(f"Error in /budget-caps/bulk-update: {e}")
-        traceback.print_exc()
+        logger.exception("Error in /budget-caps/bulk-update")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -806,8 +853,7 @@ async def get_categories(
             "max_categories": MAX_CATEGORIES
         }
     except Exception as e:
-        print(f"Error in GET /categories: {e}")
-        traceback.print_exc()
+        logger.exception("Error in GET /categories")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -864,8 +910,7 @@ async def create_category(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in POST /categories: {e}")
-        traceback.print_exc()
+        logger.exception("Error in POST /categories")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -890,8 +935,7 @@ async def reorder_categories(
             "message": "Categories reordered"
         }
     except Exception as e:
-        print(f"Error in PUT /categories/reorder: {e}")
-        traceback.print_exc()
+        logger.exception("Error in PUT /categories/reorder")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -957,9 +1001,9 @@ async def update_category(
 
         # Update category
         update_dict = updates.model_dump(exclude_none=True)
-        success = user_firebase.update_category(category_id, update_dict)
-
-        if not success:
+        try:
+            user_firebase.update_category(category_id, update_dict)
+        except DocumentNotFoundError:
             raise HTTPException(status_code=404, detail="Category not found")
 
         # Recalculate OTHER cap if monthly_cap was updated
@@ -974,8 +1018,7 @@ async def update_category(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in PUT /categories/{category_id}: {e}")
-        traceback.print_exc()
+        logger.exception("Error in PUT /categories/%s", category_id)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1021,8 +1064,7 @@ async def delete_category(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in DELETE /categories/{category_id}: {e}")
-        traceback.print_exc()
+        logger.exception("Error in DELETE /categories/%s", category_id)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1052,8 +1094,7 @@ async def get_total_budget(
             "available": total_budget - allocated
         }
     except Exception as e:
-        print(f"Error in GET /budget/total: {e}")
-        traceback.print_exc()
+        logger.exception("Error in GET /budget/total")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1100,8 +1141,7 @@ async def update_total_budget(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in PUT /budget/total: {e}")
-        traceback.print_exc()
+        logger.exception("Error in PUT /budget/total")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1168,7 +1208,10 @@ async def complete_onboarding(
         for category_id, cap in request.category_caps.items():
             # Skip custom category IDs (they start with CUSTOM_)
             if not category_id.startswith("CUSTOM_"):
-                user_firebase.update_category(category_id, {"monthly_cap": cap})
+                try:
+                    user_firebase.update_category(category_id, {"monthly_cap": cap})
+                except DocumentNotFoundError:
+                    logger.warning("Category %s not found during onboarding cap update", category_id)
 
         # Create custom categories
         custom_created = 0
@@ -1195,8 +1238,7 @@ async def complete_onboarding(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in POST /onboarding/complete: {e}")
-        traceback.print_exc()
+        logger.exception("Error in POST /onboarding/complete")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1238,7 +1280,7 @@ async def get_recurring_expenses(
 
         return {"recurring_expenses": result}
     except Exception as e:
-        print(f"Error in /recurring: {e}")
+        logger.error("Error in /recurring: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1252,7 +1294,7 @@ async def get_pending_expenses(
         pending_expenses = user_firebase.get_all_pending_expenses(awaiting_only=True)
         return {"pending_expenses": pending_expenses}
     except Exception as e:
-        print(f"Error in /pending: {e}")
+        logger.error("Error in /pending: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1305,7 +1347,7 @@ async def confirm_pending_expense(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in /pending/{pending_id}/confirm: {e}")
+        logger.error("Error in /pending/%s/confirm: %s", pending_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1344,7 +1386,7 @@ async def delete_pending_expense(
 
         return {"success": True, "message": "Pending expense deleted"}
     except Exception as e:
-        print(f"Error in /pending/{pending_id}: {e}")
+        logger.error("Error in /pending/%s: %s", pending_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1359,7 +1401,7 @@ async def delete_recurring_template(
         user_firebase.delete_recurring_expense(template_id)
         return {"success": True, "message": "Recurring expense deleted"}
     except Exception as e:
-        print(f"Error in /recurring/{template_id}: {e}")
+        logger.error("Error in /recurring/%s: %s", template_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1384,18 +1426,11 @@ async def list_conversations(
 
         # Format timestamps for JSON serialization
         for conv in conversations:
-            if conv.get("created_at"):
-                created = conv["created_at"]
-                if hasattr(created, 'isoformat'):
-                    conv["created_at"] = created.isoformat()
-            if conv.get("last_activity"):
-                last = conv["last_activity"]
-                if hasattr(last, 'isoformat'):
-                    conv["last_activity"] = last.isoformat()
+            _format_timestamps(conv)
 
         return {"conversations": conversations}
     except Exception as e:
-        print(f"Error in /conversations: {e}")
+        logger.error("Error in /conversations: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1417,20 +1452,13 @@ async def get_conversation(
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         # Format timestamps for JSON serialization
-        if conversation.get("created_at"):
-            created = conversation["created_at"]
-            if hasattr(created, 'isoformat'):
-                conversation["created_at"] = created.isoformat()
-        if conversation.get("last_activity"):
-            last = conversation["last_activity"]
-            if hasattr(last, 'isoformat'):
-                conversation["last_activity"] = last.isoformat()
+        _format_timestamps(conversation)
 
         return conversation
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in /conversations/{conversation_id}: {e}")
+        logger.error("Error in GET /conversations/%s: %s", conversation_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1453,18 +1481,18 @@ async def add_deleted_expense(
     """
     try:
         user_firebase = FirebaseClient.for_user(current_user.uid)
-        success = user_firebase.add_deleted_expense_to_conversation(
-            conversation_id, request.expense_id
-        )
-
-        if not success:
+        try:
+            user_firebase.add_deleted_expense_to_conversation(
+                conversation_id, request.expense_id
+            )
+        except DocumentNotFoundError:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         return {"success": True}
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in POST /conversations/{conversation_id}/deleted-expenses: {e}")
+        logger.error("Error in POST /conversations/%s/deleted-expenses: %s", conversation_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1489,7 +1517,7 @@ async def verify_expenses(
 
         return {"existing_ids": existing_ids}
     except Exception as e:
-        print(f"Error in POST /expenses/verify: {e}")
+        logger.error("Error in POST /expenses/verify: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1501,16 +1529,16 @@ async def delete_conversation(
     """Delete a specific conversation. Requires authentication."""
     try:
         user_firebase = FirebaseClient.for_user(current_user.uid)
-        deleted = user_firebase.delete_conversation(conversation_id)
-
-        if not deleted:
+        try:
+            user_firebase.delete_conversation(conversation_id)
+        except DocumentNotFoundError:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         return {"success": True, "message": "Conversation deleted"}
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in /conversations/{conversation_id}: {e}")
+        logger.error("Error in DELETE /conversations/%s: %s", conversation_id, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1528,7 +1556,7 @@ async def create_conversation(
         conversation_id = user_firebase.create_conversation()
         return {"conversation_id": conversation_id}
     except Exception as e:
-        print(f"Error in POST /conversations: {e}")
+        logger.error("Error in POST /conversations: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1566,7 +1594,7 @@ async def admin_check_recurring(x_api_key: Optional[str] = Header(None)):
         )
 
     try:
-        print("🔄 [Admin] Checking for due recurring expenses for all users...")
+        logger.info("[Admin] Checking for due recurring expenses for all users...")
 
         # Get all user IDs from the users collection
         from google.cloud import firestore as gc_firestore
@@ -1580,7 +1608,7 @@ async def admin_check_recurring(x_api_key: Optional[str] = Header(None)):
         for user_doc in user_docs:
             user_id = user_doc.id
             users_checked += 1
-            print(f"  Checking user: {user_id}")
+            logger.debug("Checking user: %s", user_id)
 
             user_firebase = FirebaseClient.for_user(user_id)
             result = await _check_recurring_expenses_logic(user_firebase)
@@ -1590,7 +1618,7 @@ async def admin_check_recurring(x_api_key: Optional[str] = Header(None)):
                 all_details.extend([f"[{user_id}] {d}" for d in result["details"]])
 
         message = f"Checked {users_checked} user(s), created {total_created} pending expense(s)"
-        print(f"✅ [Admin] {message}")
+        logger.info("[Admin] %s", message)
 
         return {
             "created_count": total_created,
@@ -1599,8 +1627,7 @@ async def admin_check_recurring(x_api_key: Optional[str] = Header(None)):
             "details": all_details
         }
     except Exception as e:
-        print(f"[Admin] Error checking recurring expenses: {e}")
-        traceback.print_exc()
+        logger.exception("[Admin] Error checking recurring expenses")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1638,12 +1665,12 @@ async def admin_cleanup_conversations(
         )
 
     try:
-        print(f"[Admin] Cleaning up conversations older than {ttl_hours} hours...")
+        logger.info("[Admin] Cleaning up conversations older than %d hours...", ttl_hours)
         results = FirebaseClient.cleanup_all_users_conversations(ttl_hours=ttl_hours)
 
         total_deleted = results.pop("_total", 0)
         message = f"Deleted {total_deleted} old conversation(s)"
-        print(f"[Admin] {message}")
+        logger.info("[Admin] %s", message)
 
         return {
             "deleted_count": total_deleted,
@@ -1652,8 +1679,7 @@ async def admin_cleanup_conversations(
             "per_user": results
         }
     except Exception as e:
-        print(f"[Admin] Error cleaning up conversations: {e}")
-        traceback.print_exc()
+        logger.exception("[Admin] Error cleaning up conversations")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1849,8 +1875,6 @@ async def chat_stream(
     Follows BACKEND_API_CONTRACT.md specification.
     """
     from .mcp.connection_manager import get_connection_manager
-    from anthropic import Anthropic
-    from datetime import timedelta
 
     conn_manager = get_connection_manager()
 
@@ -1870,228 +1894,48 @@ async def chat_stream(
     # Set up user-scoped Firebase client
     user_firebase = FirebaseClient.for_user(current_user.uid)
 
-    # Determine conversation_id (get existing or create new based on 12h inactivity)
-    conversation_id = chat_message.conversation_id
-    conversation_messages = []
-
-    INACTIVITY_THRESHOLD_HOURS = 12
-
-    if conversation_id:
-        # Check if existing conversation is stale (>12 hours idle)
-        existing_conv = user_firebase.get_conversation(conversation_id)
-        if existing_conv:
-            last_activity = existing_conv.get("last_activity")
-            if last_activity:
-                now = datetime.now(USER_TIMEZONE)
-
-                # Handle Firestore timestamp
-                if hasattr(last_activity, 'timestamp'):
-                    last_activity = datetime.fromtimestamp(last_activity.timestamp(), USER_TIMEZONE)
-                elif isinstance(last_activity, datetime):
-                    if last_activity.tzinfo is None:
-                        last_activity = USER_TIMEZONE.localize(last_activity)
-
-                if now - last_activity > timedelta(hours=INACTIVITY_THRESHOLD_HOURS):
-                    print(f"Conversation {conversation_id} is stale (>{INACTIVITY_THRESHOLD_HOURS}h), creating new one")
-                    conversation_id = None
-                else:
-                    # Get existing messages for context
-                    conversation_messages = existing_conv.get("messages", [])
-        else:
-            conversation_id = None  # Conversation not found
-
-    # Create new conversation if needed
-    if not conversation_id:
-        conversation_id = user_firebase.create_conversation()
+    # Step 1: Resolve conversation
+    conversation_id, conversation_messages = get_or_create_conversation(
+        user_firebase, chat_message.conversation_id, USER_TIMEZONE
+    )
 
     async def event_stream():
         """Generate SSE events for the chat response."""
-        nonlocal conversation_id
-        final_response_text = []
-        all_tool_calls = []
-
         try:
             # Send conversation_id first so frontend can track it
             conv_event = {"type": "conversation_id", "conversation_id": conversation_id}
             yield f"data: {json.dumps(conv_event)}\n\n"
 
-            # Get available tools from MCP server
-            response = await client.session.list_tools()
-            available_tools = [{
-                "name": tool.name,
-                "description": tool.description,
-                "input_schema": tool.inputSchema
-            } for tool in response.tools]
+            # Step 2: Build messages
+            messages = build_message_context(conversation_messages, chat_message.message)
 
-            # Get system prompt
+            # Step 3: Tool loop
             from .system_prompts import get_expense_parsing_system_prompt
             system_prompt = get_expense_parsing_system_prompt()
 
-            # Build messages with conversation history
-            messages = []
+            result = ToolLoopResult()
+            async for sse_event in run_claude_tool_loop(
+                client, messages, system_prompt,
+                os.getenv('ANTHROPIC_API_KEY'), current_user.token, result
+            ):
+                yield sse_event
 
-            # Add previous conversation messages for context
-            for msg in conversation_messages:
-                messages.append({
-                    "role": msg.get("role", "user"),
-                    "content": msg.get("content", "")
-                })
-
-            # Add current user message
-            messages.append({
-                "role": "user",
-                "content": chat_message.message
-            })
-
-            # Call Claude API with tools
-            anthropic_client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-            api_response = anthropic_client.messages.create(
-                model="claude-sonnet-4-5",
-                system=system_prompt,
-                max_tokens=2000,
-                messages=messages,
-                tools=available_tools
-            )
-
-            # Process response and handle tool calls in a loop
-            while api_response.stop_reason == "tool_use":
-                # Collect all tool uses and text from this response
-                assistant_content = []
-                tool_results = []
-
-                for content in api_response.content:
-                    if content.type == 'text':
-                        assistant_content.append({
-                            "type": "text",
-                            "text": content.text
-                        })
-                    elif content.type == 'tool_use':
-                        tool_name = content.name
-                        tool_args = content.input
-                        tool_use_id = content.id
-
-                        # Inject auth_token for MCP tool authentication (defense in depth)
-                        if tool_name != "get_categories":
-                            tool_args = {**tool_args, "auth_token": current_user.token}
-
-                        # Emit tool_start event (without auth token for security)
-                        tool_start_event = {
-                            "type": "tool_start",
-                            "id": tool_use_id,
-                            "name": tool_name,
-                            "args": {k: v for k, v in tool_args.items() if k != "auth_token"}
-                        }
-                        yield f"data: {json.dumps(tool_start_event)}\n\n"
-
-                        # Execute tool call via MCP
-                        result = await client.session.call_tool(tool_name, tool_args)
-
-                        # Parse tool result
-                        if hasattr(result, 'content') and result.content:
-                            if isinstance(result.content, list):
-                                result_text = "\n".join(
-                                    block.text if hasattr(block, 'text') else str(block)
-                                    for block in result.content
-                                )
-                            else:
-                                result_text = str(result.content)
-                        else:
-                            result_text = str(result)
-
-                        # Emit tool_end event with result
-                        try:
-                            parsed_result = json.loads(result_text)
-                        except (json.JSONDecodeError, TypeError):
-                            parsed_result = result_text
-
-                        tool_end_event = {
-                            "type": "tool_end",
-                            "id": tool_use_id,
-                            "name": tool_name,
-                            "result": parsed_result
-                        }
-                        yield f"data: {json.dumps(tool_end_event)}\n\n"
-
-                        # Collect tool call for persistence
-                        all_tool_calls.append({
-                            "id": tool_use_id,
-                            "name": tool_name,
-                            "args": {k: v for k, v in tool_args.items() if k != "auth_token"},
-                            "result": parsed_result
-                        })
-
-                        # Add tool_use to assistant content
-                        assistant_content.append({
-                            "type": "tool_use",
-                            "id": tool_use_id,
-                            "name": tool_name,
-                            "input": tool_args
-                        })
-
-                        # Collect tool result
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": tool_use_id,
-                            "content": result_text
-                        })
-
-                # Add assistant message with tool uses
-                messages.append({
-                    "role": "assistant",
-                    "content": assistant_content
-                })
-
-                # Add user message with tool results
-                messages.append({
-                    "role": "user",
-                    "content": tool_results
-                })
-
-                # Get next response from Claude
-                api_response = anthropic_client.messages.create(
-                    model="claude-sonnet-4-5",
-                    system=system_prompt,
-                    max_tokens=2000,
-                    messages=messages,
-                    tools=available_tools
+            # Step 4: Save history (skip if tool loop errored)
+            if not result.had_error:
+                save_conversation_history(
+                    user_firebase, conversation_id,
+                    chat_message.message,
+                    "\n".join(result.final_response_text),
+                    result.all_tool_calls,
+                    conversation_messages,
                 )
-
-            # Process final response (no more tool calls)
-            for content in api_response.content:
-                if content.type == 'text':
-                    text = content.text
-                    final_response_text.append(text)
-
-                    if len(text) > 0:
-                        text_event = {
-                            "type": "text",
-                            "content": text
-                        }
-                        yield f"data: {json.dumps(text_event)}\n\n"
-
-            # Save messages to Firestore conversation
-            user_firebase.add_message_to_conversation(conversation_id, "user", chat_message.message)
-            full_response = "\n".join(final_response_text)
-            if full_response:
-                user_firebase.add_message_to_conversation(
-                    conversation_id, "assistant", full_response,
-                    tool_calls=all_tool_calls if all_tool_calls else None
-                )
-
-            # Update conversation summary from first user message
-            if len(conversation_messages) == 0:
-                # This is the first message, set summary
-                summary = chat_message.message[:50]
-                if len(chat_message.message) > 50:
-                    summary += "..."
-                user_firebase.update_conversation_summary(conversation_id, summary)
 
             # Send done signal
             yield "data: [DONE]\n\n"
 
         except Exception as e:
+            logger.exception("Error in chat stream")
             error_msg = f"[ERROR] {str(e)}"
             yield f"data: {error_msg}\n\n"
-            traceback.print_exc()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

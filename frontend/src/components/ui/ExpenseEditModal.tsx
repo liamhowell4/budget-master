@@ -3,7 +3,7 @@ import { Modal } from './Modal'
 import { Spinner } from './Spinner'
 import { CategoryIcon } from './CategoryIcon'
 import { cn } from '@/utils/cn'
-import { formatCurrency, formatExpenseDate } from '@/utils/formatters'
+import { formatCurrency, formatExpenseDateTime } from '@/utils/formatters'
 import { Check, X, Trash2, Pencil, Calendar, Clock, Repeat, ChevronDown } from 'lucide-react'
 import { useCategories } from '@/hooks/useCategories'
 import type { Expense } from '@/types/expense'
@@ -12,7 +12,7 @@ interface ExpenseEditModalProps {
   expense: Expense | null
   isOpen: boolean
   onClose: () => void
-  onSave?: (expenseId: string, updates: { expense_name?: string; amount?: number; category?: string }) => Promise<void>
+  onSave?: (expenseId: string, updates: { expense_name?: string; amount?: number; category?: string; date?: { day: number; month: number; year: number }; timestamp?: string }) => Promise<void>
   onDelete?: (expenseId: string) => Promise<void>
 }
 
@@ -31,6 +31,8 @@ export function ExpenseEditModal({
   const [editName, setEditName] = useState('')
   const [editAmount, setEditAmount] = useState('')
   const [editCategory, setEditCategory] = useState('')
+  const [editDate, setEditDate] = useState('')
+  const [editTime, setEditTime] = useState('')
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
 
   // Reset state when modal opens/closes or expense changes
@@ -39,6 +41,16 @@ export function ExpenseEditModal({
       setEditName(expense.expense_name)
       setEditAmount(expense.amount.toString())
       setEditCategory(expense.category)
+      // Initialize date as YYYY-MM-DD
+      const d = expense.date
+      setEditDate(`${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`)
+      // Initialize time from timestamp, or default to 12:00
+      if (expense.timestamp) {
+        const ts = new Date(expense.timestamp)
+        setEditTime(`${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`)
+      } else {
+        setEditTime('12:00')
+      }
       setIsEditing(false)
       setIsConfirmingDelete(false)
       setIsCategoryOpen(false)
@@ -57,6 +69,14 @@ export function ExpenseEditModal({
       setEditName(expense.expense_name)
       setEditAmount(expense.amount.toString())
       setEditCategory(expense.category)
+      const d = expense.date
+      setEditDate(`${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`)
+      if (expense.timestamp) {
+        const ts = new Date(expense.timestamp)
+        setEditTime(`${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`)
+      } else {
+        setEditTime('12:00')
+      }
       setIsEditing(true)
     }
   }
@@ -66,6 +86,14 @@ export function ExpenseEditModal({
       setEditName(expense.expense_name)
       setEditAmount(expense.amount.toString())
       setEditCategory(expense.category)
+      const d = expense.date
+      setEditDate(`${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`)
+      if (expense.timestamp) {
+        const ts = new Date(expense.timestamp)
+        setEditTime(`${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`)
+      } else {
+        setEditTime('12:00')
+      }
     }
     setIsEditing(false)
     setIsCategoryOpen(false)
@@ -78,10 +106,29 @@ export function ExpenseEditModal({
 
     setIsSaving(true)
     try {
-      const updates: { expense_name?: string; amount?: number; category?: string } = {}
+      const updates: { expense_name?: string; amount?: number; category?: string; date?: { day: number; month: number; year: number }; timestamp?: string } = {}
       if (editName !== expense.expense_name) updates.expense_name = editName
       if (newAmount !== expense.amount) updates.amount = newAmount
       if (editCategory !== expense.category) updates.category = editCategory
+
+      // Check if date or time changed
+      const origDate = `${expense.date.year}-${String(expense.date.month).padStart(2, '0')}-${String(expense.date.day).padStart(2, '0')}`
+      let origTime = '12:00'
+      if (expense.timestamp) {
+        const ts = new Date(expense.timestamp)
+        origTime = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`
+      }
+
+      if (editDate !== origDate || editTime !== origTime) {
+        // Parse the edited date and time
+        const [yearStr, monthStr, dayStr] = editDate.split('-')
+        const [hourStr, minStr] = editTime.split(':')
+        const newDate = { day: parseInt(dayStr, 10), month: parseInt(monthStr, 10), year: parseInt(yearStr, 10) }
+        updates.date = newDate
+        // Construct ISO timestamp from date + time
+        const dt = new Date(newDate.year, newDate.month - 1, newDate.day, parseInt(hourStr, 10), parseInt(minStr, 10))
+        updates.timestamp = dt.toISOString()
+      }
 
       if (Object.keys(updates).length > 0) {
         await onSave(expense.id, updates)
@@ -240,16 +287,45 @@ export function ExpenseEditModal({
             </div>
           </div>
 
-          {/* Date */}
+          {/* Date & Time */}
           <div className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800">
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-neutral-200 dark:bg-neutral-700">
               <Calendar className="h-5 w-5 text-neutral-600 dark:text-neutral-300" />
             </div>
-            <div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">Date</p>
-              <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                {formatExpenseDate(expense.date)}
-              </p>
+            <div className="flex-1">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">Date & Time</p>
+              {isEditing ? (
+                <div className="flex gap-2 mt-1">
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className={cn(
+                      'flex-1 px-2 py-1 text-sm rounded-md',
+                      'bg-white dark:bg-neutral-700',
+                      'border border-neutral-300 dark:border-neutral-600',
+                      'focus:outline-none focus:ring-2 focus:ring-blue-500',
+                      'text-neutral-900 dark:text-neutral-100'
+                    )}
+                  />
+                  <input
+                    type="time"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    className={cn(
+                      'w-28 px-2 py-1 text-sm rounded-md',
+                      'bg-white dark:bg-neutral-700',
+                      'border border-neutral-300 dark:border-neutral-600',
+                      'focus:outline-none focus:ring-2 focus:ring-blue-500',
+                      'text-neutral-900 dark:text-neutral-100'
+                    )}
+                  />
+                </div>
+              ) : (
+                <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  {formatExpenseDateTime(expense.date, expense.timestamp)}
+                </p>
+              )}
             </div>
           </div>
 

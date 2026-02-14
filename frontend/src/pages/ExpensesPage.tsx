@@ -37,15 +37,21 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'amount-asc', label: 'Lowest amount' },
 ]
 
+function getExpenseTime(expense: Expense): number {
+  if (expense.timestamp) {
+    return new Date(expense.timestamp).getTime()
+  }
+  // Fallback to date-only for older expenses without timestamp
+  return new Date(expense.date.year, expense.date.month - 1, expense.date.day).getTime()
+}
+
 function sortExpenses(expenses: Expense[], sortBy: SortOption): Expense[] {
   return [...expenses].sort((a, b) => {
     switch (sortBy) {
       case 'date-desc':
-        return new Date(b.date.year, b.date.month - 1, b.date.day).getTime() -
-               new Date(a.date.year, a.date.month - 1, a.date.day).getTime()
+        return getExpenseTime(b) - getExpenseTime(a)
       case 'date-asc':
-        return new Date(a.date.year, a.date.month - 1, a.date.day).getTime() -
-               new Date(b.date.year, b.date.month - 1, b.date.day).getTime()
+        return getExpenseTime(a) - getExpenseTime(b)
       case 'amount-desc':
         return b.amount - a.amount
       case 'amount-asc':
@@ -420,7 +426,7 @@ export function ExpensesPage() {
   }
 
   const handleExpenseSave = useCallback(
-    async (expenseId: string, updates: { expense_name?: string; amount?: number; category?: string }) => {
+    async (expenseId: string, updates: { expense_name?: string; amount?: number; category?: string; date?: { day: number; month: number; year: number }; timestamp?: string }) => {
       await updateExpense(expenseId, updates)
       invalidateExpensesCache()
       invalidateBudgetCache()

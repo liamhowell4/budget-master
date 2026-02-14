@@ -39,12 +39,20 @@ interface UpdateExpenseResponse {
     expense_name?: string
     amount?: number
     category?: string
+    date?: { day: number; month: number; year: number }
+    timestamp?: string
   }
 }
 
 export async function updateExpense(
   expenseId: string,
-  updates: { expense_name?: string; amount?: number; category?: string }
+  updates: {
+    expense_name?: string
+    amount?: number
+    category?: string
+    date?: { day: number; month: number; year: number }
+    timestamp?: string
+  }
 ): Promise<UpdateExpenseResponse> {
   const response = await api.put<UpdateExpenseResponse>(`/expenses/${expenseId}`, updates)
   return response.data

@@ -8,8 +8,11 @@ This module provides a singleton connection manager that:
 """
 
 import os
+import logging
 from typing import Optional, List, Dict, Any, Tuple
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 from .client import MCPClient
 
@@ -75,11 +78,11 @@ class ConnectionManager:
         try:
             # Disconnect from current server if connected
             if self.is_connected:
-                print(f"🔄 Disconnecting from {self._state.server_id} before connecting to {server_id}")
+                logger.info("Disconnecting from %s before connecting to %s", self._state.server_id, server_id)
                 await self.disconnect()
             
             # Create new client
-            print(f"🔄 Connecting to {server_name} ({server_id})...")
+            logger.info("Connecting to %s (%s)...", server_name, server_id)
             self._client = MCPClient()
             
             # Connect to server
@@ -103,12 +106,12 @@ class ConnectionManager:
                 tools=tools
             )
             
-            print(f"✅ Connected to {server_name} with {len(tools)} tools")
+            logger.info("Connected to %s with %d tools", server_name, len(tools))
             return True, tools, None
             
         except Exception as e:
             error_msg = f"Failed to connect to {server_name}: {str(e)}"
-            print(f"❌ {error_msg}")
+            logger.error(error_msg)
             
             # Ensure state is disconnected on failure
             self._state = ConnectionState(connected=False)
@@ -124,11 +127,11 @@ class ConnectionManager:
         """
         if self._client:
             try:
-                print(f"🔄 Disconnecting from {self._state.server_id}...")
+                logger.info("Disconnecting from %s...", self._state.server_id)
                 await self._client.cleanup()
-                print("✅ Disconnected successfully")
+                logger.info("Disconnected successfully")
             except Exception as e:
-                print(f"⚠️ Error during disconnect: {e}")
+                logger.warning("Error during disconnect: %s", e)
         
         # Reset state
         self._state = ConnectionState(connected=False)

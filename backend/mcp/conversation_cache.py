@@ -13,9 +13,12 @@ Architecture:
 """
 
 import os
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import pytz
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationCache:
@@ -123,7 +126,7 @@ class ConversationCache:
             del self._cache[user_id]
 
         if stale_users:
-            print(f"🧹 Cleaned up {len(stale_users)} stale conversation cache entries")
+            logger.info("Cleaned up %d stale conversation cache entries", len(stale_users))
 
     def get_cache_size(self) -> int:
         """

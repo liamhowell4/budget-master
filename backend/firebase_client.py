@@ -4,17 +4,22 @@ Firebase Client - Handles all Firestore and Firebase Storage operations.
 
 import os
 import json
+import logging
 from datetime import datetime
 from typing import List, Optional, Dict
 from pathlib import Path
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
 from google.cloud.firestore_v1.base_query import FieldFilter
+from google.api_core.exceptions import GoogleAPIError
 
 from .output_schemas import Expense, ExpenseType, Date, RecurringExpense, PendingExpense, FrequencyType, Category, generate_category_id
 from .category_defaults import DEFAULT_CATEGORIES, MAX_CATEGORIES
+from .exceptions import DocumentNotFoundError
 
 # Load .env from project root (parent of backend/)
 env_path = Path(__file__).parent.parent / ".env"
@@ -103,45 +108,16 @@ class FirebaseClient:
 
     # ==================== Expense Operations ====================
 
-    def save_expense(self, expense: Expense, input_type: str = "text") -> str:
+    def save_expense(self, expense: Expense, input_type: str = "text", category_str: Optional[str] = None) -> str:
         """
         Save an expense to Firestore.
 
         Args:
             expense: The Expense object to save
-            input_type: Type of input ("sms", "voice", "image", "text")
-
-        Returns:
-            Document ID of the saved expense
-        """
-        expense_data = {
-            "expense_name": expense.expense_name,
-            "amount": expense.amount,
-            "date": {
-                "day": expense.date.day,
-                "month": expense.date.month,
-                "year": expense.date.year
-            },
-            "category": expense.category.name,  # Store enum key
-            "timestamp": firestore.SERVER_TIMESTAMP,
-            "input_type": input_type
-        }
-
-        # Add to Firestore
-        doc_ref = self.db.collection(self._get_collection_path("expenses")).add(expense_data)
-        return doc_ref[1].id
-
-    def save_expense_with_category_str(self, expense: Expense, category_str: str, input_type: str = "text") -> str:
-        """
-        Save an expense to Firestore with a custom category string.
-
-        This allows saving expenses with user-defined category IDs that may not
-        be in the ExpenseType enum.
-
-        Args:
-            expense: The Expense object to save
-            category_str: The category ID string (e.g., "FOOD_OUT", "PET_SUPPLIES")
             input_type: Type of input ("sms", "voice", "image", "text", "mcp")
+            category_str: Optional category ID string override (e.g., "PET_SUPPLIES").
+                          If provided, uses this instead of expense.category.name.
+                          Useful for user-defined categories not in the ExpenseType enum.
 
         Returns:
             Document ID of the saved expense
@@ -154,14 +130,18 @@ class FirebaseClient:
                 "month": expense.date.month,
                 "year": expense.date.year
             },
-            "category": category_str,  # Store custom category string
+            "category": category_str if category_str else expense.category.name,
             "timestamp": firestore.SERVER_TIMESTAMP,
             "input_type": input_type
         }
 
         # Add to Firestore
-        doc_ref = self.db.collection(self._get_collection_path("expenses")).add(expense_data)
-        return doc_ref[1].id
+        try:
+            doc_ref = self.db.collection(self._get_collection_path("expenses")).add(expense_data)
+            return doc_ref[1].id
+        except GoogleAPIError as e:
+            logger.error("Firestore write failed in save_expense: %s", e)
+            raise RuntimeError(f"Failed to save expense: {e}") from e
 
     def get_expenses(
         self,
@@ -233,6 +213,9 @@ class FirebaseClient:
             expense_data["id"] = doc.id
             expenses.append(expense_data)
 
+        # Sort by timestamp descending (most recent first) for consistent ordering
+        expenses.sort(key=lambda x: x.get("timestamp") or datetime.min, reverse=True)
+
         return expenses
 
     def calculate_monthly_total(self, year: int, month: int, category: Optional[ExpenseType] = None) -> float:
@@ -277,7 +260,8 @@ class FirebaseClient:
         amount: Optional[float] = None,
         date: Optional[Date] = None,
         category: Optional[ExpenseType] = None,
-        category_str: Optional[str] = None
+        category_str: Optional[str] = None,
+        timestamp: Optional[datetime] = None
     ) -> bool:
         """
         Update an expense's fields (partial update).
@@ -289,6 +273,7 @@ class FirebaseClient:
             date: New date (optional)
             category: New category as ExpenseType (optional, for backward compat)
             category_str: New category as string (optional, for custom categories)
+            timestamp: New timestamp as datetime (optional)
 
         Returns:
             True if updated, False if expense not found
@@ -297,7 +282,7 @@ class FirebaseClient:
 
         # Check if expense exists
         if not doc_ref.get().exists:
-            return False
+            raise DocumentNotFoundError("expenses", expense_id)
 
         # Build update dict (only include provided fields)
         updates = {}
@@ -316,10 +301,16 @@ class FirebaseClient:
             updates["category"] = category_str
         elif category is not None:
             updates["category"] = category.name
+        if timestamp is not None:
+            updates["timestamp"] = timestamp
 
-        # Perform update (keep original timestamp)
+        # Perform update
         if updates:
-            doc_ref.update(updates)
+            try:
+                doc_ref.update(updates)
+            except GoogleAPIError as e:
+                logger.error("Firestore write failed in update_expense: %s", e)
+                raise RuntimeError(f"Failed to update expense: {e}") from e
 
         return True
 
@@ -337,7 +328,7 @@ class FirebaseClient:
 
         # Check if expense exists
         if not doc_ref.get().exists:
-            return False
+            raise DocumentNotFoundError("expenses", expense_id)
 
         doc_ref.delete()
         return True
@@ -582,11 +573,15 @@ class FirebaseClient:
             category: Category name (e.g., "FOOD_OUT") or "TOTAL" for overall cap
             amount: Monthly budget cap amount
         """
-        self.db.collection(self._get_collection_path("budget_caps")).document(category).set({
-            "category": category,
-            "monthly_cap": amount,
-            "last_updated": firestore.SERVER_TIMESTAMP
-        })
+        try:
+            self.db.collection(self._get_collection_path("budget_caps")).document(category).set({
+                "category": category,
+                "monthly_cap": amount,
+                "last_updated": firestore.SERVER_TIMESTAMP
+            })
+        except GoogleAPIError as e:
+            logger.error("Firestore write failed in set_budget_cap: %s", e)
+            raise RuntimeError(f"Failed to set budget cap: {e}") from e
 
     def get_all_budget_caps(self) -> Dict[str, float]:
         """
@@ -703,7 +698,7 @@ class FirebaseClient:
             # Use category_id as document ID
             self.db.collection("global_categories").document(expense_type.name).set(category_data)
 
-        print(f"✅ Seeded {len(ExpenseType)} categories to Firestore")
+        logger.info("Seeded %d categories to Firestore", len(ExpenseType))
 
     # ==================== User Custom Category Operations ====================
 
@@ -821,7 +816,7 @@ class FirebaseClient:
         doc_ref = self.db.collection(self._get_collection_path("categories")).document(category_id)
 
         if not doc_ref.get().exists:
-            return False
+            raise DocumentNotFoundError("categories", category_id)
 
         # Filter out None values
         filtered_updates = {k: v for k, v in updates.items() if v is not None}
@@ -1167,12 +1162,14 @@ class FirebaseClient:
 
     # ==================== Recurring Expense Operations ====================
 
-    def save_recurring_expense(self, recurring: RecurringExpense) -> str:
+    def save_recurring_expense(self, recurring: RecurringExpense, category_str: Optional[str] = None) -> str:
         """
         Save a recurring expense template to Firestore.
 
         Args:
             recurring: RecurringExpense object
+            category_str: Optional category ID string override (e.g., "PET_SUPPLIES").
+                          If provided, uses this instead of recurring.category.name.
 
         Returns:
             Document ID of the saved recurring expense
@@ -1180,7 +1177,7 @@ class FirebaseClient:
         recurring_data = {
             "expense_name": recurring.expense_name,
             "amount": recurring.amount,
-            "category": recurring.category.name,
+            "category": category_str if category_str else recurring.category.name,
             "frequency": recurring.frequency.value,
             "day_of_month": recurring.day_of_month,
             "day_of_week": recurring.day_of_week,
@@ -1201,46 +1198,12 @@ class FirebaseClient:
         }
 
         # Add to Firestore
-        doc_ref = self.db.collection(self._get_collection_path("recurring_expenses")).add(recurring_data)
-        return doc_ref[1].id
-
-    def save_recurring_expense_with_category_str(self, recurring: RecurringExpense, category_str: str) -> str:
-        """
-        Save a recurring expense template with a custom category string.
-
-        Args:
-            recurring: RecurringExpense object
-            category_str: The category ID string (e.g., "FOOD_OUT", "PET_SUPPLIES")
-
-        Returns:
-            Document ID of the saved recurring expense
-        """
-        recurring_data = {
-            "expense_name": recurring.expense_name,
-            "amount": recurring.amount,
-            "category": category_str,  # Use custom category string
-            "frequency": recurring.frequency.value,
-            "day_of_month": recurring.day_of_month,
-            "day_of_week": recurring.day_of_week,
-            "month_of_year": recurring.month_of_year,
-            "last_of_month": recurring.last_of_month,
-            "last_reminded": {
-                "day": recurring.last_reminded.day,
-                "month": recurring.last_reminded.month,
-                "year": recurring.last_reminded.year
-            } if recurring.last_reminded else None,
-            "last_user_action": {
-                "day": recurring.last_user_action.day,
-                "month": recurring.last_user_action.month,
-                "year": recurring.last_user_action.year
-            } if recurring.last_user_action else None,
-            "active": recurring.active,
-            "created_at": firestore.SERVER_TIMESTAMP
-        }
-
-        # Add to Firestore
-        doc_ref = self.db.collection(self._get_collection_path("recurring_expenses")).add(recurring_data)
-        return doc_ref[1].id
+        try:
+            doc_ref = self.db.collection(self._get_collection_path("recurring_expenses")).add(recurring_data)
+            return doc_ref[1].id
+        except GoogleAPIError as e:
+            logger.error("Firestore write failed in save_recurring_expense: %s", e)
+            raise RuntimeError(f"Failed to save recurring expense: {e}") from e
 
     def get_recurring_expense(self, template_id: str) -> Optional[RecurringExpense]:
         """
@@ -1579,7 +1542,7 @@ class FirebaseClient:
 
         # Check if conversation exists
         if not doc_ref.get().exists:
-            return False
+            raise DocumentNotFoundError("conversations", conversation_id)
 
         # Get current time for message timestamp
         import pytz
@@ -1618,7 +1581,7 @@ class FirebaseClient:
         doc_ref = self.db.collection(self._get_collection_path("conversations")).document(conversation_id)
 
         if not doc_ref.get().exists:
-            return False
+            raise DocumentNotFoundError("conversations", conversation_id)
 
         doc_ref.update({"summary": summary})
         return True
@@ -1652,7 +1615,7 @@ class FirebaseClient:
 
         doc = doc_ref.get()
         if not doc.exists:
-            return False
+            raise DocumentNotFoundError("conversations", conversation_id)
 
         data = doc.to_dict()
         recent_expenses = data.get("recent_expenses", [])
@@ -1713,7 +1676,7 @@ class FirebaseClient:
         doc_ref = self.db.collection(self._get_collection_path("conversations")).document(conversation_id)
 
         if not doc_ref.get().exists:
-            return False
+            raise DocumentNotFoundError("conversations", conversation_id)
 
         doc_ref.update({
             "deleted_expense_ids": firestore.ArrayUnion([expense_id])
@@ -1754,7 +1717,7 @@ class FirebaseClient:
         doc_ref = self.db.collection(self._get_collection_path("conversations")).document(conversation_id)
 
         if not doc_ref.get().exists:
-            return False
+            raise DocumentNotFoundError("conversations", conversation_id)
 
         doc_ref.delete()
         return True

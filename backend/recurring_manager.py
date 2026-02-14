@@ -382,6 +382,69 @@ class RecurringManager:
         return False, None
 
     @staticmethod
+    def should_log_initial_expense(recurring: RecurringExpense, today: Optional[date] = None) -> Tuple[bool, Optional[date]]:
+        """
+        When a recurring expense is first created, determine if we should
+        immediately log an expense for the current period.
+
+        Rule: Log the current iteration unless the trigger day is in the future.
+        For example, if today is the 11th and the expense is due on the 1st of
+        each month, log it for the 1st. But if it's due on the 15th, don't log
+        because the 15th hasn't arrived yet.
+
+        Args:
+            recurring: The newly created RecurringExpense
+            today: Override today's date (for testing)
+
+        Returns:
+            Tuple of (should_log, expense_date)
+        """
+        if today is None:
+            today = get_today_in_user_timezone()
+
+        if recurring.frequency == FrequencyType.MONTHLY:
+            if recurring.last_of_month:
+                last_day = monthrange(today.year, today.month)[1]
+                if today.day >= last_day:
+                    return True, date(today.year, today.month, last_day)
+                return False, None
+            else:
+                target_day = recurring.day_of_month
+                last_day = monthrange(today.year, today.month)[1]
+                actual_day = min(target_day, last_day)
+                if today.day >= actual_day:
+                    return True, date(today.year, today.month, actual_day)
+                return False, None
+
+        elif recurring.frequency in [FrequencyType.WEEKLY, FrequencyType.BIWEEKLY]:
+            target_weekday = recurring.day_of_week
+            if today.weekday() >= target_weekday:
+                days_back = today.weekday() - target_weekday
+                expense_date = today - timedelta(days=days_back)
+                return True, expense_date
+            return False, None
+
+        elif recurring.frequency == FrequencyType.YEARLY:
+            if recurring.last_of_month:
+                target_month = recurring.month_of_year
+                last_day = monthrange(today.year, target_month)[1]
+                target_date = date(today.year, target_month, last_day)
+                if today >= target_date:
+                    return True, target_date
+                return False, None
+            else:
+                target_month = recurring.month_of_year
+                target_day = recurring.day_of_month
+                last_day = monthrange(today.year, target_month)[1]
+                actual_day = min(target_day, last_day)
+                target_date = date(today.year, target_month, actual_day)
+                if today >= target_date:
+                    return True, target_date
+                return False, None
+
+        return False, None
+
+    @staticmethod
     def create_pending_expense_from_recurring(
         recurring: RecurringExpense,
         trigger_date: date

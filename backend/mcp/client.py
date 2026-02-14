@@ -10,12 +10,15 @@ This module wraps the MCP client for use in FastAPI, providing:
 
 import os
 import json
+import logging
 import base64
 import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import date
 from contextlib import AsyncExitStack
+
+logger = logging.getLogger(__name__)
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -76,7 +79,7 @@ class MCPClient:
         # List available tools
         response = await self.session.list_tools()
         tools = response.tools
-        print("\nConnected to server with tools:", [tool.name for tool in tools])
+        logger.info("Connected to server with tools: %s", [tool.name for tool in tools])
 
     async def cleanup(self):
         """Clean up resources."""
@@ -138,12 +141,12 @@ class ExpenseMCPClient:
         Raises:
             Exception: If connection fails
         """
-        print("🔄 Starting MCP client...")
+        logger.info("Starting MCP client...")
         self.client = MCPClient()
 
         # Connect to expense server
         await self.client.connect_to_server(self.server_path)
-        print("✅ MCP client connected to expense server")
+        logger.info("MCP client connected to expense server")
 
     async def process_expense_message(
         self,
@@ -219,7 +222,7 @@ class ExpenseMCPClient:
                                 last_activity = tz.localize(last_activity)
 
                         if now - last_activity > timedelta(hours=1):
-                            print(f"Conversation {conversation_id} is stale (>1 hour), creating new one")
+                            logger.info("Conversation %s is stale (>1 hour), creating new one", conversation_id)
                             conversation_id = None  # Will create new one below
                         else:
                             # Get existing messages for context
@@ -360,7 +363,7 @@ class ExpenseMCPClient:
                     tool_args = content.input
                     tool_use_id = content.id
 
-                    print(f"🔧 Calling tool: {tool_name}")
+                    logger.info("Calling tool: %s", tool_name)
 
                     # Inject auth_token into tool arguments for multi-user support
                     # Claude doesn't know the auth token, so we inject it here
@@ -429,7 +432,7 @@ class ExpenseMCPClient:
                             expense_data["budget_warning"] = result_data.get("budget_warning", "")
 
                     except json.JSONDecodeError:
-                        print(f"⚠️ Could not parse tool result as JSON: {result_text}")
+                        logger.warning("Could not parse tool result as JSON: %s", result_text)
 
                     # Add tool_use to assistant content
                     assistant_content.append({
@@ -506,6 +509,6 @@ class ExpenseMCPClient:
         This closes the stdio connection and terminates the server subprocess.
         """
         if self.client:
-            print("🔄 Shutting down MCP client...")
+            logger.info("Shutting down MCP client...")
             await self.client.cleanup()
-            print("✅ MCP client shut down")
+            logger.info("MCP client shut down")
