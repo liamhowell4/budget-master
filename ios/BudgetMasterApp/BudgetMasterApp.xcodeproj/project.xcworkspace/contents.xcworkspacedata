@@ -4,10 +4,4 @@
    <FileRef
       location = "self:">
    </FileRef>
-   <FileRef
-      location = "group:TokenProvider.swift">
-   </FileRef>
-   <FileRef
-      location = "group:IMPLEMENTATION_PLAN.md">
-   </FileRef>
 </Workspace>

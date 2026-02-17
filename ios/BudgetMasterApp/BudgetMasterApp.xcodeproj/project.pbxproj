@@ -7,16 +7,34 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA000000000000000042 /* BudgetMaster in Frameworks */ = {isa = PBXBuildFile; productRef = AA000000000000000041 /* BudgetMaster */; };
+		AF19A57F2F44174000B37B41 /* BudgetMaster in Frameworks */ = {isa = PBXBuildFile; productRef = AF19A57E2F44174000B37B41 /* BudgetMaster */; };
+		AF19A5BC2F4418AF00B37B41 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = AF19A5BB2F4418AF00B37B41 /* FirebaseAuth */; };
+		AF19A5BE2F4418AF00B37B41 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = AF19A5BD2F4418AF00B37B41 /* FirebaseCore */; };
+		AF19A5C02F4418AF00B37B41 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = AF19A5BF2F4418AF00B37B41 /* FirebaseFirestore */; };
+		AF19A5C22F4418AF00B37B41 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = AF19A5C12F4418AF00B37B41 /* FirebaseFunctions */; };
+		AF19A5C42F4418AF00B37B41 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = AF19A5C32F4418AF00B37B41 /* FirebaseStorage */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		AA000000000000000004 /* BudgetMasterApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BudgetMasterApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AA000000000000000050 /* Exceptions for "BudgetMasterApp" folder in "BudgetMasterApp" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AA000000000000000010 /* BudgetMasterApp */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA000000000000000005 /* BudgetMasterApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AA000000000000000050 /* Exceptions for "BudgetMasterApp" folder in "BudgetMasterApp" target */,
+			);
 			path = BudgetMasterApp;
 			sourceTree = "<group>";
 		};
@@ -27,7 +45,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA000000000000000042 /* BudgetMaster in Frameworks */,
+				AF19A57F2F44174000B37B41 /* BudgetMaster in Frameworks */,
+				AF19A5C02F4418AF00B37B41 /* FirebaseFirestore in Frameworks */,
+				AF19A5C22F4418AF00B37B41 /* FirebaseFunctions in Frameworks */,
+				AF19A5BE2F4418AF00B37B41 /* FirebaseCore in Frameworks */,
+				AF19A5BC2F4418AF00B37B41 /* FirebaseAuth in Frameworks */,
+				AF19A5C42F4418AF00B37B41 /* FirebaseStorage in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -38,6 +61,7 @@
 			isa = PBXGroup;
 			children = (
 				AA000000000000000005 /* BudgetMasterApp */,
+				AF19A5BA2F4418AF00B37B41 /* Frameworks */,
 				AA000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -48,6 +72,13 @@
 				AA000000000000000004 /* BudgetMasterApp.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		AF19A5BA2F4418AF00B37B41 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -70,7 +101,12 @@
 			);
 			name = BudgetMasterApp;
 			packageProductDependencies = (
-				AA000000000000000041 /* BudgetMaster */,
+				AF19A57E2F44174000B37B41 /* BudgetMaster */,
+				AF19A5BB2F4418AF00B37B41 /* FirebaseAuth */,
+				AF19A5BD2F4418AF00B37B41 /* FirebaseCore */,
+				AF19A5BF2F4418AF00B37B41 /* FirebaseFirestore */,
+				AF19A5C12F4418AF00B37B41 /* FirebaseFunctions */,
+				AF19A5C32F4418AF00B37B41 /* FirebaseStorage */,
 			);
 			productName = BudgetMasterApp;
 			productReference = AA000000000000000004 /* BudgetMasterApp.app */;
@@ -101,8 +137,8 @@
 			mainGroup = AA000000000000000002;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				AA000000000000000040 /* XCLocalSwiftPackageReference "../../BudgetMaster" */,
 				AFF2DDEA2F3D7F6500FBB92F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				AF19A57D2F44174000B37B41 /* XCLocalSwiftPackageReference "../BudgetMaster" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA000000000000000003 /* Products */;
@@ -271,6 +307,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -299,6 +336,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -336,9 +374,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		AA000000000000000040 /* XCLocalSwiftPackageReference "../../BudgetMaster" */ = {
+		AF19A57D2F44174000B37B41 /* XCLocalSwiftPackageReference "../BudgetMaster" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../BudgetMaster;
+			relativePath = ../BudgetMaster;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -354,9 +392,34 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		AA000000000000000041 /* BudgetMaster */ = {
+		AF19A57E2F44174000B37B41 /* BudgetMaster */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BudgetMaster;
+		};
+		AF19A5BB2F4418AF00B37B41 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AFF2DDEA2F3D7F6500FBB92F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		AF19A5BD2F4418AF00B37B41 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AFF2DDEA2F3D7F6500FBB92F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		AF19A5BF2F4418AF00B37B41 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AFF2DDEA2F3D7F6500FBB92F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		AF19A5C12F4418AF00B37B41 /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AFF2DDEA2F3D7F6500FBB92F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
+		};
+		AF19A5C32F4418AF00B37B41 /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AFF2DDEA2F3D7F6500FBB92F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
