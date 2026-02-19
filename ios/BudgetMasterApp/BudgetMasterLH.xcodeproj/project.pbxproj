@@ -127,7 +127,7 @@
 					};
 				};
 			};
-			buildConfigurationList = AA000000000000000020 /* Build configuration list for PBXProject "BudgetMasterApp" */;
+			buildConfigurationList = AA000000000000000020 /* Build configuration list for PBXProject "BudgetMasterLH" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -353,7 +353,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		AA000000000000000020 /* Build configuration list for PBXProject "BudgetMasterApp" */ = {
+		AA000000000000000020 /* Build configuration list for PBXProject "BudgetMasterLH" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AA000000000000000022 /* Debug */,

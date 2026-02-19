@@ -8,12 +8,13 @@ class AuthenticationManager: ObservableObject {
     @Published var isAuthenticated = false
     @Published var currentUser: User?
     @Published var errorMessage: String?
-    @Published var isLoading = false
+    @Published var isLoading = true // true until Firebase resolves the initial auth state
     
     private var authStateHandle: AuthStateDidChangeListenerHandle?
     private var cancellables = Set<AnyCancellable>()
     
     init() {
+        print("🔐 AuthenticationManager: init() called")
         setupAuthStateListener()
     }
     
@@ -24,7 +25,9 @@ class AuthenticationManager: ObservableObject {
     }
     
     private func setupAuthStateListener() {
+        print("🔐 AuthenticationManager: setting up Firebase auth state listener...")
         authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            print("🔐 AuthenticationManager: auth state changed — user: \(user?.uid ?? "nil")")
             Task { @MainActor in
                 self?.isAuthenticated = user != nil
                 if let user = user {
@@ -36,6 +39,9 @@ class AuthenticationManager: ObservableObject {
                 } else {
                     self?.currentUser = nil
                 }
+                // Mark initial auth resolution complete
+                print("🔐 AuthenticationManager: isLoading = false, isAuthenticated = \(self?.isAuthenticated ?? false)")
+                self?.isLoading = false
             }
         }
     }

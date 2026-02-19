@@ -34,8 +34,7 @@ enum AppEnvironment {
         case .staging:
             return "https://staging-api.budgetmaster.com"
         case .production:
-            // Replace with your actual Cloud Run URL
-            return "https://your-cloud-run-service.run.app"
+            return "https://expense-tracker-nsz3hblwea-uc.a.run.app"
         }
     }
     

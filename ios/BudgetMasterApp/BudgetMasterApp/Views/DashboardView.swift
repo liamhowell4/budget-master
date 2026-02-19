@@ -242,30 +242,29 @@ struct DashboardView: View {
     
     private func expenseRow(_ expense: RecentExpense) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: expense.icon)
+            Text(expense.icon)
                 .font(.title3)
-                .foregroundStyle(expense.categoryColor)
                 .frame(width: 40, height: 40)
-                .background(expense.categoryColor.opacity(0.1))
+                .background(expense.categoryColor.opacity(0.15))
                 .cornerRadius(8)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(expense.description)
                     .font(.subheadline)
                     .fontWeight(.medium)
-                
+
                 Text(expense.category)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            
+
             Spacer()
-            
+
             VStack(alignment: .trailing, spacing: 4) {
                 Text(expense.amount, format: .currency(code: "USD"))
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                
+
                 Text(expense.date, style: .date)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -285,39 +284,72 @@ class DashboardViewModel: ObservableObject {
     @Published var recentExpenses: [RecentExpense] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
-    
-    // TODO: Replace with actual API service from BudgetMaster package
+
+    private let api = APIService()
+
     func loadData() async {
         isLoading = true
-        
-        // Simulate API call
-        try? await Task.sleep(for: .seconds(1))
-        
-        // Mock data - replace with actual API calls
-        budgetSummary = BudgetSummary(
-            totalSpent: 2450.00,
-            totalBudget: 3000.00,
-            remaining: 550.00,
-            thisMonth: 2450.00
-        )
-        
-        categories = [
-            CategoryBreakdown(name: "Food", amount: 850.00, percentage: 34.7, color: .orange),
-            CategoryBreakdown(name: "Transportation", amount: 650.00, percentage: 26.5, color: .blue),
-            CategoryBreakdown(name: "Entertainment", amount: 450.00, percentage: 18.4, color: .purple),
-            CategoryBreakdown(name: "Shopping", amount: 300.00, percentage: 12.2, color: .pink),
-            CategoryBreakdown(name: "Other", amount: 200.00, percentage: 8.2, color: .gray)
-        ]
-        
-        recentExpenses = [
-            RecentExpense(description: "Grocery Store", category: "Food", amount: 85.50, date: Date(), icon: "cart.fill", categoryColor: .orange),
-            RecentExpense(description: "Gas Station", category: "Transportation", amount: 45.00, date: Date().addingTimeInterval(-86400), icon: "fuelpump.fill", categoryColor: .blue),
-            RecentExpense(description: "Movie Tickets", category: "Entertainment", amount: 28.00, date: Date().addingTimeInterval(-172800), icon: "film.fill", categoryColor: .purple)
-        ]
-        
+        errorMessage = nil
+
+        let now = Date()
+        let cal = Calendar.current
+        let year = cal.component(.year, from: now)
+        let month = cal.component(.month, from: now)
+
+        do {
+            async let budgetFetch = api.fetchBudget()
+            async let categoriesFetch = api.fetchCategories()
+            async let expensesFetch = api.fetchExpenses(year: year, month: month)
+
+            let (budget, apiCategories, expenses) = try await (budgetFetch, categoriesFetch, expensesFetch)
+
+            // Build a lookup map from category_id → APICategory
+            let catMap = Dictionary(uniqueKeysWithValues: apiCategories.map { ($0.category_id, $0) })
+
+            budgetSummary = BudgetSummary(
+                totalSpent: budget.total_spending,
+                totalBudget: budget.total_cap,
+                remaining: budget.total_remaining,
+                thisMonth: budget.total_spending
+            )
+
+            categories = budget.categories
+                .filter { $0.spending > 0 }
+                .sorted { $0.spending > $1.spending }
+                .map { budgetCat in
+                    let cat = catMap[budgetCat.category]
+                    return CategoryBreakdown(
+                        name: cat?.display_name ?? budgetCat.category,
+                        amount: budgetCat.spending,
+                        percentage: budgetCat.percentage,
+                        color: Color(hex: cat?.color ?? "") ?? .gray
+                    )
+                }
+
+            recentExpenses = expenses.prefix(3).compactMap { expense in
+                let components = DateComponents(
+                    year: expense.date.year,
+                    month: expense.date.month,
+                    day: expense.date.day
+                )
+                let date = cal.date(from: components) ?? now
+                let cat = catMap[expense.category]
+                return RecentExpense(
+                    description: expense.expense_name,
+                    category: cat?.display_name ?? expense.category,
+                    amount: expense.amount,
+                    date: date,
+                    icon: cat?.icon ?? "📦",
+                    categoryColor: Color(hex: cat?.color ?? "") ?? .gray
+                )
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
         isLoading = false
     }
-    
+
     func refresh() async {
         await loadData()
     }

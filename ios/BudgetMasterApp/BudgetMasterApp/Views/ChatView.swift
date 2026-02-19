@@ -230,81 +230,79 @@ class ChatViewModel: ObservableObject {
     @Published var inputText = ""
     @Published var isStreaming = false
     @Published var errorMessage: String?
-    
+    @Published var conversationId: String?
+
+    private let api = APIService()
+
     let suggestedQuestions = [
         "What's my spending this month?",
         "Show me my top expense categories",
         "How much can I save this month?",
         "Give me budgeting tips"
     ]
-    
+
     var canSend: Bool {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isStreaming
     }
-    
+
     func sendMessage() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        
-        // Add user message
+
         let userMessage = ChatMessage(content: text, isUser: true)
         messages.append(userMessage)
-        
-        // Clear input
         inputText = ""
-        
-        // Start streaming
         isStreaming = true
-        
-        // Simulate streaming response with SSE
+
         await streamResponse(for: text)
-        
+
         isStreaming = false
     }
-    
+
     private func streamResponse(for query: String) async {
-        // TODO: Replace with actual SSE streaming from your API
-        // This simulates the streaming behavior
-        
-        let responses = [
-            "Based on your recent expenses, ",
-            "I can see that you've spent $2,450 this month. ",
-            "Your top categories are Food ($850), ",
-            "Transportation ($650), and Entertainment ($450). ",
-            "You have $550 remaining in your budget. ",
-            "Consider reducing dining out expenses to save more!"
-        ]
-        
-        var accumulatedText = ""
-        
-        for chunk in responses {
-            try? await Task.sleep(for: .milliseconds(300))
-            accumulatedText += chunk
-            
-            // Update or add assistant message
-            if let lastIndex = messages.indices.last, !messages[lastIndex].isUser {
-                messages[lastIndex].content = accumulatedText
-            } else {
-                let assistantMessage = ChatMessage(content: accumulatedText, isUser: false)
-                messages.append(assistantMessage)
+        do {
+            try await api.ensureServerConnected()
+        } catch {
+            errorMessage = "Could not connect to server: \(error.localizedDescription)"
+            return
+        }
+
+        do {
+            try await api.streamChat(message: query, conversationId: conversationId) { [weak self] (event: SSEEvent) in
+                guard let self else { return }
+                switch event {
+                case .conversationId(let id):
+                    self.conversationId = id
+                case .text(let chunk):
+                    if let lastIndex = self.messages.indices.last, !self.messages[lastIndex].isUser {
+                        self.messages[lastIndex].content += chunk
+                    } else {
+                        self.messages.append(ChatMessage(content: chunk, isUser: false))
+                    }
+                case .done:
+                    self.isStreaming = false
+                case .error(let msg):
+                    self.errorMessage = msg
+                    self.isStreaming = false
+                case .toolStart, .toolEnd:
+                    break
+                }
             }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
-    
-    func loadConversationHistory() async {
-        // TODO: Load conversation history from API or local storage
-        // For now, start with empty messages
-    }
-    
+
+    func loadConversationHistory() async {}
+
     func clearHistory() {
         messages.removeAll()
+        conversationId = nil
     }
-    
+
     func loadSuggestions() async {
-        // TODO: Load personalized suggestions from API
-        let suggestion = "Based on your spending patterns, I recommend setting aside $100 more per month for savings."
-        let message = ChatMessage(content: suggestion, isUser: false)
-        messages.append(message)
+        let suggestion = "Ask me about your spending, budget status, or to add an expense!"
+        messages.append(ChatMessage(content: suggestion, isUser: false))
     }
 }
 
@@ -317,35 +315,6 @@ struct ChatMessage: Identifiable {
     let timestamp = Date()
 }
 
-// MARK: - SSE Client (for real implementation)
-
-actor SSEClient {
-    private var task: Task<Void, Never>?
-    
-    func connect(url: URL, onMessage: @escaping (String) -> Void) {
-        task = Task {
-            do {
-                let (bytes, _) = try await URLSession.shared.bytes(from: url)
-                
-                for try await line in bytes.lines {
-                    if line.hasPrefix("data: ") {
-                        let data = String(line.dropFirst(6))
-                        await MainActor.run {
-                            onMessage(data)
-                        }
-                    }
-                }
-            } catch {
-                print("SSE connection error: \(error)")
-            }
-        }
-    }
-    
-    func disconnect() {
-        task?.cancel()
-        task = nil
-    }
-}
 
 #Preview {
     ChatView()

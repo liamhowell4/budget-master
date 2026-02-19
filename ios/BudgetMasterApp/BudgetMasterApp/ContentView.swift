@@ -5,8 +5,14 @@ struct ContentView: View {
     @State private var selectedTab = 0
     
     var body: some View {
+        let _ = print("🖥️ ContentView: isLoading=\(authManager.isLoading), isAuthenticated=\(authManager.isAuthenticated)")
         Group {
-            if authManager.isAuthenticated {
+            if authManager.isLoading {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .scaleEffect(1.5)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if authManager.isAuthenticated {
                 TabView(selection: $selectedTab) {
                     DashboardView()
                         .tabItem {

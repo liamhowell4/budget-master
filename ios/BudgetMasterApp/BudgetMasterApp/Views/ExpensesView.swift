@@ -4,7 +4,7 @@ struct ExpensesView: View {
     @StateObject private var viewModel = ExpensesViewModel()
     @State private var showingAddExpense = false
     @State private var showingFilters = false
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -20,10 +20,12 @@ struct ExpensesView: View {
                     Button {
                         showingFilters = true
                     } label: {
-                        Label("Filters", systemImage: viewModel.hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        Label("Filters", systemImage: viewModel.hasActiveFilters
+                              ? "line.3.horizontal.decrease.circle.fill"
+                              : "line.3.horizontal.decrease.circle")
                     }
                 }
-                
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingAddExpense = true
@@ -33,7 +35,7 @@ struct ExpensesView: View {
                 }
             }
             .sheet(isPresented: $showingAddExpense) {
-                AddExpenseView { expense in
+                AddExpenseView(availableCategories: viewModel.availableCategories) { expense in
                     await viewModel.addExpense(expense)
                 }
             }
@@ -51,9 +53,14 @@ struct ExpensesView: View {
                     ProgressView()
                 }
             }
+            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+                Button("OK") { viewModel.errorMessage = nil }
+            } message: {
+                if let msg = viewModel.errorMessage { Text(msg) }
+            }
         }
     }
-    
+
     private var expensesList: some View {
         List {
             ForEach(viewModel.groupedExpenses.keys.sorted(by: >), id: \.self) { date in
@@ -62,9 +69,7 @@ struct ExpensesView: View {
                         ExpenseRowView(expense: expense)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
-                                    Task {
-                                        await viewModel.deleteExpense(expense)
-                                    }
+                                    Task { await viewModel.deleteExpense(expense) }
                                 } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
@@ -87,12 +92,15 @@ struct ExpensesView: View {
         }
         .listStyle(.insetGrouped)
         .sheet(item: $viewModel.selectedExpense) { expense in
-            EditExpenseView(expense: expense) { updated in
+            EditExpenseView(
+                expense: expense,
+                availableCategories: viewModel.availableCategories
+            ) { updated in
                 await viewModel.updateExpense(updated)
             }
         }
     }
-    
+
     private var emptyStateView: some View {
         ContentUnavailableView(
             "No Expenses",
@@ -106,28 +114,25 @@ struct ExpensesView: View {
 
 struct ExpenseRowView: View {
     let expense: Expense
-    
+
     var body: some View {
         HStack(spacing: 12) {
-            // Category icon
-            Image(systemName: expense.categoryIcon)
+            Text(expense.categoryEmoji)
                 .font(.title3)
-                .foregroundStyle(expense.categoryColor)
                 .frame(width: 40, height: 40)
-                .background(expense.categoryColor.opacity(0.1))
+                .background(expense.categoryColor.opacity(0.15))
                 .cornerRadius(8)
-            
-            // Details
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(expense.description)
                     .font(.subheadline)
                     .fontWeight(.medium)
-                
+
                 HStack(spacing: 8) {
-                    Text(expense.category)
+                    Text(expense.categoryDisplayName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    
+
                     if let notes = expense.notes, !notes.isEmpty {
                         Text("•")
                             .foregroundStyle(.secondary)
@@ -138,10 +143,9 @@ struct ExpenseRowView: View {
                     }
                 }
             }
-            
+
             Spacer()
-            
-            // Amount
+
             Text(expense.amount, format: .currency(code: "USD"))
                 .font(.subheadline)
                 .fontWeight(.semibold)
@@ -154,35 +158,40 @@ struct ExpenseRowView: View {
 
 struct AddExpenseView: View {
     @Environment(\.dismiss) private var dismiss
+    let availableCategories: [APICategory]
     let onSave: (Expense) async -> Void
-    
+
     @State private var description = ""
     @State private var amount = ""
-    @State private var category = "Food"
+    @State private var selectedCategoryId = ""
     @State private var date = Date()
     @State private var notes = ""
     @State private var isSaving = false
-    
-    let categories = ["Food", "Transportation", "Entertainment", "Shopping", "Bills", "Health", "Other"]
-    
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     TextField("Description", text: $description)
-                    
+
                     TextField("Amount", text: $amount)
                         .keyboardType(.decimalPad)
-                    
-                    Picker("Category", selection: $category) {
-                        ForEach(categories, id: \.self) { cat in
-                            Text(cat).tag(cat)
+
+                    if availableCategories.isEmpty {
+                        Text("Loading categories…")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Category", selection: $selectedCategoryId) {
+                            ForEach(availableCategories, id: \.category_id) { cat in
+                                Text("\(cat.icon) \(cat.display_name)")
+                                    .tag(cat.category_id)
+                            }
                         }
                     }
-                    
+
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
-                
+
                 Section {
                     TextField("Notes (optional)", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
@@ -192,47 +201,47 @@ struct AddExpenseView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel") { dismiss() }
                 }
-                
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        Task {
-                            await saveExpense()
-                        }
+                        Task { await saveExpense() }
                     }
                     .disabled(!isValid || isSaving)
                 }
             }
             .overlay {
-                if isSaving {
-                    ProgressView()
+                if isSaving { ProgressView() }
+            }
+            .onAppear {
+                if selectedCategoryId.isEmpty, let first = availableCategories.first {
+                    selectedCategoryId = first.category_id
                 }
             }
         }
     }
-    
+
     private var isValid: Bool {
-        !description.isEmpty && Double(amount) != nil && Double(amount)! > 0
+        !description.isEmpty && !selectedCategoryId.isEmpty
+            && Double(amount) != nil && Double(amount)! > 0
     }
-    
+
     private func saveExpense() async {
         guard let amountValue = Double(amount) else { return }
-        
+        let cat = availableCategories.first { $0.category_id == selectedCategoryId }
         isSaving = true
-        
         let expense = Expense(
+            backendId: nil,
             description: description,
             amount: amountValue,
-            category: category,
+            category: selectedCategoryId,
+            categoryDisplayName: cat?.display_name ?? selectedCategoryId,
+            categoryEmoji: cat?.icon ?? "📦",
+            categoryHexColor: cat?.color ?? "#6B7280",
             date: date,
             notes: notes.isEmpty ? nil : notes
         )
-        
         await onSave(expense)
-        
         isSaving = false
         dismiss()
     }
@@ -243,45 +252,48 @@ struct AddExpenseView: View {
 struct EditExpenseView: View {
     @Environment(\.dismiss) private var dismiss
     let expense: Expense
+    let availableCategories: [APICategory]
     let onSave: (Expense) async -> Void
-    
+
     @State private var description: String
     @State private var amount: String
-    @State private var category: String
+    @State private var selectedCategoryId: String
     @State private var date: Date
     @State private var notes: String
     @State private var isSaving = false
-    
-    let categories = ["Food", "Transportation", "Entertainment", "Shopping", "Bills", "Health", "Other"]
-    
-    init(expense: Expense, onSave: @escaping (Expense) async -> Void) {
+
+    init(expense: Expense, availableCategories: [APICategory], onSave: @escaping (Expense) async -> Void) {
         self.expense = expense
+        self.availableCategories = availableCategories
         self.onSave = onSave
         _description = State(initialValue: expense.description)
-        _amount = State(initialValue: String(expense.amount))
-        _category = State(initialValue: expense.category)
+        _amount = State(initialValue: String(format: "%.2f", expense.amount))
+        _selectedCategoryId = State(initialValue: expense.category)
         _date = State(initialValue: expense.date)
         _notes = State(initialValue: expense.notes ?? "")
     }
-    
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     TextField("Description", text: $description)
-                    
+
                     TextField("Amount", text: $amount)
                         .keyboardType(.decimalPad)
-                    
-                    Picker("Category", selection: $category) {
-                        ForEach(categories, id: \.self) { cat in
-                            Text(cat).tag(cat)
+
+                    if !availableCategories.isEmpty {
+                        Picker("Category", selection: $selectedCategoryId) {
+                            ForEach(availableCategories, id: \.category_id) { cat in
+                                Text("\(cat.icon) \(cat.display_name)")
+                                    .tag(cat.category_id)
+                            }
                         }
                     }
-                    
+
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
-                
+
                 Section {
                     TextField("Notes (optional)", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
@@ -291,46 +303,39 @@ struct EditExpenseView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel") { dismiss() }
                 }
-                
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        Task {
-                            await saveExpense()
-                        }
+                        Task { await saveExpense() }
                     }
                     .disabled(!isValid || isSaving)
                 }
             }
             .overlay {
-                if isSaving {
-                    ProgressView()
-                }
+                if isSaving { ProgressView() }
             }
         }
     }
-    
+
     private var isValid: Bool {
         !description.isEmpty && Double(amount) != nil && Double(amount)! > 0
     }
-    
+
     private func saveExpense() async {
         guard let amountValue = Double(amount) else { return }
-        
+        let cat = availableCategories.first { $0.category_id == selectedCategoryId }
         isSaving = true
-        
         var updated = expense
         updated.description = description
         updated.amount = amountValue
-        updated.category = category
+        updated.category = selectedCategoryId
+        updated.categoryDisplayName = cat?.display_name ?? selectedCategoryId
+        updated.categoryEmoji = cat?.icon ?? expense.categoryEmoji
+        updated.categoryHexColor = cat?.color ?? expense.categoryHexColor
         updated.date = date
         updated.notes = notes.isEmpty ? nil : notes
-        
         await onSave(updated)
-        
         isSaving = false
         dismiss()
     }
@@ -341,7 +346,7 @@ struct EditExpenseView: View {
 struct FiltersView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: ExpensesViewModel
-    
+
     var body: some View {
         NavigationStack {
             Form {
@@ -349,50 +354,50 @@ struct FiltersView: View {
                     DatePicker("From", selection: $viewModel.filterStartDate, displayedComponents: .date)
                     DatePicker("To", selection: $viewModel.filterEndDate, displayedComponents: .date)
                 }
-                
-                Section("Categories") {
-                    ForEach(viewModel.availableCategories, id: \.self) { category in
-                        Toggle(category, isOn: Binding(
-                            get: { viewModel.selectedCategories.contains(category) },
-                            set: { isSelected in
-                                if isSelected {
-                                    viewModel.selectedCategories.insert(category)
-                                } else {
-                                    viewModel.selectedCategories.remove(category)
-                                }
-                            }
-                        ))
+
+                if !viewModel.availableCategories.isEmpty {
+                    Section("Categories") {
+                        ForEach(viewModel.availableCategories, id: \.category_id) { cat in
+                            Toggle(
+                                "\(cat.icon) \(cat.display_name)",
+                                isOn: Binding(
+                                    get: { viewModel.selectedCategories.contains(cat.category_id) },
+                                    set: { isOn in
+                                        if isOn {
+                                            viewModel.selectedCategories.insert(cat.category_id)
+                                        } else {
+                                            viewModel.selectedCategories.remove(cat.category_id)
+                                        }
+                                    }
+                                )
+                            )
+                        }
                     }
                 }
-                
+
                 Section("Amount Range") {
                     HStack {
                         Text("Min:")
                         TextField("0", value: $viewModel.minAmount, format: .currency(code: "USD"))
                             .keyboardType(.decimalPad)
                     }
-                    
                     HStack {
                         Text("Max:")
                         TextField("No limit", value: $viewModel.maxAmount, format: .currency(code: "USD"))
                             .keyboardType(.decimalPad)
                     }
                 }
-                
+
                 Section {
-                    Button("Reset Filters") {
-                        viewModel.resetFilters()
-                    }
-                    .foregroundStyle(.red)
+                    Button("Reset Filters") { viewModel.resetFilters() }
+                        .foregroundStyle(.red)
                 }
             }
             .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -404,91 +409,142 @@ struct FiltersView: View {
 @MainActor
 class ExpensesViewModel: ObservableObject {
     @Published var expenses: [Expense] = []
+    @Published var availableCategories: [APICategory] = []
     @Published var selectedExpense: Expense?
     @Published var isLoading = false
     @Published var errorMessage: String?
-    
+
     // Filters
     @Published var filterStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
     @Published var filterEndDate = Date()
     @Published var selectedCategories: Set<String> = []
     @Published var minAmount: Double?
     @Published var maxAmount: Double?
-    
-    let availableCategories = ["Food", "Transportation", "Entertainment", "Shopping", "Bills", "Health", "Other"]
-    
+
+    private let api = APIService()
+
     var hasActiveFilters: Bool {
         !selectedCategories.isEmpty || minAmount != nil || maxAmount != nil
     }
-    
+
     var filteredExpenses: [Expense] {
         expenses.filter { expense in
-            // Date filter
             let inDateRange = expense.date >= filterStartDate && expense.date <= filterEndDate
-            
-            // Category filter
             let inCategory = selectedCategories.isEmpty || selectedCategories.contains(expense.category)
-            
-            // Amount filter
             let inAmountRange: Bool = {
-                if let min = minAmount, expense.amount < min {
-                    return false
-                }
-                if let max = maxAmount, expense.amount > max {
-                    return false
-                }
+                if let min = minAmount, expense.amount < min { return false }
+                if let max = maxAmount, expense.amount > max { return false }
                 return true
             }()
-            
             return inDateRange && inCategory && inAmountRange
         }
     }
-    
+
     var groupedExpenses: [Date: [Expense]] {
         Dictionary(grouping: filteredExpenses) { expense in
             Calendar.current.startOfDay(for: expense.date)
         }
     }
-    
+
     func loadExpenses() async {
         isLoading = true
-        
-        // Simulate API call
-        try? await Task.sleep(for: .seconds(1))
-        
-        // Mock data - replace with actual API calls
-        expenses = [
-            Expense(description: "Grocery Store", amount: 85.50, category: "Food", date: Date(), notes: "Weekly shopping"),
-            Expense(description: "Gas Station", amount: 45.00, category: "Transportation", date: Date().addingTimeInterval(-86400), notes: nil),
-            Expense(description: "Movie Tickets", amount: 28.00, category: "Entertainment", date: Date().addingTimeInterval(-172800), notes: "Avatar 2"),
-            Expense(description: "Amazon Order", amount: 120.00, category: "Shopping", date: Date().addingTimeInterval(-259200), notes: "Books and gadgets"),
-            Expense(description: "Restaurant", amount: 65.00, category: "Food", date: Date().addingTimeInterval(-345600), notes: "Dinner with friends")
-        ]
-        
+        errorMessage = nil
+
+        let now = Date()
+        let cal = Calendar.current
+        let year = cal.component(.year, from: now)
+        let month = cal.component(.month, from: now)
+
+        do {
+            async let categoriesFetch = api.fetchCategories()
+            async let expensesFetch = api.fetchExpenses(year: year, month: month)
+            let (cats, apiExpenses) = try await (categoriesFetch, expensesFetch)
+
+            availableCategories = cats
+            let catMap = Dictionary(uniqueKeysWithValues: cats.map { ($0.category_id, $0) })
+
+            expenses = apiExpenses.map { apiExpense in
+                let cat = catMap[apiExpense.category]
+                let components = DateComponents(
+                    year: apiExpense.date.year,
+                    month: apiExpense.date.month,
+                    day: apiExpense.date.day
+                )
+                let date = cal.date(from: components) ?? now
+                return Expense(
+                    backendId: apiExpense.id,
+                    description: apiExpense.expense_name,
+                    amount: apiExpense.amount,
+                    category: apiExpense.category,
+                    categoryDisplayName: cat?.display_name ?? apiExpense.category,
+                    categoryEmoji: cat?.icon ?? "📦",
+                    categoryHexColor: cat?.color ?? "#6B7280",
+                    date: date
+                )
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
         isLoading = false
     }
-    
+
     func refresh() async {
         await loadExpenses()
     }
-    
+
     func addExpense(_ expense: Expense) async {
-        // TODO: Call API to add expense
-        expenses.insert(expense, at: 0)
-    }
-    
-    func updateExpense(_ expense: Expense) async {
-        // TODO: Call API to update expense
-        if let index = expenses.firstIndex(where: { $0.id == expense.id }) {
-            expenses[index] = expense
+        let text = "\(expense.description) $\(String(format: "%.2f", expense.amount))"
+        do {
+            _ = try await api.addExpenseViaMCP(text: text)
+            await loadExpenses()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
-    
-    func deleteExpense(_ expense: Expense) async {
-        // TODO: Call API to delete expense
-        expenses.removeAll { $0.id == expense.id }
+
+    func updateExpense(_ expense: Expense) async {
+        guard let backendId = expense.backendId else {
+            if let index = expenses.firstIndex(where: { $0.id == expense.id }) {
+                expenses[index] = expense
+            }
+            return
+        }
+        let cal = Calendar.current
+        let dateDict: [String: Int] = [
+            "day": cal.component(.day, from: expense.date),
+            "month": cal.component(.month, from: expense.date),
+            "year": cal.component(.year, from: expense.date)
+        ]
+        do {
+            try await api.updateExpense(
+                id: backendId,
+                name: expense.description,
+                amount: expense.amount,
+                category: expense.category,
+                date: dateDict
+            )
+            if let index = expenses.firstIndex(where: { $0.id == expense.id }) {
+                expenses[index] = expense
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
-    
+
+    func deleteExpense(_ expense: Expense) async {
+        guard let backendId = expense.backendId else {
+            expenses.removeAll { $0.id == expense.id }
+            return
+        }
+        do {
+            try await api.deleteExpense(id: backendId)
+            expenses.removeAll { $0.id == expense.id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func resetFilters() {
         filterStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
         filterEndDate = Date()
@@ -498,38 +554,45 @@ class ExpensesViewModel: ObservableObject {
     }
 }
 
-// MARK: - Models
+// MARK: - Expense Model
 
 struct Expense: Identifiable, Hashable {
-    let id = UUID()
+    let id: UUID
+    var backendId: String?
     var description: String
     var amount: Double
     var category: String
+    var categoryDisplayName: String
+    var categoryEmoji: String
+    var categoryHexColor: String
     var date: Date
     var notes: String?
-    
-    var categoryIcon: String {
-        switch category {
-        case "Food": return "cart.fill"
-        case "Transportation": return "car.fill"
-        case "Entertainment": return "film.fill"
-        case "Shopping": return "bag.fill"
-        case "Bills": return "doc.text.fill"
-        case "Health": return "cross.case.fill"
-        default: return "tag.fill"
-        }
+
+    init(
+        backendId: String? = nil,
+        description: String,
+        amount: Double,
+        category: String,
+        categoryDisplayName: String = "",
+        categoryEmoji: String = "📦",
+        categoryHexColor: String = "#6B7280",
+        date: Date,
+        notes: String? = nil
+    ) {
+        self.id = UUID()
+        self.backendId = backendId
+        self.description = description
+        self.amount = amount
+        self.category = category
+        self.categoryDisplayName = categoryDisplayName.isEmpty ? category : categoryDisplayName
+        self.categoryEmoji = categoryEmoji
+        self.categoryHexColor = categoryHexColor
+        self.date = date
+        self.notes = notes
     }
-    
+
     var categoryColor: Color {
-        switch category {
-        case "Food": return .orange
-        case "Transportation": return .blue
-        case "Entertainment": return .purple
-        case "Shopping": return .pink
-        case "Bills": return .red
-        case "Health": return .green
-        default: return .gray
-        }
+        Color(hex: categoryHexColor) ?? .gray
     }
 }
 
@@ -538,5 +601,5 @@ struct Expense: Identifiable, Hashable {
 }
 
 #Preview("Add Expense") {
-    AddExpenseView { _ in }
+    AddExpenseView(availableCategories: []) { _ in }
 }
