@@ -30,12 +30,26 @@ struct ExpensesAPIResponse: Codable {
     let expenses: [APIExpense]
 }
 
-struct APIExpense: Codable {
+struct APIExpense: Codable, Identifiable {
     let id: String          // Firestore document ID — returned as "id" by the backend
     let expense_name: String
     let amount: Double
     let date: APIDate
     let category: String
+}
+
+struct PendingExpense: Codable, Identifiable {
+    var id: String { pending_id }
+    let pending_id: String
+    let template_id: String?
+    let expense_name: String
+    let amount: Double
+    let date: APIDate
+    let category: String
+}
+
+struct PendingExpensesResponse: Codable {
+    let pending_expenses: [PendingExpense]
 }
 
 struct APIDate: Codable {
@@ -57,6 +71,34 @@ struct APICategory: Codable {
     let color: String?
 }
 
+struct ConversationListResponse: Codable {
+    let conversations: [ConversationSummary]
+}
+
+struct ConversationSummary: Codable {
+    let conversation_id: String
+    let summary: String?
+    let last_activity: String?
+}
+
+struct ConversationDetail {
+    let conversation_id: String
+    let messages: [ConversationMessage]
+    let summary: String?
+}
+
+struct ConversationMessage {
+    let role: String
+    let content: String
+    let timestamp: String?
+    let toolCalls: [RawToolCall]
+}
+
+struct RawToolCall {
+    let name: String
+    let resultJSON: String
+}
+
 struct MCPExpenseResponse: Codable {
     let success: Bool
     let message: String
@@ -74,7 +116,7 @@ enum SSEEvent {
     case conversationId(String)
     case text(String)
     case toolStart(String)
-    case toolEnd(String)
+    case toolEnd(tool: String, resultJSON: String)
     case done
     case error(String)
 }
@@ -147,9 +189,11 @@ actor APIService {
 
     // MARK: Expenses
 
-    func fetchExpenses(year: Int, month: Int) async throws -> [APIExpense] {
+    func fetchExpenses(year: Int, month: Int, category: String? = nil) async throws -> [APIExpense] {
         let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/expenses?year=\(year)&month=\(month)") else {
+        var urlString = "\(baseURL)/expenses?year=\(year)&month=\(month)"
+        if let category { urlString += "&category=\(category)" }
+        guard let url = URL(string: urlString) else {
             throw APIError.networkError(URLError(.badURL))
         }
         var request = URLRequest(url: url)
@@ -254,6 +298,142 @@ actor APIService {
         } catch {
             throw APIError.decodingError(error)
         }
+    }
+
+    // MARK: Conversations
+
+    func fetchConversations(limit: Int = 10) async throws -> [ConversationSummary] {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/conversations?limit=\(limit)") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+
+        do {
+            return try JSONDecoder().decode(ConversationListResponse.self, from: data).conversations
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+
+    func fetchConversation(id: String) async throws -> ConversationDetail {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/conversations/\(id)") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.decodingError(NSError(domain: "parse", code: 0))
+        }
+
+        let conversationId = json["conversation_id"] as? String ?? id
+        let summary = json["summary"] as? String
+        let rawMessages = json["messages"] as? [[String: Any]] ?? []
+
+        let messages: [ConversationMessage] = rawMessages.compactMap { raw in
+            guard let role = raw["role"] as? String,
+                  let content = raw["content"] as? String else { return nil }
+            let timestamp = raw["timestamp"] as? String
+            var toolCalls: [RawToolCall] = []
+            if let tc = raw["tool_calls"] as? [[String: Any]] {
+                toolCalls = tc.compactMap { call in
+                    guard let name = call["name"] as? String ?? call["tool"] as? String else { return nil }
+                    var resultJSON = "{}"
+                    if let result = call["result"],
+                       let d = try? JSONSerialization.data(withJSONObject: result),
+                       let s = String(data: d, encoding: .utf8) { resultJSON = s }
+                    return RawToolCall(name: name, resultJSON: resultJSON)
+                }
+            }
+            return ConversationMessage(role: role, content: content, timestamp: timestamp, toolCalls: toolCalls)
+        }
+
+        return ConversationDetail(conversation_id: conversationId, messages: messages, summary: summary)
+    }
+
+    func deleteConversation(id: String) async throws {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/conversations/\(id)") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+    }
+
+    // MARK: Pending Expenses
+
+    func fetchPending() async throws -> [PendingExpense] {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/pending") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+
+        do {
+            return try JSONDecoder().decode(PendingExpensesResponse.self, from: data).pending_expenses
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+
+    func confirmPending(id: String) async throws {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/pending/\(id)/confirm") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+    }
+
+    func skipPending(id: String) async throws {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/pending/\(id)") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+    }
+
+    // MARK: Recurring Expenses
+
+    func deleteRecurring(id: String) async throws {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/recurring/\(id)") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
     }
 
     // MARK: Server Connection
@@ -372,11 +552,15 @@ extension APIService {
                 let content = json["content"] as? String ?? ""
                 event = .text(content)
             case "tool_start":
-                let tool = json["tool"] as? String ?? ""
+                let tool = json["name"] as? String ?? ""
                 event = .toolStart(tool)
             case "tool_end":
-                let tool = json["tool"] as? String ?? ""
-                event = .toolEnd(tool)
+                let tool = json["name"] as? String ?? ""
+                var resultJSON = "{}"
+                if let result = json["result"],
+                   let d = try? JSONSerialization.data(withJSONObject: result),
+                   let s = String(data: d, encoding: .utf8) { resultJSON = s }
+                event = .toolEnd(tool: tool, resultJSON: resultJSON)
             default:
                 continue
             }

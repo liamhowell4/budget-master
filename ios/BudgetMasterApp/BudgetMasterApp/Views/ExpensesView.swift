@@ -20,9 +20,17 @@ struct ExpensesView: View {
                     Button {
                         showingFilters = true
                     } label: {
-                        Label("Filters", systemImage: viewModel.hasActiveFilters
-                              ? "line.3.horizontal.decrease.circle.fill"
-                              : "line.3.horizontal.decrease.circle")
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: viewModel.hasActiveFilters
+                                  ? "line.3.horizontal.decrease.circle.fill"
+                                  : "line.3.horizontal.decrease.circle")
+                            if viewModel.hasActiveFilters {
+                                Circle()
+                                    .fill(AppTheme.accent)
+                                    .frame(width: 8, height: 8)
+                                    .offset(x: 4, y: -4)
+                            }
+                        }
                     }
                 }
 
@@ -63,6 +71,26 @@ struct ExpensesView: View {
 
     private var expensesList: some View {
         List {
+            if !viewModel.pendingExpenses.isEmpty {
+                Section {
+                    ForEach(viewModel.pendingExpenses) { pending in
+                        PendingExpenseRow(
+                            pending: pending,
+                            onConfirm: { await viewModel.confirmPending(id: pending.pending_id) },
+                            onSkip: { await viewModel.skipPending(id: pending.pending_id) }
+                        )
+                    }
+                } header: {
+                    HStack {
+                        Image(systemName: "clock.badge.exclamationmark")
+                            .foregroundStyle(.orange)
+                        Text("Pending")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                }
+            }
+
             ForEach(viewModel.groupedExpenses.keys.sorted(by: >), id: \.self) { date in
                 Section {
                     ForEach(viewModel.groupedExpenses[date] ?? []) { expense in
@@ -117,8 +145,9 @@ struct ExpenseRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(expense.categoryEmoji)
+            Image(systemName: AppTheme.sfSymbol(for: expense.categoryEmoji))
                 .font(.title3)
+                .foregroundStyle(expense.categoryColor)
                 .frame(width: 40, height: 40)
                 .background(expense.categoryColor.opacity(0.15))
                 .cornerRadius(8)
@@ -183,7 +212,7 @@ struct AddExpenseView: View {
                     } else {
                         Picker("Category", selection: $selectedCategoryId) {
                             ForEach(availableCategories, id: \.category_id) { cat in
-                                Text("\(cat.icon) \(cat.display_name)")
+                                Label(cat.display_name, systemImage: AppTheme.sfSymbol(for: cat.icon))
                                     .tag(cat.category_id)
                             }
                         }
@@ -285,7 +314,7 @@ struct EditExpenseView: View {
                     if !availableCategories.isEmpty {
                         Picker("Category", selection: $selectedCategoryId) {
                             ForEach(availableCategories, id: \.category_id) { cat in
-                                Text("\(cat.icon) \(cat.display_name)")
+                                Label(cat.display_name, systemImage: AppTheme.sfSymbol(for: cat.icon))
                                     .tag(cat.category_id)
                             }
                         }
@@ -358,19 +387,18 @@ struct FiltersView: View {
                 if !viewModel.availableCategories.isEmpty {
                     Section("Categories") {
                         ForEach(viewModel.availableCategories, id: \.category_id) { cat in
-                            Toggle(
-                                "\(cat.icon) \(cat.display_name)",
-                                isOn: Binding(
-                                    get: { viewModel.selectedCategories.contains(cat.category_id) },
-                                    set: { isOn in
-                                        if isOn {
-                                            viewModel.selectedCategories.insert(cat.category_id)
-                                        } else {
-                                            viewModel.selectedCategories.remove(cat.category_id)
-                                        }
+                            Toggle(isOn: Binding(
+                                get: { viewModel.selectedCategories.contains(cat.category_id) },
+                                set: { isOn in
+                                    if isOn {
+                                        viewModel.selectedCategories.insert(cat.category_id)
+                                    } else {
+                                        viewModel.selectedCategories.remove(cat.category_id)
                                     }
-                                )
-                            )
+                                }
+                            )) {
+                                Label(cat.display_name, systemImage: AppTheme.sfSymbol(for: cat.icon))
+                            }
                         }
                     }
                 }
@@ -409,6 +437,7 @@ struct FiltersView: View {
 @MainActor
 class ExpensesViewModel: ObservableObject {
     @Published var expenses: [Expense] = []
+    @Published var pendingExpenses: [PendingExpense] = []
     @Published var availableCategories: [APICategory] = []
     @Published var selectedExpense: Expense?
     @Published var isLoading = false
@@ -487,6 +516,32 @@ class ExpensesViewModel: ObservableObject {
         }
 
         isLoading = false
+        await fetchPendingExpenses()
+    }
+
+    func fetchPendingExpenses() async {
+        do {
+            pendingExpenses = try await api.fetchPending()
+        } catch { }
+    }
+
+    func confirmPending(id: String) async {
+        do {
+            try await api.confirmPending(id: id)
+            pendingExpenses.removeAll { $0.pending_id == id }
+            await loadExpenses()  // refresh expenses list after confirming
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func skipPending(id: String) async {
+        do {
+            try await api.skipPending(id: id)
+            pendingExpenses.removeAll { $0.pending_id == id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func refresh() async {
@@ -551,6 +606,80 @@ class ExpensesViewModel: ObservableObject {
         selectedCategories = []
         minAmount = nil
         maxAmount = nil
+    }
+}
+
+// MARK: - Pending Expense Row
+
+struct PendingExpenseRow: View {
+    let pending: PendingExpense
+    let onConfirm: () async -> Void
+    let onSkip: () async -> Void
+    @State private var isConfirming = false
+    @State private var isSkipping = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: AppTheme.sfSymbol(for: pending.category))
+                .font(.title3)
+                .foregroundStyle(AppTheme.categoryColor(pending.category))
+                .frame(width: 40, height: 40)
+                .background(Color.orange.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(pending.expense_name)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                Text("Awaiting confirmation")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            Spacer()
+
+            Text(pending.amount, format: .currency(code: "USD"))
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            HStack(spacing: 8) {
+                Button {
+                    isConfirming = true
+                    Task {
+                        await onConfirm()
+                        isConfirming = false
+                    }
+                } label: {
+                    if isConfirming {
+                        ProgressView().scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(AppTheme.accent)
+                            .font(.title3)
+                    }
+                }
+                .disabled(isConfirming || isSkipping)
+
+                Button {
+                    isSkipping = true
+                    Task {
+                        await onSkip()
+                        isSkipping = false
+                    }
+                } label: {
+                    if isSkipping {
+                        ProgressView().scaleEffect(0.7)
+                    } else {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.red)
+                            .font(.title3)
+                    }
+                }
+                .disabled(isConfirming || isSkipping)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

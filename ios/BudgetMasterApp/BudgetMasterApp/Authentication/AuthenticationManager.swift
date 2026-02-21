@@ -16,6 +16,17 @@ class AuthenticationManager: ObservableObject {
     init() {
         print("🔐 AuthenticationManager: init() called")
         setupAuthStateListener()
+        
+        // Safety timeout: if Firebase doesn't respond in 5 seconds, stop loading
+        Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+            if await isLoading {
+                print("⚠️ AuthenticationManager: Timeout reached, forcing isLoading = false")
+                await MainActor.run {
+                    self.isLoading = false
+                }
+            }
+        }
     }
     
     deinit {
