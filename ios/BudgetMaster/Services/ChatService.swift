@@ -1,10 +1,10 @@
 import Foundation
 
-enum ChatService {
+public enum ChatService {
 
     /// POST /chat/stream (SSE)
     /// Returns an `AsyncThrowingStream` of `ChatStreamEvent` values.
-    static func streamChat(
+    public static func streamChat(
         message: String,
         conversationId: String? = nil
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
@@ -12,7 +12,7 @@ enum ChatService {
     }
 
     /// POST /mcp/process_expense (multipart form-data)
-    static func processExpense(
+    public static func processExpense(
         text: String? = nil,
         imageData: Data? = nil,
         imageMimeType: String? = nil,

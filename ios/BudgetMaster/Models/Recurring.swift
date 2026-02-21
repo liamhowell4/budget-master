@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Frequency
 
-enum Frequency: String, Codable, Sendable {
+public enum Frequency: String, Codable, Sendable {
     case monthly
     case weekly
     case biweekly
@@ -11,54 +11,54 @@ enum Frequency: String, Codable, Sendable {
 
 // MARK: - RecurringExpense
 
-struct RecurringExpense: Codable, Sendable, Identifiable {
-    var id: String { templateId }
+public struct RecurringExpense: Codable, Sendable, Identifiable {
+    public var id: String { templateId }
 
-    let templateId: String
-    let expenseName: String
-    let amount: Double
-    let category: String
-    let frequency: Frequency
-    let dayOfMonth: Int?
-    let dayOfWeek: Int?
-    let monthOfYear: Int?
-    let lastOfMonth: Bool
-    let lastReminded: ExpenseDate?
-    let lastUserAction: ExpenseDate?
-    let active: Bool
+    public let templateId: String
+    public let expenseName: String
+    public let amount: Double
+    public let category: String
+    public let frequency: Frequency
+    public let dayOfMonth: Int?
+    public let dayOfWeek: Int?
+    public let monthOfYear: Int?
+    public let lastOfMonth: Bool
+    public let lastReminded: ExpenseDate?
+    public let lastUserAction: ExpenseDate?
+    public let active: Bool
 }
 
 // MARK: - RecurringListResponse
 
-struct RecurringListResponse: Codable, Sendable {
-    let recurringExpenses: [RecurringExpense]
+public struct RecurringListResponse: Codable, Sendable {
+    public let recurringExpenses: [RecurringExpense]
 }
 
 // MARK: - PendingExpense
 
-struct PendingExpense: Codable, Sendable, Identifiable {
-    var id: String { pendingId }
+public struct PendingExpense: Codable, Sendable, Identifiable {
+    public var id: String { pendingId }
 
-    let pendingId: String
-    let templateId: String
-    let expenseName: String
-    let amount: Double
-    let date: ExpenseDate
-    let category: String
-    let awaitingConfirmation: Bool
-    let createdAt: String?
+    public let pendingId: String
+    public let templateId: String
+    public let expenseName: String
+    public let amount: Double
+    public let date: ExpenseDate
+    public let category: String
+    public let awaitingConfirmation: Bool
+    public let createdAt: String?
 }
 
 // MARK: - PendingListResponse
 
-struct PendingListResponse: Codable, Sendable {
-    let pendingExpenses: [PendingExpense]
+public struct PendingListResponse: Codable, Sendable {
+    public let pendingExpenses: [PendingExpense]
 }
 
 // MARK: - PendingConfirmResponse
 
-struct PendingConfirmResponse: Codable, Sendable {
-    let success: Bool
-    let expenseId: String
-    let message: String
+public struct PendingConfirmResponse: Codable, Sendable {
+    public let success: Bool
+    public let expenseId: String
+    public let message: String
 }

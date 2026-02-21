@@ -2,7 +2,7 @@ import Foundation
 
 /// Protocol for providing Firebase Auth ID tokens.
 /// Decouples APIClient from FirebaseAuth so mocks can be injected for testing.
-protocol TokenProvider: Sendable {
+public protocol TokenProvider: Sendable {
     func getToken() async throws -> String
 }
 
@@ -24,14 +24,14 @@ protocol TokenProvider: Sendable {
 
 /// Stub token provider for development/testing.
 /// Replace with FirebaseTokenProvider in production.
-final class StubTokenProvider: TokenProvider {
+public final class StubTokenProvider: TokenProvider {
     private let token: String
 
-    init(token: String = "") {
+    public init(token: String = "") {
         self.token = token
     }
 
-    func getToken() async throws -> String {
+    public func getToken() async throws -> String {
         guard !token.isEmpty else { throw APIError.noToken }
         return token
     }

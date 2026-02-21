@@ -1,15 +1,15 @@
 import Foundation
 
-enum CategoryService {
+public enum CategoryService {
 
     /// GET /categories
-    static func getCategories() async throws -> CategoriesResponse {
+    public static func getCategories() async throws -> CategoriesResponse {
         let endpoint = APIEndpoint(method: .get, path: "/categories")
         return try await APIClient.shared.request(endpoint)
     }
 
     /// POST /categories
-    static func createCategory(
+    public static func createCategory(
         _ request: CategoryCreateRequest
     ) async throws -> CategoryCreateResponse {
         let endpoint = APIEndpoint(method: .post, path: "/categories")
@@ -17,7 +17,7 @@ enum CategoryService {
     }
 
     /// PUT /categories/{id}
-    static func updateCategory(
+    public static func updateCategory(
         id: String,
         update: CategoryUpdateRequest
     ) async throws -> CategoryUpdateResponse {
@@ -26,7 +26,7 @@ enum CategoryService {
     }
 
     /// DELETE /categories/{id}?reassign_to=
-    static func deleteCategory(
+    public static func deleteCategory(
         id: String,
         reassignTo: String = "OTHER"
     ) async throws -> CategoryDeleteResponse {
@@ -39,7 +39,7 @@ enum CategoryService {
     }
 
     /// PUT /categories/reorder
-    static func reorderCategories(
+    public static func reorderCategories(
         _ categoryIds: [String]
     ) async throws -> SuccessResponse {
         let endpoint = APIEndpoint(method: .put, path: "/categories/reorder")
@@ -48,7 +48,7 @@ enum CategoryService {
     }
 
     /// GET /categories/defaults (no auth required)
-    static func getDefaults() async throws -> CategoryDefaultsResponse {
+    public static func getDefaults() async throws -> CategoryDefaultsResponse {
         let endpoint = APIEndpoint(
             method: .get,
             path: "/categories/defaults",
@@ -58,7 +58,7 @@ enum CategoryService {
     }
 
     /// POST /onboarding/complete
-    static func completeOnboarding(
+    public static func completeOnboarding(
         _ request: OnboardingCompleteRequest
     ) async throws -> OnboardingCompleteResponse {
         let endpoint = APIEndpoint(method: .post, path: "/onboarding/complete")

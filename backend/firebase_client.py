@@ -1751,6 +1751,75 @@ class FirebaseClient:
 
         return deleted_count
 
+    # ==================== User Settings Operations ====================
+
+    def get_user_settings(self, user_id: str) -> dict:
+        """
+        Return the users/{uid} document as a dict.
+
+        Defaults to {"selected_model": DEFAULT_MODEL} if the document doesn't exist
+        or the field is missing.
+
+        Args:
+            user_id: Firebase Auth UID
+
+        Returns:
+            Dict with at least a "selected_model" key
+        """
+        from .model_client import DEFAULT_MODEL
+
+        doc = self.db.collection("users").document(user_id).get()
+        if doc.exists:
+            data = doc.to_dict() or {}
+            if "selected_model" not in data:
+                data["selected_model"] = DEFAULT_MODEL
+            return data
+        return {"selected_model": DEFAULT_MODEL}
+
+    def update_user_settings(self, user_id: str, settings: dict) -> None:
+        """
+        Merge *settings* into the users/{uid} document (set with merge=True).
+
+        Args:
+            user_id: Firebase Auth UID
+            settings: Dict of settings fields to update (e.g. {"selected_model": "gpt-5-mini"})
+        """
+        self.db.collection("users").document(user_id).set(settings, merge=True)
+
+    def log_token_usage(
+        self,
+        user_id: str,
+        model: str,
+        provider: str,
+        input_tokens: int,
+        output_tokens: int,
+        endpoint: str,
+    ) -> None:
+        """
+        Write a token usage record to users/{uid}/token_usage/ subcollection.
+
+        Args:
+            user_id:       Firebase Auth UID
+            model:         Model identifier (e.g. "claude-sonnet-4-6")
+            provider:      Provider name ("anthropic" | "openai" | "google")
+            input_tokens:  Number of input/prompt tokens consumed
+            output_tokens: Number of output/completion tokens consumed
+            endpoint:      API endpoint that triggered the call ("chat" | "process_expense")
+        """
+        record = {
+            "model": model,
+            "provider": provider,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "endpoint": endpoint,
+            "timestamp": firestore.SERVER_TIMESTAMP,
+        }
+        try:
+            self.db.collection("users").document(user_id).collection("token_usage").add(record)
+        except Exception as exc:
+            # Token logging is non-critical — log and continue
+            logger.warning("Failed to log token usage for user %s: %s", user_id, exc)
+
     @classmethod
     def cleanup_all_users_conversations(cls, ttl_hours: int = 24) -> Dict[str, int]:
         """

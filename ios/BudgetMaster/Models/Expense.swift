@@ -2,22 +2,22 @@ import Foundation
 
 // MARK: - ExpenseDate
 
-struct ExpenseDate: Codable, Sendable {
-    let day: Int
-    let month: Int
-    let year: Int
+public struct ExpenseDate: Codable, Sendable {
+    public let day: Int
+    public let month: Int
+    public let year: Int
 }
 
 // MARK: - Expense
 
-struct Expense: Codable, Sendable, Identifiable {
-    let id: String
-    let expenseName: String
-    let amount: Double
-    let date: ExpenseDate
-    let category: String
-    let timestamp: String?
-    let inputType: String?
+public struct Expense: Codable, Sendable, Identifiable {
+    public let id: String
+    public let expenseName: String
+    public let amount: Double
+    public let date: ExpenseDate
+    public let category: String
+    public let timestamp: String?
+    public let inputType: String?
 
     enum CodingKeys: String, CodingKey {
         case id = "expense_id"
@@ -29,20 +29,26 @@ struct Expense: Codable, Sendable, Identifiable {
 
 // MARK: - ExpensesResponse
 
-struct ExpensesResponse: Codable, Sendable {
-    let year: Int
-    let month: Int
-    let category: String?
-    let count: Int
-    let expenses: [Expense]
+public struct ExpensesResponse: Codable, Sendable {
+    public let year: Int
+    public let month: Int
+    public let category: String?
+    public let count: Int
+    public let expenses: [Expense]
 }
 
 // MARK: - ExpenseUpdateRequest
 
-struct ExpenseUpdateRequest: Codable, Sendable {
-    var expenseName: String?
-    var amount: Double?
-    var category: String?
+public struct ExpenseUpdateRequest: Codable, Sendable {
+    public var expenseName: String?
+    public var amount: Double?
+    public var category: String?
+
+    public init(expenseName: String? = nil, amount: Double? = nil, category: String? = nil) {
+        self.expenseName = expenseName
+        self.amount = amount
+        self.category = category
+    }
 
     enum CodingKeys: String, CodingKey {
         case expenseName = "expense_name"
@@ -52,10 +58,10 @@ struct ExpenseUpdateRequest: Codable, Sendable {
 
 // MARK: - ExpenseUpdateResponse
 
-struct ExpenseUpdateResponse: Codable, Sendable {
-    let success: Bool
-    let expenseId: String
-    let updatedFields: [String: AnyCodable]
+public struct ExpenseUpdateResponse: Codable, Sendable {
+    public let success: Bool
+    public let expenseId: String
+    public let updatedFields: [String: AnyCodable]
 
     enum CodingKeys: String, CodingKey {
         case success
@@ -66,9 +72,9 @@ struct ExpenseUpdateResponse: Codable, Sendable {
 
 // MARK: - ExpenseDeleteResponse
 
-struct ExpenseDeleteResponse: Codable, Sendable {
-    let success: Bool
-    let expenseId: String
+public struct ExpenseDeleteResponse: Codable, Sendable {
+    public let success: Bool
+    public let expenseId: String
 
     enum CodingKeys: String, CodingKey {
         case success
@@ -78,15 +84,15 @@ struct ExpenseDeleteResponse: Codable, Sendable {
 
 // MARK: - ExpenseResponse (from /mcp/process_expense)
 
-struct ExpenseProcessResponse: Codable, Sendable {
-    let success: Bool
-    let message: String
-    let expenseId: String?
-    let expenseName: String?
-    let amount: Double?
-    let category: String?
-    let budgetWarning: String?
-    let conversationId: String?
+public struct ExpenseProcessResponse: Codable, Sendable {
+    public let success: Bool
+    public let message: String
+    public let expenseId: String?
+    public let expenseName: String?
+    public let amount: Double?
+    public let category: String?
+    public let budgetWarning: String?
+    public let conversationId: String?
 
     enum CodingKeys: String, CodingKey {
         case success, message, amount, category

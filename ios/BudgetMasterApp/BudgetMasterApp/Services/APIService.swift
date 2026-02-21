@@ -12,6 +12,7 @@ struct BudgetAPIResponse: Codable {
     let total_cap: Double
     let total_percentage: Double
     let total_remaining: Double
+    let excluded_categories: [String]?
 }
 
 struct BudgetCategoryAPI: Codable {
@@ -99,6 +100,23 @@ struct RawToolCall {
     let resultJSON: String
 }
 
+struct RecurringExpenseAPI: Codable, Identifiable {
+    var id: String { template_id }
+    let template_id: String
+    let expense_name: String
+    let amount: Double
+    let category: String
+    let frequency: String
+    let day_of_month: Int?
+    let day_of_week: Int?
+    let last_of_month: Bool?
+    let active: Bool
+}
+
+struct RecurringExpensesAPIResponse: Codable {
+    let recurring_expenses: [RecurringExpenseAPI]
+}
+
 struct MCPExpenseResponse: Codable {
     let success: Bool
     let message: String
@@ -168,9 +186,14 @@ actor APIService {
 
     // MARK: Budget
 
-    func fetchBudget() async throws -> BudgetAPIResponse {
+    func fetchBudget(year: Int? = nil, month: Int? = nil) async throws -> BudgetAPIResponse {
         let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/budget") else {
+        var urlString = "\(baseURL)/budget"
+        var queryItems: [String] = []
+        if let year { queryItems.append("year=\(year)") }
+        if let month { queryItems.append("month=\(month)") }
+        if !queryItems.isEmpty { urlString += "?" + queryItems.joined(separator: "&") }
+        guard let url = URL(string: urlString) else {
             throw APIError.networkError(URLError(.badURL))
         }
         var request = URLRequest(url: url)
@@ -276,6 +299,70 @@ actor APIService {
 
         let decoded = try JSONDecoder().decode(MCPExpenseResponse.self, from: data)
         return decoded.message
+    }
+
+    // MARK: Multipart Expense Processing
+
+    func processExpenseMultipart(
+        text: String? = nil,
+        imageData: Data? = nil,
+        audioData: Data? = nil,
+        conversationId: String? = nil
+    ) async throws -> MCPExpenseResponse {
+        let token = try await tokenHeader()
+        guard let url = URL(string: "\(baseURL)/mcp/process_expense") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+
+        if let text = text {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"text\"\r\n\r\n".data(using: .utf8)!)
+            body.append(text.data(using: .utf8)!)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+
+        if let imageData = imageData {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"image\"; filename=\"receipt.jpg\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+            body.append(imageData)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+
+        if let audioData = audioData {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"audio\"; filename=\"voice.m4a\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: audio/mp4\r\n\r\n".data(using: .utf8)!)
+            body.append(audioData)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+
+        if let conversationId = conversationId {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"conversation_id\"\r\n\r\n".data(using: .utf8)!)
+            body.append(conversationId.data(using: .utf8)!)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+
+        do {
+            return try JSONDecoder().decode(MCPExpenseResponse.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
+        }
     }
 
     // MARK: Categories
@@ -434,6 +521,25 @@ actor APIService {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         try checkResponse(response, data: data)
+    }
+
+    func fetchRecurring() async throws -> [RecurringExpenseAPI] {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/recurring") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+
+        do {
+            return try JSONDecoder().decode(RecurringExpensesAPIResponse.self, from: data).recurring_expenses
+        } catch {
+            throw APIError.decodingError(error)
+        }
     }
 
     // MARK: Server Connection

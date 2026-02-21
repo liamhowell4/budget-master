@@ -3,14 +3,42 @@ import SwiftUI
 struct DashboardView: View {
     @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var viewModel = DashboardViewModel()
+    @Environment(\.appAccent) private var appAccent
     @State private var selectedCategory: CategoryBreakdown?
+    @State private var selectedYear: Int = Calendar.current.component(.year, from: Date())
+    @State private var selectedMonth: Int = Calendar.current.component(.month, from: Date())
+
+    private var isCurrentMonth: Bool {
+        let cal = Calendar.current
+        let now = Date()
+        return selectedYear == cal.component(.year, from: now)
+            && selectedMonth == cal.component(.month, from: now)
+    }
+
+    private var monthYearLabel: String {
+        let comps = DateComponents(year: selectedYear, month: selectedMonth)
+        let date = Calendar.current.date(from: comps) ?? Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: date)
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
+                    monthNavigationHeader
+
                     if let summary = viewModel.budgetSummary {
                         budgetSummaryCard(summary)
+
+                        if isCurrentMonth {
+                            paceCard(summary)
+                        }
+
+                        if let excluded = viewModel.excludedCategories, !excluded.isEmpty {
+                            excludedCategoriesNote(excluded)
+                        }
                     }
 
                     if !viewModel.categories.isEmpty {
@@ -28,7 +56,7 @@ struct DashboardView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button {
-                            Task { await viewModel.refresh() }
+                            Task { await viewModel.loadData(year: selectedYear, month: selectedMonth) }
                         } label: {
                             Label("Refresh", systemImage: "arrow.clockwise")
                         }
@@ -46,10 +74,10 @@ struct DashboardView: View {
                 }
             }
             .refreshable {
-                await viewModel.refresh()
+                await viewModel.loadData(year: selectedYear, month: selectedMonth)
             }
             .task {
-                await viewModel.loadData()
+                await viewModel.loadData(year: selectedYear, month: selectedMonth)
             }
             .overlay {
                 if viewModel.isLoading && viewModel.budgetSummary == nil {
@@ -60,6 +88,83 @@ struct DashboardView: View {
                 CategoryDetailSheet(category: category)
             }
         }
+    }
+
+    // MARK: - Month Navigation Header
+
+    private var monthNavigationHeader: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Button {
+                    navigateMonth(by: -1)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(appAccent)
+                }
+
+                Spacer()
+
+                Text(monthYearLabel)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+
+                Spacer()
+
+                Button {
+                    navigateMonth(by: 1)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(isCurrentMonth ? .secondary.opacity(0.3) : appAccent)
+                }
+                .disabled(isCurrentMonth)
+            }
+            .padding(.horizontal, 4)
+
+            if !isCurrentMonth {
+                Button {
+                    goToCurrentMonth()
+                } label: {
+                    Text("Go to Current Month")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(appAccent)
+                }
+            }
+        }
+    }
+
+    private func navigateMonth(by offset: Int) {
+        var comps = DateComponents(year: selectedYear, month: selectedMonth)
+        comps.month = (comps.month ?? 1) + offset
+        if let newDate = Calendar.current.date(from: comps) {
+            let cal = Calendar.current
+            let newYear = cal.component(.year, from: newDate)
+            let newMonth = cal.component(.month, from: newDate)
+
+            // Don't go past current month
+            let now = Date()
+            let currentYear = cal.component(.year, from: now)
+            let currentMonth = cal.component(.month, from: now)
+            if newYear > currentYear || (newYear == currentYear && newMonth > currentMonth) {
+                return
+            }
+
+            selectedYear = newYear
+            selectedMonth = newMonth
+            Task { await viewModel.loadData(year: selectedYear, month: selectedMonth) }
+        }
+    }
+
+    private func goToCurrentMonth() {
+        let cal = Calendar.current
+        let now = Date()
+        selectedYear = cal.component(.year, from: now)
+        selectedMonth = cal.component(.month, from: now)
+        Task { await viewModel.loadData(year: selectedYear, month: selectedMonth) }
     }
 
     // MARK: - Budget Summary Card
@@ -135,6 +240,99 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity)
     }
 
+    // MARK: - Pace Card
+
+    private func paceCard(_ summary: BudgetSummary) -> some View {
+        let cal = Calendar.current
+        let now = Date()
+        let currentDay = Double(cal.component(.day, from: now))
+        let daysInMonth = Double(cal.range(of: .day, in: .month, for: now)?.count ?? 30)
+        let monthProgress = currentDay / daysInMonth
+        let percentage = summary.percentage
+
+        let pace = monthProgress > 0 ? (percentage / 100.0) / monthProgress : 0
+        let expectedSpending = summary.totalBudget * monthProgress
+        let paceDifference = summary.totalSpent - expectedSpending
+
+        let paceColor: Color = {
+            if pace > 1.1 { return .red }
+            if pace > 0.9 { return .orange }
+            return appAccent
+        }()
+
+        let paceLabel: String = {
+            let formatted = String(format: "%.1fx pace", pace)
+            if paceDifference > 0 {
+                return "\(formatted)  --  \(formatCurrency(abs(paceDifference))) over"
+            } else {
+                return "\(formatted)  --  \(formatCurrency(abs(paceDifference))) under"
+            }
+        }()
+
+        return VStack(spacing: 10) {
+            HStack {
+                Image(systemName: "gauge.with.dots.needle.50percent")
+                    .foregroundStyle(paceColor)
+                Text("Spending Pace")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                Spacer()
+            }
+
+            HStack(spacing: 6) {
+                Text(String(format: "%.1fx", pace))
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(paceColor)
+
+                Text("pace")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(paceDifference >= 0
+                     ? "\(formatCurrency(abs(paceDifference))) over"
+                     : "\(formatCurrency(abs(paceDifference))) under")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(paceDifference >= 0 ? .red : appAccent)
+            }
+
+            // Day progress indicator
+            VStack(spacing: 4) {
+                ProgressView(value: monthProgress)
+                    .tint(.secondary.opacity(0.5))
+                    .progressViewStyle(.linear)
+
+                Text("Day \(Int(currentDay)) of \(Int(daysInMonth)) (\(Int(monthProgress * 100))% through month)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .glassCard()
+    }
+
+    private func formatCurrency(_ value: Double) -> String {
+        value.formatted(.currency(code: "USD"))
+    }
+
+    // MARK: - Excluded Categories Note
+
+    private func excludedCategoriesNote(_ excluded: [String]) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("Excludes: \(excluded.joined(separator: ", "))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+    }
+
     // MARK: - Category Breakdown Grid
 
     private var categoryBreakdownSection: some View {
@@ -196,7 +394,7 @@ struct DashboardView: View {
                 } label: {
                     Text("See All")
                         .font(.subheadline)
-                        .foregroundStyle(AppTheme.accent)
+                        .foregroundStyle(appAccent)
                 }
             }
 
@@ -257,24 +455,25 @@ class DashboardViewModel: ObservableObject {
     @Published var budgetSummary: BudgetSummary?
     @Published var categories: [CategoryBreakdown] = []
     @Published var recentExpenses: [RecentExpense] = []
+    @Published var excludedCategories: [String]?
     @Published var isLoading = false
     @Published var errorMessage: String?
 
     private let api = APIService()
 
-    func loadData() async {
+    func loadData(year: Int? = nil, month: Int? = nil) async {
         isLoading = true
         errorMessage = nil
 
         let now = Date()
         let cal = Calendar.current
-        let year = cal.component(.year, from: now)
-        let month = cal.component(.month, from: now)
+        let targetYear = year ?? cal.component(.year, from: now)
+        let targetMonth = month ?? cal.component(.month, from: now)
 
         do {
-            async let budgetFetch = api.fetchBudget()
+            async let budgetFetch = api.fetchBudget(year: targetYear, month: targetMonth)
             async let categoriesFetch = api.fetchCategories()
-            async let expensesFetch = api.fetchExpenses(year: year, month: month)
+            async let expensesFetch = api.fetchExpenses(year: targetYear, month: targetMonth)
 
             let (budget, apiCategories, expenses) = try await (budgetFetch, categoriesFetch, expensesFetch)
 
@@ -287,6 +486,8 @@ class DashboardViewModel: ObservableObject {
                 thisMonth: budget.total_spending,
                 percentage: budget.total_percentage
             )
+
+            excludedCategories = budget.excluded_categories
 
             categories = budget.categories
                 .filter { $0.spending > 0 }
@@ -328,8 +529,8 @@ class DashboardViewModel: ObservableObject {
         isLoading = false
     }
 
-    func refresh() async {
-        await loadData()
+    func refresh(year: Int? = nil, month: Int? = nil) async {
+        await loadData(year: year, month: month)
     }
 }
 

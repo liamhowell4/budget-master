@@ -1,15 +1,15 @@
 import Foundation
 
-enum PendingService {
+public enum PendingService {
 
     /// GET /pending
-    static func getPendingExpenses() async throws -> PendingListResponse {
+    public static func getPendingExpenses() async throws -> PendingListResponse {
         let endpoint = APIEndpoint(method: .get, path: "/pending")
         return try await APIClient.shared.request(endpoint)
     }
 
     /// POST /pending/{id}/confirm?adjusted_amount=
-    static func confirmPending(
+    public static func confirmPending(
         id: String,
         adjustedAmount: Double? = nil
     ) async throws -> PendingConfirmResponse {
@@ -29,7 +29,7 @@ enum PendingService {
     }
 
     /// DELETE /pending/{id}
-    static func deletePending(id: String) async throws -> SuccessResponse {
+    public static func deletePending(id: String) async throws -> SuccessResponse {
         let endpoint = APIEndpoint(method: .delete, path: "/pending/\(id)")
         return try await APIClient.shared.request(endpoint)
     }

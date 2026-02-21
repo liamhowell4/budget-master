@@ -3,14 +3,24 @@ import SwiftUI
 // MARK: - App Theme Tokens
 
 enum AppTheme {
-    /// Green accent matching the web app (#22c55e) — R:34 G:197 B:94
+    /// Default green accent (#22c55e) used as fallback when no theme is active.
     static let accent: Color = Color(red: 34 / 255, green: 197 / 255, blue: 94 / 255)
+
+    /// Returns the accent color for the given theme scheme, falling back to the default.
+    static func accentColor(for scheme: ThemeColorScheme?) -> Color {
+        scheme?.accentColor ?? accent
+    }
+
+    /// Returns the tint color for the given theme scheme, falling back to the default accent.
+    static func tintColor(for scheme: ThemeColorScheme?) -> Color {
+        scheme?.tintColor ?? accent
+    }
 
     /// Maps an ExpenseType category ID to a display color
     static func categoryColor(_ id: String) -> Color {
         switch id.uppercased() {
         case "FOOD_OUT":   return Color(red: 249/255, green: 115/255, blue: 22/255)
-        case "GROCERIES":  return accent
+        case "GROCERIES":  return AppTheme.accent
         case "COFFEE":     return Color(red: 161/255, green: 99/255,  blue: 60/255)
         case "RENT":       return Color(red: 59/255,  green: 130/255, blue: 246/255)
         case "UTILITIES":  return Color(red: 234/255, green: 179/255, blue: 8/255)
@@ -28,7 +38,7 @@ enum AppTheme {
     static func budgetProgressColor(_ percentage: Double) -> Color {
         if percentage >= 95 { return .red }
         if percentage >= 50 { return .orange }
-        return accent
+        return AppTheme.accent
     }
 }
 
@@ -104,6 +114,23 @@ extension AppTheme {
         case "gift":                                 return "gift.fill"
         default:                                     return "creditcard.fill"
         }
+    }
+}
+
+// MARK: - Environment Key for Resolved Accent Color
+
+// Views read `appAccent` from the environment instead of reaching for
+// AppTheme.accent directly, so the ThemeManager's active scheme propagates
+// through the entire tree without needing ObservableObject subscriptions in
+// every leaf view.
+private struct AppAccentKey: EnvironmentKey {
+    static let defaultValue: Color = AppTheme.accent
+}
+
+extension EnvironmentValues {
+    var appAccent: Color {
+        get { self[AppAccentKey.self] }
+        set { self[AppAccentKey.self] = newValue }
     }
 }
 

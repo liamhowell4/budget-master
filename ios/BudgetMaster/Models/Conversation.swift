@@ -2,37 +2,37 @@ import Foundation
 
 // MARK: - Conversation
 
-struct Conversation: Codable, Sendable, Identifiable {
-    var id: String { conversationId }
+public struct Conversation: Codable, Sendable, Identifiable {
+    public var id: String { conversationId }
 
-    let conversationId: String
-    let createdAt: String?
-    let lastActivity: String?
-    let messages: [StoredMessage]
-    let summary: String?
+    public let conversationId: String
+    public let createdAt: String?
+    public let lastActivity: String?
+    public let messages: [StoredMessage]
+    public let summary: String?
 }
 
 // MARK: - ConversationListItem
 
-struct ConversationListItem: Codable, Sendable, Identifiable {
-    var id: String { conversationId }
+public struct ConversationListItem: Codable, Sendable, Identifiable {
+    public var id: String { conversationId }
 
-    let conversationId: String
-    let createdAt: String?
-    let lastActivity: String?
-    let summary: String?
-    let messageCount: Int
-    let firstMessage: String?
+    public let conversationId: String
+    public let createdAt: String?
+    public let lastActivity: String?
+    public let summary: String?
+    public let messageCount: Int
+    public let firstMessage: String?
 }
 
 // MARK: - ConversationListResponse
 
-struct ConversationListResponse: Codable, Sendable {
-    let conversations: [ConversationListItem]
+public struct ConversationListResponse: Codable, Sendable {
+    public let conversations: [ConversationListItem]
 }
 
 // MARK: - ConversationCreateResponse
 
-struct ConversationCreateResponse: Codable, Sendable {
-    let conversationId: String
+public struct ConversationCreateResponse: Codable, Sendable {
+    public let conversationId: String
 }

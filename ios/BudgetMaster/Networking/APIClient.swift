@@ -1,17 +1,17 @@
 import Foundation
 
 /// Thread-safe API client for the BudgetMaster backend.
-actor APIClient {
-    static let shared = APIClient()
+public actor APIClient {
+    public static let shared = APIClient()
 
-    private let baseURL: URL
+    private var baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
     private var tokenProvider: TokenProvider
 
-    init(
-        baseURL: URL = URL(string: "https://budget-master-backend-857587891388.us-central1.run.app")!,
+    public init(
+        baseURL: URL = URL(string: "https://expense-tracker-nsz3hblwea-uc.a.run.app")!,
         session: URLSession = .shared,
         tokenProvider: TokenProvider = StubTokenProvider()
     ) {
@@ -27,8 +27,13 @@ actor APIClient {
     }
 
     /// Update the token provider (e.g. after sign-in).
-    func setTokenProvider(_ provider: TokenProvider) {
+    public func setTokenProvider(_ provider: TokenProvider) {
         self.tokenProvider = provider
+    }
+
+    /// Update the base URL (e.g. to switch between dev/prod environments).
+    public func setBaseURL(_ url: URL) {
+        self.baseURL = url
     }
 
     // MARK: - Request Building
@@ -55,7 +60,7 @@ actor APIClient {
     // MARK: - Public API
 
     /// Perform a request with no body, decoding the response into `T`.
-    func request<T: Decodable & Sendable>(
+    public func request<T: Decodable & Sendable>(
         _ endpoint: APIEndpoint,
         as type: T.Type = T.self
     ) async throws -> T {
@@ -64,7 +69,7 @@ actor APIClient {
     }
 
     /// Perform a request with a JSON body, decoding the response into `T`.
-    func request<Body: Encodable & Sendable, T: Decodable & Sendable>(
+    public func request<Body: Encodable & Sendable, T: Decodable & Sendable>(
         _ endpoint: APIEndpoint,
         body: Body,
         as type: T.Type = T.self
@@ -76,7 +81,7 @@ actor APIClient {
     }
 
     /// Perform a multipart form-data upload, decoding the response into `T`.
-    func upload<T: Decodable & Sendable>(
+    public func upload<T: Decodable & Sendable>(
         _ endpoint: APIEndpoint,
         multipart: MultipartFormData,
         as type: T.Type = T.self
@@ -89,7 +94,7 @@ actor APIClient {
 
     /// Open an SSE connection and return the raw `URLSession.AsyncBytes` stream.
     /// The caller (SSEClient) handles line parsing.
-    func streamRequest(
+    public func streamRequest(
         _ endpoint: APIEndpoint,
         body: some Encodable & Sendable
     ) async throws -> (URLSession.AsyncBytes, URLResponse) {

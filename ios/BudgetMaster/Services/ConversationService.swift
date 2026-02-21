@@ -1,9 +1,9 @@
 import Foundation
 
-enum ConversationService {
+public enum ConversationService {
 
     /// GET /conversations?limit=
-    static func listConversations(
+    public static func listConversations(
         limit: Int = 20
     ) async throws -> ConversationListResponse {
         let endpoint = APIEndpoint(
@@ -15,7 +15,7 @@ enum ConversationService {
     }
 
     /// GET /conversations/{id}
-    static func getConversation(
+    public static func getConversation(
         id: String
     ) async throws -> Conversation {
         let endpoint = APIEndpoint(method: .get, path: "/conversations/\(id)")
@@ -23,7 +23,7 @@ enum ConversationService {
     }
 
     /// POST /conversations
-    static func createConversation() async throws -> ConversationCreateResponse {
+    public static func createConversation() async throws -> ConversationCreateResponse {
         let endpoint = APIEndpoint(method: .post, path: "/conversations")
         // POST with empty body
         let emptyBody: [String: String] = [:]
@@ -31,7 +31,7 @@ enum ConversationService {
     }
 
     /// DELETE /conversations/{id}
-    static func deleteConversation(
+    public static func deleteConversation(
         id: String
     ) async throws -> SuccessResponse {
         let endpoint = APIEndpoint(method: .delete, path: "/conversations/\(id)")

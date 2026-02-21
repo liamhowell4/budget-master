@@ -1,9 +1,9 @@
 import Foundation
 
-enum ExpenseService {
+public enum ExpenseService {
 
     /// GET /expenses?year=&month=&category=
-    static func getExpenses(
+    public static func getExpenses(
         year: Int? = nil,
         month: Int? = nil,
         category: String? = nil
@@ -22,7 +22,7 @@ enum ExpenseService {
     }
 
     /// PUT /expenses/{id}
-    static func updateExpense(
+    public static func updateExpense(
         id: String,
         update: ExpenseUpdateRequest
     ) async throws -> ExpenseUpdateResponse {
@@ -34,7 +34,7 @@ enum ExpenseService {
     }
 
     /// DELETE /expenses/{id}
-    static func deleteExpense(id: String) async throws -> ExpenseDeleteResponse {
+    public static func deleteExpense(id: String) async throws -> ExpenseDeleteResponse {
         let endpoint = APIEndpoint(
             method: .delete,
             path: "/expenses/\(id)"

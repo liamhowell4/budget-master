@@ -16,9 +16,9 @@ from datetime import datetime, timedelta
 from typing import Optional, AsyncGenerator
 
 import anthropic
-from anthropic import Anthropic
 
 from .firebase_client import FirebaseClient
+from .model_client import UnifiedModelClient, SUPPORTED_MODELS, DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -117,126 +117,145 @@ async def run_claude_tool_loop(
     anthropic_api_key: str,
     current_user_token: str,
     result: ToolLoopResult,
+    model: str = DEFAULT_MODEL,
+    user_id: Optional[str] = None,
+    firebase_client_instance=None,
 ) -> AsyncGenerator[str, None]:
     """
-    Run the Claude API tool-use loop, yielding SSE-formatted strings.
+    Run the LLM tool-use loop via UnifiedModelClient, yielding SSE-formatted strings.
 
     Calls client.session.list_tools() and client.session.call_tool()
     for MCP interactions. Mutates *result* to accumulate response text
     and tool calls.
 
-    On Claude API errors: sets result.had_error = True, yields an error
-    event, and returns. The caller is responsible for yielding [DONE].
+    On API errors: sets result.had_error = True, yields an error event,
+    and returns. The caller is responsible for yielding [DONE].
+
+    Args:
+        client:                   MCP client with an active session.
+        messages:                 Conversation messages in Anthropic format.
+        system_prompt:            System prompt string.
+        anthropic_api_key:        Anthropic API key (kept for compatibility).
+        current_user_token:       Firebase Auth token for MCP tool auth.
+        result:                   ToolLoopResult accumulator (mutated in-place).
+        model:                    Model identifier from SUPPORTED_MODELS.
+        user_id:                  Firebase UID for token usage logging.
+        firebase_client_instance: FirebaseClient scoped to the user (optional).
     """
     # Get available tools from MCP server
-    response = await client.session.list_tools()
+    mcp_response = await client.session.list_tools()
     available_tools = [{
         "name": tool.name,
         "description": tool.description,
         "input_schema": tool.inputSchema,
-    } for tool in response.tools]
+    } for tool in mcp_response.tools]
 
-    # Call Claude API with tools
-    anthropic_client = Anthropic(api_key=anthropic_api_key)
+    model_client = UnifiedModelClient(model)
+    provider = SUPPORTED_MODELS[model]["provider"]
+
+    # Initial model call
     try:
-        api_response = anthropic_client.messages.create(
-            model="claude-sonnet-4-5",
+        api_response = model_client.create(
             system=system_prompt,
-            max_tokens=2000,
             messages=messages,
             tools=available_tools,
         )
-    except (anthropic.APIError, anthropic.APITimeoutError) as api_err:
-        logger.error("Claude API error: %s", api_err)
+    except Exception as api_err:
+        logger.error("Model API error (%s): %s", model, api_err)
         result.had_error = True
         error_event = {"type": "error", "content": f"AI service error: {api_err}"}
         yield f"data: {json.dumps(error_event)}\n\n"
         return
+
+    # Log token usage for the initial call
+    if user_id and firebase_client_instance:
+        firebase_client_instance.log_token_usage(
+            user_id, model, provider,
+            api_response.input_tokens, api_response.output_tokens, "chat"
+        )
 
     # Process response and handle tool calls in a loop
     while api_response.stop_reason == "tool_use":
         assistant_content = []
         tool_results = []
 
-        for content in api_response.content:
-            if content.type == 'text':
-                assistant_content.append({
-                    "type": "text",
-                    "text": content.text,
-                })
-            elif content.type == 'tool_use':
-                tool_name = content.name
-                tool_args = content.input
-                tool_use_id = content.id
+        # Include any text from this assistant turn
+        if api_response.content:
+            assistant_content.append({"type": "text", "text": api_response.content})
 
-                # Inject auth_token for MCP tool authentication (defense in depth)
-                if tool_name != "get_categories":
-                    tool_args = {**tool_args, "auth_token": current_user_token}
+        for tc in api_response.tool_calls:
+            tool_name = tc.name
+            tool_args = tc.arguments
+            tool_use_id = tc.id
 
-                # Emit tool_start event (without auth token for security)
-                tool_start_event = {
-                    "type": "tool_start",
-                    "id": tool_use_id,
-                    "name": tool_name,
-                    "args": {k: v for k, v in tool_args.items() if k != "auth_token"},
-                }
-                yield f"data: {json.dumps(tool_start_event)}\n\n"
+            # Inject auth_token for MCP tool authentication (defense in depth)
+            if tool_name != "get_categories":
+                tool_args = {**tool_args, "auth_token": current_user_token}
 
-                # Execute tool call via MCP
-                try:
-                    tool_result = await client.session.call_tool(tool_name, tool_args)
-                except Exception as tool_err:
-                    logger.error("MCP call_tool failed for %s: %s", tool_name, tool_err)
-                    result_text = json.dumps({"error": f"Tool execution failed: {tool_err}"})
-                else:
-                    # Parse tool result
-                    if hasattr(tool_result, 'content') and tool_result.content:
-                        if isinstance(tool_result.content, list):
-                            result_text = "\n".join(
-                                block.text if hasattr(block, 'text') else str(block)
-                                for block in tool_result.content
-                            )
-                        else:
-                            result_text = str(tool_result.content)
+            # Emit tool_start event (without auth token for security)
+            tool_start_event = {
+                "type": "tool_start",
+                "id": tool_use_id,
+                "name": tool_name,
+                "args": {k: v for k, v in tool_args.items() if k != "auth_token"},
+            }
+            yield f"data: {json.dumps(tool_start_event)}\n\n"
+
+            # Execute tool call via MCP
+            try:
+                tool_result = await client.session.call_tool(tool_name, tool_args)
+            except Exception as tool_err:
+                logger.error("MCP call_tool failed for %s: %s", tool_name, tool_err)
+                result_text = json.dumps({"error": f"Tool execution failed: {tool_err}"})
+            else:
+                # Parse tool result
+                if hasattr(tool_result, 'content') and tool_result.content:
+                    if isinstance(tool_result.content, list):
+                        result_text = "\n".join(
+                            block.text if hasattr(block, 'text') else str(block)
+                            for block in tool_result.content
+                        )
                     else:
-                        result_text = str(tool_result)
+                        result_text = str(tool_result.content)
+                else:
+                    result_text = str(tool_result)
 
-                # Emit tool_end event with result
-                try:
-                    parsed_result = json.loads(result_text)
-                except (json.JSONDecodeError, TypeError):
-                    parsed_result = result_text
+            # Emit tool_end event with result
+            try:
+                parsed_result = json.loads(result_text)
+            except (json.JSONDecodeError, TypeError):
+                parsed_result = result_text
 
-                tool_end_event = {
-                    "type": "tool_end",
-                    "id": tool_use_id,
-                    "name": tool_name,
-                    "result": parsed_result,
-                }
-                yield f"data: {json.dumps(tool_end_event)}\n\n"
+            tool_end_event = {
+                "type": "tool_end",
+                "id": tool_use_id,
+                "name": tool_name,
+                "result": parsed_result,
+            }
+            yield f"data: {json.dumps(tool_end_event)}\n\n"
 
-                # Collect tool call for persistence
-                result.all_tool_calls.append({
-                    "id": tool_use_id,
-                    "name": tool_name,
-                    "args": {k: v for k, v in tool_args.items() if k != "auth_token"},
-                    "result": parsed_result,
-                })
+            # Collect tool call for persistence
+            result.all_tool_calls.append({
+                "id": tool_use_id,
+                "name": tool_name,
+                "args": {k: v for k, v in tool_args.items() if k != "auth_token"},
+                "result": parsed_result,
+            })
 
-                # Add tool_use to assistant content
-                assistant_content.append({
-                    "type": "tool_use",
-                    "id": tool_use_id,
-                    "name": tool_name,
-                    "input": tool_args,
-                })
+            # Add tool_use to assistant content
+            assistant_content.append({
+                "type": "tool_use",
+                "id": tool_use_id,
+                "name": tool_name,
+                "input": tool_args,
+            })
 
-                # Collect tool result
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tool_use_id,
-                    "content": result_text,
-                })
+            # Collect tool result
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_use_id,
+                "content": result_text,
+            })
 
         # Add assistant message with tool uses
         messages.append({
@@ -250,34 +269,34 @@ async def run_claude_tool_loop(
             "content": tool_results,
         })
 
-        # Get next response from Claude
+        # Get next response from model
         try:
-            api_response = anthropic_client.messages.create(
-                model="claude-sonnet-4-5",
+            api_response = model_client.create(
                 system=system_prompt,
-                max_tokens=2000,
                 messages=messages,
                 tools=available_tools,
             )
-        except (anthropic.APIError, anthropic.APITimeoutError) as api_err:
-            logger.error("Claude API error during tool loop: %s", api_err)
+        except Exception as api_err:
+            logger.error("Model API error during tool loop (%s): %s", model, api_err)
             result.had_error = True
             error_event = {"type": "error", "content": f"AI service error: {api_err}"}
             yield f"data: {json.dumps(error_event)}\n\n"
             return
 
-    # Process final response (no more tool calls)
-    for content in api_response.content:
-        if content.type == 'text':
-            text = content.text
-            result.final_response_text.append(text)
+        # Log token usage for each subsequent call
+        if user_id and firebase_client_instance:
+            firebase_client_instance.log_token_usage(
+                user_id, model, provider,
+                api_response.input_tokens, api_response.output_tokens, "chat"
+            )
 
-            if len(text) > 0:
-                text_event = {
-                    "type": "text",
-                    "content": text,
-                }
-                yield f"data: {json.dumps(text_event)}\n\n"
+    # Process final response (no more tool calls)
+    if api_response.content:
+        text = api_response.content
+        result.final_response_text.append(text)
+        if text:
+            text_event = {"type": "text", "content": text}
+            yield f"data: {json.dumps(text_event)}\n\n"
 
 
 def save_conversation_history(

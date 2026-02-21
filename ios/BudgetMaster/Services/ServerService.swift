@@ -1,9 +1,9 @@
 import Foundation
 
-enum ServerService {
+public enum ServerService {
 
     /// GET /servers (no auth required)
-    static func listServers() async throws -> [MCPServer] {
+    public static func listServers() async throws -> [MCPServer] {
         let endpoint = APIEndpoint(
             method: .get,
             path: "/servers",
@@ -13,7 +13,7 @@ enum ServerService {
     }
 
     /// POST /connect/{server_id} (no auth required)
-    static func connect(serverId: String) async throws -> ServerConnectResponse {
+    public static func connect(serverId: String) async throws -> ServerConnectResponse {
         let endpoint = APIEndpoint(
             method: .post,
             path: "/connect/\(serverId)",
@@ -25,7 +25,7 @@ enum ServerService {
     }
 
     /// GET /status (no auth required)
-    static func getStatus() async throws -> ServerStatus {
+    public static func getStatus() async throws -> ServerStatus {
         let endpoint = APIEndpoint(
             method: .get,
             path: "/status",
@@ -35,7 +35,7 @@ enum ServerService {
     }
 
     /// POST /disconnect (no auth required)
-    static func disconnect() async throws -> SuccessResponse {
+    public static func disconnect() async throws -> SuccessResponse {
         let endpoint = APIEndpoint(
             method: .post,
             path: "/disconnect",
@@ -46,7 +46,7 @@ enum ServerService {
     }
 
     /// GET /health (no auth required)
-    static func healthCheck() async throws -> HealthResponse {
+    public static func healthCheck() async throws -> HealthResponse {
         let endpoint = APIEndpoint(
             method: .get,
             path: "/health",

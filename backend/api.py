@@ -46,6 +46,7 @@ from .chat_helpers import (
     get_or_create_conversation, build_message_context,
     run_claude_tool_loop, save_conversation_history, ToolLoopResult
 )
+from .model_client import SUPPORTED_MODELS, DEFAULT_MODEL
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -102,7 +103,8 @@ async def process_expense_with_mcp(
     image_base64: Optional[str] = None,
     user_id: str = None,
     auth_token: str = None,
-    conversation_id: Optional[str] = None
+    conversation_id: Optional[str] = None,
+    model: str = DEFAULT_MODEL,
 ) -> dict:
     """
     Shared MCP processing function for expense parsing.
@@ -139,7 +141,8 @@ async def process_expense_with_mcp(
         image_base64=image_base64,
         auth_token=auth_token,
         user_id=user_id,
-        conversation_id=conversation_id
+        conversation_id=conversation_id,
+        model=model,
     )
 
     # Ensure message is populated for consistency
@@ -431,6 +434,13 @@ async def mcp_process_expense(
 
             logger.info("Image uploaded: %d bytes, type: %s", len(image_bytes), image.content_type)
 
+        # Resolve the user's selected model
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+        user_settings = user_firebase.get_user_settings(current_user.uid)
+        selected_model = user_settings.get("selected_model", DEFAULT_MODEL)
+        if selected_model not in SUPPORTED_MODELS:
+            selected_model = DEFAULT_MODEL
+
         # Call shared MCP processing function
         # Pass auth_token for MCP server verification (defense in depth)
         result = await process_expense_with_mcp(
@@ -438,7 +448,8 @@ async def mcp_process_expense(
             image_base64=image_base64,
             user_id=current_user.uid,
             auth_token=current_user.token,
-            conversation_id=conversation_id
+            conversation_id=conversation_id,
+            model=selected_model,
         )
 
         # Return as structured JSON response
@@ -1683,6 +1694,70 @@ async def admin_cleanup_conversations(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== User Settings Endpoints ====================
+
+class UserSettingsResponse(BaseModel):
+    """Response model for user settings."""
+    selected_model: str
+
+
+class UserSettingsUpdateRequest(BaseModel):
+    """Request model for updating user settings."""
+    selected_model: str
+
+
+@app.get("/user/settings", response_model=UserSettingsResponse)
+async def get_user_settings(
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Get settings for the authenticated user.
+
+    Returns:
+        {"selected_model": "claude-sonnet-4-6"}
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+        settings = user_firebase.get_user_settings(current_user.uid)
+        selected_model = settings.get("selected_model", DEFAULT_MODEL)
+        if selected_model not in SUPPORTED_MODELS:
+            selected_model = DEFAULT_MODEL
+        return UserSettingsResponse(selected_model=selected_model)
+    except Exception as e:
+        logger.exception("Error in GET /user/settings")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/user/settings", response_model=UserSettingsResponse)
+async def update_user_settings(
+    body: UserSettingsUpdateRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Update settings for the authenticated user.
+
+    Request body:
+        {"selected_model": "gpt-5-mini"}
+
+    Validates that the requested model is in SUPPORTED_MODELS.
+    """
+    try:
+        if body.selected_model not in SUPPORTED_MODELS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported model '{body.selected_model}'. "
+                       f"Choose from: {list(SUPPORTED_MODELS)}"
+            )
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+        user_firebase.update_user_settings(current_user.uid, {"selected_model": body.selected_model})
+        return UserSettingsResponse(selected_model=body.selected_model)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error in PUT /user/settings")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -1894,6 +1969,12 @@ async def chat_stream(
     # Set up user-scoped Firebase client
     user_firebase = FirebaseClient.for_user(current_user.uid)
 
+    # Resolve the user's selected model
+    user_settings = user_firebase.get_user_settings(current_user.uid)
+    selected_model = user_settings.get("selected_model", DEFAULT_MODEL)
+    if selected_model not in SUPPORTED_MODELS:
+        selected_model = DEFAULT_MODEL
+
     # Step 1: Resolve conversation
     conversation_id, conversation_messages = get_or_create_conversation(
         user_firebase, chat_message.conversation_id, USER_TIMEZONE
@@ -1916,7 +1997,10 @@ async def chat_stream(
             result = ToolLoopResult()
             async for sse_event in run_claude_tool_loop(
                 client, messages, system_prompt,
-                os.getenv('ANTHROPIC_API_KEY'), current_user.token, result
+                os.getenv('ANTHROPIC_API_KEY'), current_user.token, result,
+                model=selected_model,
+                user_id=current_user.uid,
+                firebase_client_instance=user_firebase,
             ):
                 yield sse_event
 

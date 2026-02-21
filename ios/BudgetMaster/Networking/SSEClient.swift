@@ -1,10 +1,10 @@
 import Foundation
 
 /// Parses Server-Sent Events from `/chat/stream` into typed `ChatStreamEvent` values.
-enum SSEClient {
+public enum SSEClient {
 
     /// Stream chat events from the backend SSE endpoint.
-    static func stream(
+    public static func stream(
         message: String,
         conversationId: String? = nil
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {

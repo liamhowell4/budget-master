@@ -1,9 +1,9 @@
 import Foundation
 
-enum BudgetService {
+public enum BudgetService {
 
     /// GET /budget?year=&month=
-    static func getBudgetStatus(
+    public static func getBudgetStatus(
         year: Int? = nil,
         month: Int? = nil
     ) async throws -> BudgetStatus {
@@ -20,7 +20,7 @@ enum BudgetService {
     }
 
     /// PUT /budget-caps/bulk-update
-    static func bulkUpdateBudgetCaps(
+    public static func bulkUpdateBudgetCaps(
         _ request: BulkBudgetUpdateRequest
     ) async throws -> BulkBudgetUpdateResponse {
         let endpoint = APIEndpoint(
@@ -31,13 +31,13 @@ enum BudgetService {
     }
 
     /// GET /budget/total
-    static func getTotalBudget() async throws -> TotalBudgetResponse {
+    public static func getTotalBudget() async throws -> TotalBudgetResponse {
         let endpoint = APIEndpoint(method: .get, path: "/budget/total")
         return try await APIClient.shared.request(endpoint)
     }
 
     /// PUT /budget/total
-    static func updateTotalBudget(
+    public static func updateTotalBudget(
         _ amount: Double
     ) async throws -> TotalBudgetUpdateResponse {
         let endpoint = APIEndpoint(method: .put, path: "/budget/total")

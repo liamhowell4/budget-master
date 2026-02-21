@@ -90,30 +90,30 @@ function ExpenseItem({ expense, onClick }: { expense: Expense; onClick: () => vo
       onClick={onClick}
       className={cn(
         'flex items-center gap-3 py-3 w-full text-left',
-        'border-b border-neutral-200 dark:border-neutral-800 last:border-0',
-        'hover:bg-neutral-50 dark:hover:bg-neutral-800/50',
+        'border-b border-[var(--border-primary)] last:border-0',
+        'hover:bg-[var(--surface-hover)]',
         'transition-colors cursor-pointer'
       )}
     >
-      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-100 dark:bg-neutral-800">
+      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--surface-secondary)]">
         <CategoryIcon
           category={expense.category}
-          className="h-4 w-4 text-neutral-500 dark:text-neutral-400"
+          className="h-4 w-4 text-[var(--text-muted)]"
         />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+        <p className="text-sm font-medium text-[var(--text-primary)] truncate">
           {expense.expense_name}
         </p>
-        <p className="text-xs text-neutral-400 dark:text-neutral-500">
+        <p className="text-xs text-[var(--text-muted)]">
           {CATEGORY_LABELS[expense.category] || expense.category}
         </p>
       </div>
       <div className="text-right">
-        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+        <p className="text-sm font-medium text-[var(--text-primary)]">
           {formatCurrency(expense.amount)}
         </p>
-        <p className="text-xs text-neutral-400 dark:text-neutral-500">
+        <p className="text-xs text-[var(--text-muted)]">
           {formatExpenseDate(expense.date)}
         </p>
       </div>
@@ -136,22 +136,22 @@ function PendingExpenseItem({
   isSkipping: boolean
 }) {
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-neutral-200 dark:border-neutral-800 last:border-0">
-      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+    <div className="flex items-center gap-3 py-3 border-b border-[var(--border-primary)] last:border-0">
+      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--warning-muted)]">
         <CategoryIcon
           category={pending.category}
-          className="h-4 w-4 text-amber-600 dark:text-amber-400"
+          className="h-4 w-4 text-[var(--warning)]"
         />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+        <p className="text-sm font-medium text-[var(--text-primary)] truncate">
           {pending.expense_name}
         </p>
-        <p className="text-xs text-neutral-400 dark:text-neutral-500">
+        <p className="text-xs text-[var(--text-muted)]">
           Awaiting confirmation
         </p>
       </div>
-      <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mr-2">
+      <p className="text-sm font-medium text-[var(--text-primary)] mr-2">
         {formatCurrency(pending.amount)}
       </p>
       <div className="flex gap-1">
@@ -160,8 +160,8 @@ function PendingExpenseItem({
           disabled={isConfirming || isSkipping}
           className={cn(
             'flex h-7 w-7 items-center justify-center rounded-md',
-            'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',
-            'hover:bg-emerald-200 dark:hover:bg-emerald-900/50',
+            'bg-[var(--success-muted)] text-[var(--success)]',
+            'hover:opacity-80',
             'disabled:opacity-50 transition-colors'
           )}
           aria-label="Confirm"
@@ -173,8 +173,8 @@ function PendingExpenseItem({
           disabled={isConfirming || isSkipping}
           className={cn(
             'flex h-7 w-7 items-center justify-center rounded-md',
-            'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
-            'hover:bg-red-200 dark:hover:bg-red-900/50',
+            'bg-[var(--error-muted)] text-[var(--error)]',
+            'hover:opacity-80',
             'disabled:opacity-50 transition-colors'
           )}
           aria-label="Skip"
@@ -279,28 +279,28 @@ function RecurringItem({
   }
 
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-neutral-200 dark:border-neutral-800 last:border-0">
-      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-100 dark:bg-blue-900/30">
+    <div className="flex items-center gap-3 py-3 border-b border-[var(--border-primary)] last:border-0">
+      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-[var(--accent-muted)]">
         <CategoryIcon
           category={recurring.category}
-          className="h-4 w-4 text-blue-600 dark:text-blue-400"
+          className="h-4 w-4 text-[var(--accent-primary)]"
         />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+        <p className="text-sm font-medium text-[var(--text-primary)] truncate">
           {recurring.expense_name}
         </p>
-        <div className="flex items-center gap-1.5 text-xs text-neutral-400 dark:text-neutral-500">
+        <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
           <Repeat className="h-3 w-3" />
           <span>{schedule}</span>
         </div>
       </div>
       <div className="flex items-center gap-3">
         <div className="text-right">
-          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          <p className="text-sm font-medium text-[var(--text-primary)]">
             {formatCurrency(recurring.amount)}
           </p>
-          <p className="text-xs text-neutral-400 dark:text-neutral-500">
+          <p className="text-xs text-[var(--text-muted)]">
             {CATEGORY_LABELS[recurring.category] || recurring.category}
           </p>
         </div>
@@ -311,8 +311,8 @@ function RecurringItem({
               disabled={isDeleting}
               className={cn(
                 'flex h-7 w-7 items-center justify-center rounded-md',
-                'text-neutral-400 dark:text-neutral-500',
-                'hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                'text-[var(--text-muted)]',
+                'hover:bg-[var(--surface-hover)]',
                 'disabled:opacity-50 transition-colors'
               )}
               aria-label="Cancel"
@@ -324,8 +324,8 @@ function RecurringItem({
               disabled={isDeleting}
               className={cn(
                 'flex h-7 w-7 items-center justify-center rounded-md',
-                'bg-red-500 text-white',
-                'hover:bg-red-600',
+                'bg-[var(--error)] text-[var(--text-inverted)]',
+                'hover:opacity-80',
                 'disabled:opacity-50 transition-colors'
               )}
               aria-label="Confirm delete"
@@ -339,8 +339,8 @@ function RecurringItem({
             disabled={isDeleting}
             className={cn(
               'flex h-7 w-7 items-center justify-center rounded-md',
-              'text-neutral-400 dark:text-neutral-500',
-              'hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400',
+              'text-[var(--text-muted)]',
+              'hover:bg-[var(--error-muted)] hover:text-[var(--error)]',
               'disabled:opacity-50 transition-colors'
             )}
             aria-label="Delete"
@@ -460,7 +460,7 @@ export function ExpensesPage() {
       <div className="max-w-4xl mx-auto w-full px-4 pt-6 sm:px-6 flex flex-col flex-1 min-h-0">
         {/* Page header */}
         <div className="mb-4 flex-shrink-0">
-          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">
             Expenses
           </h1>
         </div>
@@ -490,7 +490,7 @@ export function ExpensesPage() {
             {!pendingLoading && pending.length > 0 && (
               <Card className="flex-shrink-0">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)]">
                     Pending Confirmation
                   </h3>
                   <Badge variant="warning">{pending.length}</Badge>
@@ -517,10 +517,10 @@ export function ExpensesPage() {
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className={cn(
                   'h-9 rounded-md px-3 text-sm min-w-0',
-                  'bg-neutral-50 dark:bg-neutral-900',
-                  'border border-neutral-200 dark:border-neutral-800',
-                  'text-neutral-900 dark:text-neutral-100',
-                  'focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600'
+                  'bg-[var(--bg-secondary)]',
+                  'border border-[var(--border-primary)]',
+                  'text-[var(--text-primary)]',
+                  'focus:outline-none focus:border-[var(--border-focus)]'
                 )}
               >
                 {monthOptions.map((opt) => (
@@ -534,10 +534,10 @@ export function ExpensesPage() {
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className={cn(
                   'h-9 rounded-md px-3 text-sm min-w-0',
-                  'bg-neutral-50 dark:bg-neutral-900',
-                  'border border-neutral-200 dark:border-neutral-800',
-                  'text-neutral-900 dark:text-neutral-100',
-                  'focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600'
+                  'bg-[var(--bg-secondary)]',
+                  'border border-[var(--border-primary)]',
+                  'text-[var(--text-primary)]',
+                  'focus:outline-none focus:border-[var(--border-focus)]'
                 )}
               >
                 <option value="all">All Categories</option>
@@ -553,10 +553,10 @@ export function ExpensesPage() {
                   onChange={(e) => setSortBy(e.target.value as SortOption)}
                   className={cn(
                     'appearance-none h-9 pl-8 pr-3 rounded-md text-sm',
-                    'bg-neutral-50 dark:bg-neutral-900',
-                    'border border-neutral-200 dark:border-neutral-800',
-                    'text-neutral-900 dark:text-neutral-100',
-                    'focus:outline-none focus:border-neutral-400 dark:focus:border-neutral-600'
+                    'bg-[var(--bg-secondary)]',
+                    'border border-[var(--border-primary)]',
+                    'text-[var(--text-primary)]',
+                    'focus:outline-none focus:border-[var(--border-focus)]'
                   )}
                 >
                   {SORT_OPTIONS.map((opt) => (
@@ -565,7 +565,7 @@ export function ExpensesPage() {
                     </option>
                   ))}
                 </select>
-                <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400 pointer-events-none" />
+                <ArrowUpDown className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-muted)] pointer-events-none" />
               </div>
             </div>
 
@@ -576,14 +576,14 @@ export function ExpensesPage() {
               </div>
             ) : expensesError ? (
               <Card>
-                <p className="text-center text-sm text-red-500 py-4">
+                <p className="text-center text-sm text-[var(--error)] py-4">
                   {expensesError}
                 </p>
               </Card>
             ) : expenses.length === 0 ? (
               <Card>
                 <div className="py-8 text-center">
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  <p className="text-sm text-[var(--text-muted)]">
                     No expenses found for this period
                   </p>
                 </div>
@@ -616,29 +616,29 @@ export function ExpensesPage() {
               </div>
             ) : recurringError ? (
               <Card>
-                <p className="text-center text-sm text-red-500 py-4">
+                <p className="text-center text-sm text-[var(--error)] py-4">
                   {recurringError}
                 </p>
               </Card>
             ) : activeRecurring.length === 0 ? (
               <Card>
                 <div className="py-8 text-center">
-                  <Repeat className="h-8 w-8 mx-auto mb-3 text-neutral-300 dark:text-neutral-600" />
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                  <Repeat className="h-8 w-8 mx-auto mb-3 text-[var(--text-muted)] opacity-50" />
+                  <p className="text-sm text-[var(--text-muted)]">
                     No active recurring expenses
                   </p>
-                  <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                  <p className="text-xs text-[var(--text-muted)] opacity-70 mt-1">
                     Use chat to create recurring expenses like rent or subscriptions
                   </p>
                 </div>
               </Card>
             ) : (
               <Card>
-                <div className="mb-3 pb-3 border-b border-neutral-200 dark:border-neutral-800">
-                  <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                <div className="mb-3 pb-3 border-b border-[var(--border-primary)]">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)]">
                     Active Schedules
                   </h3>
-                  <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-0.5">
+                  <p className="text-xs text-[var(--text-muted)] mt-0.5">
                     {activeRecurring.length} recurring expense{activeRecurring.length !== 1 ? 's' : ''}
                   </p>
                 </div>

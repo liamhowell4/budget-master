@@ -3,6 +3,7 @@ import {
   getAuth,
   GoogleAuthProvider,
   GithubAuthProvider,
+  OAuthProvider,
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -41,6 +42,7 @@ try {
 // Auth providers
 const googleProvider = new GoogleAuthProvider()
 const githubProvider = new GithubAuthProvider()
+const appleProvider = new OAuthProvider('apple.com')
 
 // Auth methods
 export async function signInWithGoogle(): Promise<User> {
@@ -50,6 +52,11 @@ export async function signInWithGoogle(): Promise<User> {
 
 export async function signInWithGithub(): Promise<User> {
   const result = await signInWithPopup(auth, githubProvider)
+  return result.user
+}
+
+export async function signInWithApple(): Promise<User> {
+  const result = await signInWithPopup(auth, appleProvider)
   return result.user
 }
 
@@ -95,7 +102,7 @@ export async function updatePassword(currentPassword: string, newPassword: strin
   await firebaseUpdatePassword(user, newPassword)
 }
 
-export function getAuthProvider(user: User | null): 'email' | 'google' | 'github' | null {
+export function getAuthProvider(user: User | null): 'email' | 'google' | 'github' | 'apple' | null {
   if (!user) return null
   const providerData = user.providerData
   if (!providerData.length) return null
@@ -104,6 +111,7 @@ export function getAuthProvider(user: User | null): 'email' | 'google' | 'github
   if (providerId === 'password') return 'email'
   if (providerId === 'google.com') return 'google'
   if (providerId === 'github.com') return 'github'
+  if (providerId === 'apple.com') return 'apple'
   return null
 }
 

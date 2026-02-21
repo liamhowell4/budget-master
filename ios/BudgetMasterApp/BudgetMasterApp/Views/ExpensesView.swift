@@ -1,44 +1,97 @@
 import SwiftUI
 
+// MARK: - Sort Options
+
+enum ExpenseSort: String, CaseIterable {
+    case newest = "Newest"
+    case oldest = "Oldest"
+    case highestAmount = "Highest Amount"
+    case lowestAmount = "Lowest Amount"
+}
+
 struct ExpensesView: View {
     @StateObject private var viewModel = ExpensesViewModel()
+    @Environment(\.appAccent) private var appAccent
     @State private var showingAddExpense = false
     @State private var showingFilters = false
+    @State private var selectedTab = 0
+    @State private var sortOrder: ExpenseSort = .newest
+    @State private var recurringToDelete: RecurringExpenseAPI?
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                if viewModel.filteredExpenses.isEmpty && !viewModel.isLoading {
-                    emptyStateView
-                } else {
-                    expensesList
+            VStack(spacing: 0) {
+                Picker("View", selection: $selectedTab) {
+                    Text("History").tag(0)
+                    Text("Recurring").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+
+                ZStack {
+                    if selectedTab == 0 {
+                        if sortedFilteredExpenses.isEmpty && !viewModel.isLoading {
+                            emptyStateView
+                        } else {
+                            expensesList
+                        }
+                    } else {
+                        if activeRecurringExpenses.isEmpty && !viewModel.isLoadingRecurring {
+                            recurringEmptyStateView
+                        } else {
+                            recurringList
+                        }
+                    }
                 }
             }
             .navigationTitle("Expenses")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showingFilters = true
-                    } label: {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: viewModel.hasActiveFilters
-                                  ? "line.3.horizontal.decrease.circle.fill"
-                                  : "line.3.horizontal.decrease.circle")
-                            if viewModel.hasActiveFilters {
-                                Circle()
-                                    .fill(AppTheme.accent)
-                                    .frame(width: 8, height: 8)
-                                    .offset(x: 4, y: -4)
+                    if selectedTab == 0 {
+                        Button {
+                            showingFilters = true
+                        } label: {
+                            ZStack(alignment: .topTrailing) {
+                                Image(systemName: viewModel.hasActiveFilters
+                                      ? "line.3.horizontal.decrease.circle.fill"
+                                      : "line.3.horizontal.decrease.circle")
+                                if viewModel.hasActiveFilters {
+                                    Circle()
+                                        .fill(appAccent)
+                                        .frame(width: 8, height: 8)
+                                        .offset(x: 4, y: -4)
+                                }
                             }
                         }
                     }
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingAddExpense = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
+                    HStack(spacing: 12) {
+                        if selectedTab == 0 {
+                            Menu {
+                                ForEach(ExpenseSort.allCases, id: \.self) { sort in
+                                    Button {
+                                        sortOrder = sort
+                                    } label: {
+                                        if sort == sortOrder {
+                                            Label(sort.rawValue, systemImage: "checkmark")
+                                        } else {
+                                            Text(sort.rawValue)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "arrow.up.arrow.down.circle")
+                            }
+
+                            Button {
+                                showingAddExpense = true
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                            }
+                        }
                     }
                 }
             }
@@ -53,11 +106,23 @@ struct ExpensesView: View {
             .task {
                 await viewModel.loadExpenses()
             }
+            .task(id: selectedTab) {
+                if selectedTab == 1 {
+                    await viewModel.loadRecurring()
+                }
+            }
             .refreshable {
-                await viewModel.refresh()
+                if selectedTab == 0 {
+                    await viewModel.refresh()
+                } else {
+                    await viewModel.loadRecurring()
+                }
             }
             .overlay {
-                if viewModel.isLoading && viewModel.expenses.isEmpty {
+                if selectedTab == 0 && viewModel.isLoading && viewModel.expenses.isEmpty {
+                    ProgressView()
+                }
+                if selectedTab == 1 && viewModel.isLoadingRecurring && activeRecurringExpenses.isEmpty {
                     ProgressView()
                 }
             }
@@ -66,6 +131,43 @@ struct ExpensesView: View {
             } message: {
                 if let msg = viewModel.errorMessage { Text(msg) }
             }
+            .alert("Delete Recurring Expense", isPresented: .constant(recurringToDelete != nil)) {
+                Button("Cancel", role: .cancel) { recurringToDelete = nil }
+                Button("Delete", role: .destructive) {
+                    if let item = recurringToDelete {
+                        Task { await viewModel.deleteRecurring(id: item.template_id) }
+                        recurringToDelete = nil
+                    }
+                }
+            } message: {
+                if let item = recurringToDelete {
+                    Text("Are you sure you want to delete \"\(item.expense_name)\"? This cannot be undone.")
+                }
+            }
+        }
+    }
+
+    private var activeRecurringExpenses: [RecurringExpenseAPI] {
+        viewModel.recurringExpenses.filter { $0.active }
+    }
+
+    private var sortedFilteredExpenses: [Expense] {
+        let filtered = viewModel.filteredExpenses
+        switch sortOrder {
+        case .newest:
+            return filtered.sorted { $0.date > $1.date }
+        case .oldest:
+            return filtered.sorted { $0.date < $1.date }
+        case .highestAmount:
+            return filtered.sorted { $0.amount > $1.amount }
+        case .lowestAmount:
+            return filtered.sorted { $0.amount < $1.amount }
+        }
+    }
+
+    private var sortedGroupedExpenses: [Date: [Expense]] {
+        Dictionary(grouping: sortedFilteredExpenses) { expense in
+            Calendar.current.startOfDay(for: expense.date)
         }
     }
 
@@ -91,30 +193,22 @@ struct ExpensesView: View {
                 }
             }
 
-            ForEach(viewModel.groupedExpenses.keys.sorted(by: >), id: \.self) { date in
-                Section {
-                    ForEach(viewModel.groupedExpenses[date] ?? []) { expense in
-                        ExpenseRowView(expense: expense)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    Task { await viewModel.deleteExpense(expense) }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                            .swipeActions(edge: .leading) {
-                                Button {
-                                    viewModel.selectedExpense = expense
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                }
-                                .tint(.blue)
-                            }
+            if sortOrder == .newest || sortOrder == .oldest {
+                let sortedKeys = sortedGroupedExpenses.keys.sorted(by: sortOrder == .newest ? (>) : (<))
+                ForEach(sortedKeys, id: \.self) { date in
+                    Section {
+                        ForEach(sortedGroupedExpenses[date] ?? []) { expense in
+                            expenseRow(expense)
+                        }
+                    } header: {
+                        Text(date, style: .date)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
                     }
-                } header: {
-                    Text(date, style: .date)
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                }
+            } else {
+                ForEach(sortedFilteredExpenses) { expense in
+                    expenseRow(expense)
                 }
             }
         }
@@ -129,11 +223,54 @@ struct ExpensesView: View {
         }
     }
 
+    private func expenseRow(_ expense: Expense) -> some View {
+        ExpenseRowView(expense: expense)
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive) {
+                    Task { await viewModel.deleteExpense(expense) }
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+            .swipeActions(edge: .leading) {
+                Button {
+                    viewModel.selectedExpense = expense
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .tint(.blue)
+            }
+    }
+
+    private var recurringList: some View {
+        List {
+            ForEach(activeRecurringExpenses) { recurring in
+                RecurringExpenseRow(recurring: recurring)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            recurringToDelete = recurring
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+
     private var emptyStateView: some View {
         ContentUnavailableView(
             "No Expenses",
             systemImage: "dollarsign.circle",
             description: Text("Add your first expense to get started tracking your budget.")
+        )
+    }
+
+    private var recurringEmptyStateView: some View {
+        ContentUnavailableView(
+            "No Recurring Expenses",
+            systemImage: "arrow.clockwise.circle",
+            description: Text("Set up recurring expenses in the chat to have them tracked automatically.")
         )
     }
 }
@@ -438,9 +575,11 @@ struct FiltersView: View {
 class ExpensesViewModel: ObservableObject {
     @Published var expenses: [Expense] = []
     @Published var pendingExpenses: [PendingExpense] = []
+    @Published var recurringExpenses: [RecurringExpenseAPI] = []
     @Published var availableCategories: [APICategory] = []
     @Published var selectedExpense: Expense?
     @Published var isLoading = false
+    @Published var isLoadingRecurring = false
     @Published var errorMessage: String?
 
     // Filters
@@ -466,12 +605,6 @@ class ExpensesViewModel: ObservableObject {
                 return true
             }()
             return inDateRange && inCategory && inAmountRange
-        }
-    }
-
-    var groupedExpenses: [Date: [Expense]] {
-        Dictionary(grouping: filteredExpenses) { expense in
-            Calendar.current.startOfDay(for: expense.date)
         }
     }
 
@@ -600,6 +733,25 @@ class ExpensesViewModel: ObservableObject {
         }
     }
 
+    func loadRecurring() async {
+        isLoadingRecurring = true
+        do {
+            recurringExpenses = try await api.fetchRecurring()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoadingRecurring = false
+    }
+
+    func deleteRecurring(id: String) async {
+        do {
+            try await api.deleteRecurring(id: id)
+            recurringExpenses.removeAll { $0.template_id == id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func resetFilters() {
         filterStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
         filterEndDate = Date()
@@ -609,12 +761,97 @@ class ExpensesViewModel: ObservableObject {
     }
 }
 
+// MARK: - Recurring Expense Row
+
+struct RecurringExpenseRow: View {
+    let recurring: RecurringExpenseAPI
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: AppTheme.sfSymbol(for: recurring.category))
+                .font(.title3)
+                .foregroundStyle(AppTheme.categoryColor(recurring.category))
+                .frame(width: 40, height: 40)
+                .background(AppTheme.categoryColor(recurring.category).opacity(0.15))
+                .cornerRadius(8)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recurring.expense_name)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                Text(scheduleDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text(recurring.amount, format: .currency(code: "USD"))
+                .font(.subheadline)
+                .fontWeight(.semibold)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var scheduleDescription: String {
+        switch recurring.frequency.lowercased() {
+        case "monthly":
+            if recurring.last_of_month == true {
+                return "Last day of month"
+            } else if let day = recurring.day_of_month {
+                return "\(ordinal(day)) of each month"
+            }
+            return "Monthly"
+        case "weekly":
+            if let dow = recurring.day_of_week {
+                return "Every \(dayName(dow))"
+            }
+            return "Weekly"
+        case "biweekly":
+            if let dow = recurring.day_of_week {
+                return "Every other \(dayName(dow))"
+            }
+            return "Every other week"
+        case "yearly":
+            return "Yearly"
+        default:
+            return recurring.frequency.capitalized
+        }
+    }
+
+    private func dayName(_ index: Int) -> String {
+        // 0=Mon, 1=Tue, ..., 6=Sun
+        let names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        guard index >= 0 && index < names.count else { return "Day \(index)" }
+        return names[index]
+    }
+
+    private func ordinal(_ n: Int) -> String {
+        let suffix: String
+        let ones = n % 10
+        let tens = (n / 10) % 10
+        if tens == 1 {
+            suffix = "th"
+        } else {
+            switch ones {
+            case 1: suffix = "st"
+            case 2: suffix = "nd"
+            case 3: suffix = "rd"
+            default: suffix = "th"
+            }
+        }
+        return "\(n)\(suffix)"
+    }
+}
+
 // MARK: - Pending Expense Row
 
 struct PendingExpenseRow: View {
     let pending: PendingExpense
     let onConfirm: () async -> Void
     let onSkip: () async -> Void
+    @Environment(\.appAccent) private var appAccent
     @State private var isConfirming = false
     @State private var isSkipping = false
 
@@ -655,7 +892,7 @@ struct PendingExpenseRow: View {
                         ProgressView().scaleEffect(0.7)
                     } else {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(AppTheme.accent)
+                            .foregroundStyle(appAccent)
                             .font(.title3)
                     }
                 }

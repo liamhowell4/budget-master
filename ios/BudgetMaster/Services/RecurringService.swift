@@ -1,15 +1,15 @@
 import Foundation
 
-enum RecurringService {
+public enum RecurringService {
 
     /// GET /recurring
-    static func getRecurringExpenses() async throws -> RecurringListResponse {
+    public static func getRecurringExpenses() async throws -> RecurringListResponse {
         let endpoint = APIEndpoint(method: .get, path: "/recurring")
         return try await APIClient.shared.request(endpoint)
     }
 
     /// DELETE /recurring/{id}
-    static func deleteRecurringExpense(
+    public static func deleteRecurringExpense(
         id: String
     ) async throws -> SuccessResponse {
         let endpoint = APIEndpoint(method: .delete, path: "/recurring/\(id)")

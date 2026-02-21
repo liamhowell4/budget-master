@@ -1,9 +1,10 @@
 import Foundation
 import FirebaseAuth
+import BudgetMaster
 
 /// Firebase implementation of TokenProvider protocol
 /// This class integrates with Firebase Authentication to provide ID tokens for API requests
-public final class FirebaseTokenProvider: TokenProvider {
+public final class FirebaseTokenProvider: BudgetMaster.TokenProvider {
     
     public init() {}
     

@@ -1,6 +1,6 @@
 import Foundation
 
-enum APIError: LocalizedError, Sendable {
+public enum APIError: LocalizedError, Sendable {
     case invalidURL
     case unauthorized
     case notFound
@@ -11,7 +11,7 @@ enum APIError: LocalizedError, Sendable {
     case noToken
     case sseParsingError(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidURL:
             return "Invalid URL"

@@ -1,121 +1,167 @@
 import Foundation
 
-// MARK: - Category
+// MARK: - ExpenseCategory
 
-struct Category: Codable, Sendable, Identifiable {
-    var id: String { categoryId }
+public struct ExpenseCategory: Codable, Sendable, Identifiable {
+    public var id: String { categoryId }
 
-    let categoryId: String
-    let displayName: String
-    let icon: String
-    let color: String
-    let monthlyCap: Double
-    let isSystem: Bool
-    let createdAt: String?
-    let sortOrder: Int
-    let excludeFromTotal: Bool
+    public let categoryId: String
+    public let displayName: String
+    public let icon: String
+    public let color: String
+    public let monthlyCap: Double
+    public let isSystem: Bool
+    public let createdAt: String?
+    public let sortOrder: Int
+    public let excludeFromTotal: Bool
 }
 
 // MARK: - CategoriesResponse
 
-struct CategoriesResponse: Codable, Sendable {
-    let categories: [Category]
-    let totalMonthlyBudget: Double
-    let maxCategories: Int
+public struct CategoriesResponse: Codable, Sendable {
+    public let categories: [ExpenseCategory]
+    public let totalMonthlyBudget: Double
+    public let maxCategories: Int
 }
 
 // MARK: - CategoryCreateRequest
 
-struct CategoryCreateRequest: Codable, Sendable {
-    let displayName: String
-    let icon: String
-    let color: String
-    let monthlyCap: Double
+public struct CategoryCreateRequest: Codable, Sendable {
+    public let displayName: String
+    public let icon: String
+    public let color: String
+    public let monthlyCap: Double
+
+    public init(displayName: String, icon: String, color: String, monthlyCap: Double) {
+        self.displayName = displayName
+        self.icon = icon
+        self.color = color
+        self.monthlyCap = monthlyCap
+    }
 }
 
 // MARK: - CategoryCreateResponse
 
-struct CategoryCreateResponse: Codable, Sendable {
-    let success: Bool
-    let categoryId: String
-    let message: String
+public struct CategoryCreateResponse: Codable, Sendable {
+    public let success: Bool
+    public let categoryId: String
+    public let message: String
 }
 
 // MARK: - CategoryUpdateRequest
 
-struct CategoryUpdateRequest: Codable, Sendable {
-    var displayName: String?
-    var icon: String?
-    var color: String?
-    var monthlyCap: Double?
-    var sortOrder: Int?
-    var excludeFromTotal: Bool?
+public struct CategoryUpdateRequest: Codable, Sendable {
+    public var displayName: String?
+    public var icon: String?
+    public var color: String?
+    public var monthlyCap: Double?
+    public var sortOrder: Int?
+    public var excludeFromTotal: Bool?
+
+    public init(
+        displayName: String? = nil,
+        icon: String? = nil,
+        color: String? = nil,
+        monthlyCap: Double? = nil,
+        sortOrder: Int? = nil,
+        excludeFromTotal: Bool? = nil
+    ) {
+        self.displayName = displayName
+        self.icon = icon
+        self.color = color
+        self.monthlyCap = monthlyCap
+        self.sortOrder = sortOrder
+        self.excludeFromTotal = excludeFromTotal
+    }
 }
 
 // MARK: - CategoryUpdateResponse
 
-struct CategoryUpdateResponse: Codable, Sendable {
-    let success: Bool
-    let categoryId: String
-    let message: String
+public struct CategoryUpdateResponse: Codable, Sendable {
+    public let success: Bool
+    public let categoryId: String
+    public let message: String
 }
 
 // MARK: - CategoryDeleteResponse
 
-struct CategoryDeleteResponse: Codable, Sendable {
-    let success: Bool
-    let categoryId: String
-    let reassignedCount: Int
-    let reassignedTo: String
-    let message: String
+public struct CategoryDeleteResponse: Codable, Sendable {
+    public let success: Bool
+    public let categoryId: String
+    public let reassignedCount: Int
+    public let reassignedTo: String
+    public let message: String
 }
 
 // MARK: - CategoryReorderRequest
 
-struct CategoryReorderRequest: Codable, Sendable {
-    let categoryIds: [String]
+public struct CategoryReorderRequest: Codable, Sendable {
+    public let categoryIds: [String]
+
+    public init(categoryIds: [String]) {
+        self.categoryIds = categoryIds
+    }
 }
 
 // MARK: - DefaultCategory
 
-struct DefaultCategory: Codable, Sendable, Identifiable {
-    var id: String { categoryId }
+public struct DefaultCategory: Codable, Sendable, Identifiable {
+    public var id: String { categoryId }
 
-    let categoryId: String
-    let displayName: String
-    let icon: String
-    let color: String
-    let description: String
-    let isSystem: Bool
+    public let categoryId: String
+    public let displayName: String
+    public let icon: String
+    public let color: String
+    public let description: String
+    public let isSystem: Bool
 }
 
 // MARK: - CategoryDefaultsResponse
 
-struct CategoryDefaultsResponse: Codable, Sendable {
-    let defaults: [DefaultCategory]
-    let maxCategories: Int
+public struct CategoryDefaultsResponse: Codable, Sendable {
+    public let defaults: [DefaultCategory]
+    public let maxCategories: Int
 }
 
 // MARK: - Onboarding
 
-struct CustomCategoryInput: Codable, Sendable {
-    let displayName: String
-    let icon: String
-    let color: String
-    let monthlyCap: Double
+public struct CustomCategoryInput: Codable, Sendable {
+    public let displayName: String
+    public let icon: String
+    public let color: String
+    public let monthlyCap: Double
+
+    public init(displayName: String, icon: String, color: String, monthlyCap: Double) {
+        self.displayName = displayName
+        self.icon = icon
+        self.color = color
+        self.monthlyCap = monthlyCap
+    }
 }
 
-struct OnboardingCompleteRequest: Codable, Sendable {
-    let totalBudget: Double
-    let selectedCategoryIds: [String]
-    let categoryCaps: [String: Double]
-    let customCategories: [CustomCategoryInput]?
+public struct OnboardingCompleteRequest: Codable, Sendable {
+    public let totalBudget: Double
+    public let selectedCategoryIds: [String]
+    public let categoryCaps: [String: Double]
+    public let customCategories: [CustomCategoryInput]?
+
+    public init(
+        totalBudget: Double,
+        selectedCategoryIds: [String],
+        categoryCaps: [String: Double],
+        customCategories: [CustomCategoryInput]?
+    ) {
+        self.totalBudget = totalBudget
+        self.selectedCategoryIds = selectedCategoryIds
+        self.categoryCaps = categoryCaps
+        self.customCategories = customCategories
+    }
 }
 
-struct OnboardingCompleteResponse: Codable, Sendable {
-    let success: Bool
-    let totalBudget: Double
-    let categoriesCreated: Int
-    let otherCap: Double
-    let message: String
+public struct OnboardingCompleteResponse: Codable, Sendable {
+    public let success: Bool
+    public let totalBudget: Double
+    public let categoriesCreated: Int
+    public let otherCap: Double
+    public let message: String
 }

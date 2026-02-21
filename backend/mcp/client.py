@@ -22,12 +22,9 @@ logger = logging.getLogger(__name__)
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from anthropic import Anthropic
 
 from backend.system_prompts import get_expense_parsing_system_prompt
-
-# Claude model constant
-ANTHROPIC_MODEL = "claude-sonnet-4-5"
+from backend.model_client import UnifiedModelClient, SUPPORTED_MODELS, DEFAULT_MODEL
 
 
 class MCPClient:
@@ -44,9 +41,6 @@ class MCPClient:
         """Initialize MCP client."""
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
-        self.anthropic = Anthropic(
-            api_key=os.getenv('ANTHROPIC_API_KEY')
-        )
 
     async def connect_to_server(self, server_script_path: str):
         """
@@ -154,7 +148,8 @@ class ExpenseMCPClient:
         image_base64: Optional[str] = None,
         auth_token: Optional[str] = None,
         user_id: Optional[str] = None,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        model: str = DEFAULT_MODEL,
     ) -> Dict[str, Any]:
         """
         Process an expense message using Claude + MCP tools.
@@ -326,14 +321,22 @@ class ExpenseMCPClient:
         # Add current user message
         messages.append({"role": "user", "content": message_content})
 
-        # Call Claude API with tools
-        response = self.client.anthropic.messages.create(
-            model=ANTHROPIC_MODEL,
+        # Call model API with tools
+        model_client = UnifiedModelClient(model)
+        provider = SUPPORTED_MODELS[model]["provider"]
+
+        response = model_client.create(
             system=system_prompt,
-            max_tokens=2000,
             messages=messages,
-            tools=available_tools
+            tools=available_tools,
         )
+
+        # Log token usage for initial call
+        if user_firebase and user_id:
+            user_firebase.log_token_usage(
+                user_id, model, provider,
+                response.input_tokens, response.output_tokens, "process_expense"
+            )
 
         # Track expense data from tool results
         expense_data = {
@@ -354,100 +357,100 @@ class ExpenseMCPClient:
             assistant_content = []
             tool_results = []
 
-            for content in response.content:
-                if content.type == 'text':
-                    final_text.append(content.text)
-                    assistant_content.append({"type": "text", "text": content.text})
-                elif content.type == 'tool_use':
-                    tool_name = content.name
-                    tool_args = content.input
-                    tool_use_id = content.id
+            if response.content:
+                final_text.append(response.content)
+                assistant_content.append({"type": "text", "text": response.content})
 
-                    logger.info("Calling tool: %s", tool_name)
+            for tc in response.tool_calls:
+                tool_name = tc.name
+                tool_args = tc.arguments
+                tool_use_id = tc.id
 
-                    # Inject auth_token into tool arguments for multi-user support
-                    # Claude doesn't know the auth token, so we inject it here
-                    # MCP server will verify the token with Firebase Auth
-                    if auth_token:
-                        tool_args = {**tool_args, "auth_token": auth_token}
+                logger.info("Calling tool: %s", tool_name)
 
-                    # Execute tool call via MCP
-                    result = await self.client.session.call_tool(tool_name, tool_args)
+                # Inject auth_token into tool arguments for multi-user support
+                # The model doesn't know the auth token, so we inject it here.
+                # MCP server will verify the token with Firebase Auth.
+                if auth_token:
+                    tool_args = {**tool_args, "auth_token": auth_token}
 
-                    # Parse tool result
-                    if hasattr(result, 'content') and result.content:
-                        if isinstance(result.content, list):
-                            result_text = "\n".join(
-                                block.text if hasattr(block, 'text') else str(block)
-                                for block in result.content
-                            )
-                        else:
-                            result_text = str(result.content)
+                # Execute tool call via MCP
+                result = await self.client.session.call_tool(tool_name, tool_args)
+
+                # Parse tool result
+                if hasattr(result, 'content') and result.content:
+                    if isinstance(result.content, list):
+                        result_text = "\n".join(
+                            block.text if hasattr(block, 'text') else str(block)
+                            for block in result.content
+                        )
                     else:
-                        result_text = str(result)
+                        result_text = str(result.content)
+                else:
+                    result_text = str(result)
 
-                    # Extract data from tool results
-                    try:
-                        result_data = json.loads(result_text)
+                # Extract data from tool results
+                try:
+                    result_data = json.loads(result_text)
 
-                        if tool_name == "save_expense":
-                            expense_data["success"] = result_data.get("success", False)
-                            expense_data["expense_id"] = result_data.get("expense_id")
-                            expense_data["expense_name"] = result_data.get("expense_name")
-                            expense_data["amount"] = result_data.get("amount")
-                            expense_data["category"] = result_data.get("category")
+                    if tool_name == "save_expense":
+                        expense_data["success"] = result_data.get("success", False)
+                        expense_data["expense_id"] = result_data.get("expense_id")
+                        expense_data["expense_name"] = result_data.get("expense_name")
+                        expense_data["amount"] = result_data.get("amount")
+                        expense_data["category"] = result_data.get("category")
 
-                            # Update Firestore conversation with new expense
-                            if user_firebase and conversation_id and expense_data["expense_id"]:
-                                user_firebase.update_conversation_recent_expenses(
-                                    conversation_id=conversation_id,
-                                    expense_id=expense_data["expense_id"],
-                                    expense_name=expense_data["expense_name"],
-                                    amount=expense_data["amount"],
-                                    category=expense_data["category"]
-                                )
+                        # Update Firestore conversation with new expense
+                        if user_firebase and conversation_id and expense_data["expense_id"]:
+                            user_firebase.update_conversation_recent_expenses(
+                                conversation_id=conversation_id,
+                                expense_id=expense_data["expense_id"],
+                                expense_name=expense_data["expense_name"],
+                                amount=expense_data["amount"],
+                                category=expense_data["category"]
+                            )
 
-                        elif tool_name == "update_expense":
-                            expense_data["success"] = result_data.get("success", False)
-                            expense_data["expense_id"] = result_data.get("expense_id")
-                            expense_data["expense_name"] = result_data.get("expense_name")
-                            expense_data["amount"] = result_data.get("amount")
-                            expense_data["category"] = result_data.get("category")
+                    elif tool_name == "update_expense":
+                        expense_data["success"] = result_data.get("success", False)
+                        expense_data["expense_id"] = result_data.get("expense_id")
+                        expense_data["expense_name"] = result_data.get("expense_name")
+                        expense_data["amount"] = result_data.get("amount")
+                        expense_data["category"] = result_data.get("category")
 
-                            # Update Firestore conversation with updated expense details
-                            if user_firebase and conversation_id and expense_data["expense_id"]:
-                                user_firebase.update_conversation_recent_expenses(
-                                    conversation_id=conversation_id,
-                                    expense_id=expense_data["expense_id"],
-                                    expense_name=expense_data["expense_name"],
-                                    amount=expense_data["amount"],
-                                    category=expense_data["category"]
-                                )
+                        # Update Firestore conversation with updated expense details
+                        if user_firebase and conversation_id and expense_data["expense_id"]:
+                            user_firebase.update_conversation_recent_expenses(
+                                conversation_id=conversation_id,
+                                expense_id=expense_data["expense_id"],
+                                expense_name=expense_data["expense_name"],
+                                amount=expense_data["amount"],
+                                category=expense_data["category"]
+                            )
 
-                        elif tool_name == "delete_expense":
-                            expense_data["success"] = result_data.get("success", False)
-                            # Note: For deletes, we don't update conversation since expense is gone
+                    elif tool_name == "delete_expense":
+                        expense_data["success"] = result_data.get("success", False)
+                        # Note: For deletes, we don't update conversation since expense is gone
 
-                        elif tool_name == "get_budget_status":
-                            expense_data["budget_warning"] = result_data.get("budget_warning", "")
+                    elif tool_name == "get_budget_status":
+                        expense_data["budget_warning"] = result_data.get("budget_warning", "")
 
-                    except json.JSONDecodeError:
-                        logger.warning("Could not parse tool result as JSON: %s", result_text)
+                except json.JSONDecodeError:
+                    logger.warning("Could not parse tool result as JSON: %s", result_text)
 
-                    # Add tool_use to assistant content
-                    assistant_content.append({
-                        "type": "tool_use",
-                        "id": tool_use_id,
-                        "name": tool_name,
-                        "input": tool_args
-                    })
+                # Add tool_use to assistant content
+                assistant_content.append({
+                    "type": "tool_use",
+                    "id": tool_use_id,
+                    "name": tool_name,
+                    "input": tool_args
+                })
 
-                    # Collect tool result
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": result_text
-                    })
+                # Collect tool result
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_use_id,
+                    "content": result_text
+                })
 
             # Add assistant message with tool uses
             messages.append({
@@ -461,19 +464,23 @@ class ExpenseMCPClient:
                 "content": tool_results
             })
 
-            # Get next response from Claude - WITH TOOLS so it can call more!
-            response = self.client.anthropic.messages.create(
-                model=ANTHROPIC_MODEL,
+            # Get next response from model - WITH TOOLS so it can call more!
+            response = model_client.create(
                 system=system_prompt,
-                max_tokens=2000,
                 messages=messages,
-                tools=available_tools
+                tools=available_tools,
             )
 
+            # Log token usage for each subsequent call
+            if user_firebase and user_id:
+                user_firebase.log_token_usage(
+                    user_id, model, provider,
+                    response.input_tokens, response.output_tokens, "process_expense"
+                )
+
         # Process final response (no more tool calls)
-        for content in response.content:
-            if content.type == 'text':
-                final_text.append(content.text)
+        if response.content:
+            final_text.append(response.content)
 
         # Build final message
         expense_data["message"] = "\n".join(final_text)

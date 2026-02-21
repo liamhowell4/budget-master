@@ -2,65 +2,74 @@ import Foundation
 
 // MARK: - BudgetCategory
 
-struct BudgetCategory: Codable, Sendable, Identifiable {
-    var id: String { category }
+public struct BudgetCategory: Codable, Sendable, Identifiable {
+    public var id: String { category }
 
-    let category: String
-    let spending: Double
-    let cap: Double
-    let percentage: Double
-    let remaining: Double
-    let emoji: String
+    public let category: String
+    public let spending: Double
+    public let cap: Double
+    public let percentage: Double
+    public let remaining: Double
+    public let emoji: String
 }
 
 // MARK: - BudgetStatus
 
-struct BudgetStatus: Codable, Sendable {
-    let year: Int
-    let month: Int
-    let monthName: String
-    let categories: [BudgetCategory]
-    let totalSpending: Double
-    let totalCap: Double
-    let totalPercentage: Double
-    let totalRemaining: Double
-    let excludedCategories: [String]
+public struct BudgetStatus: Codable, Sendable {
+    public let year: Int
+    public let month: Int
+    public let monthName: String
+    public let categories: [BudgetCategory]
+    public let totalSpending: Double
+    public let totalCap: Double
+    public let totalPercentage: Double
+    public let totalRemaining: Double
+    public let excludedCategories: [String]
 }
 
 // MARK: - BulkBudgetUpdateRequest
 
-struct BulkBudgetUpdateRequest: Codable, Sendable {
-    let totalBudget: Double
-    let categoryBudgets: [String: Double]
+public struct BulkBudgetUpdateRequest: Codable, Sendable {
+    public let totalBudget: Double
+    public let categoryBudgets: [String: Double]
+
+    public init(totalBudget: Double, categoryBudgets: [String: Double]) {
+        self.totalBudget = totalBudget
+        self.categoryBudgets = categoryBudgets
+    }
 }
 
 // MARK: - BulkBudgetUpdateResponse
 
-struct BulkBudgetUpdateResponse: Codable, Sendable {
-    let success: Bool
-    let message: String
-    let updatedCaps: [String: Double]
+public struct BulkBudgetUpdateResponse: Codable, Sendable {
+    public let success: Bool
+    public let message: String
+    public let updatedCaps: [String: Double]
 }
 
 // MARK: - TotalBudgetResponse
 
-struct TotalBudgetResponse: Codable, Sendable {
-    let totalMonthlyBudget: Double
-    let allocated: Double
-    let available: Double
+public struct TotalBudgetResponse: Codable, Sendable {
+    public let totalMonthlyBudget: Double
+    public let allocated: Double
+    public let available: Double
 }
 
 // MARK: - TotalBudgetUpdateRequest
 
-struct TotalBudgetUpdateRequest: Codable, Sendable {
-    let totalMonthlyBudget: Double
+public struct TotalBudgetUpdateRequest: Codable, Sendable {
+    public let totalMonthlyBudget: Double
+
+    public init(totalMonthlyBudget: Double) {
+        self.totalMonthlyBudget = totalMonthlyBudget
+    }
 }
 
 // MARK: - TotalBudgetUpdateResponse
 
-struct TotalBudgetUpdateResponse: Codable, Sendable {
-    let success: Bool
-    let totalMonthlyBudget: Double
-    let otherCap: Double
-    let message: String
+public struct TotalBudgetUpdateResponse: Codable, Sendable {
+    public let success: Bool
+    public let totalMonthlyBudget: Double
+    public let otherCap: Double
+    public let message: String
 }

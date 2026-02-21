@@ -10,6 +10,7 @@ import {
   onAuthChange,
   signInWithGoogle,
   signInWithGithub,
+  signInWithApple,
   signInWithEmail,
   signUpWithEmail,
   signOut as firebaseSignOut,
@@ -30,6 +31,7 @@ interface AuthContextValue {
   loading: boolean
   signInWithGoogle: () => Promise<void>
   signInWithGithub: () => Promise<void>
+  signInWithApple: () => Promise<void>
   signInWithEmail: (email: string, password: string) => Promise<void>
   signUpWithEmail: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
@@ -73,6 +75,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await signInWithGithub()
   }
 
+  const handleSignInWithApple = async () => {
+    await signInWithApple()
+  }
+
   const handleSignInWithEmail = async (email: string, password: string) => {
     await signInWithEmail(email, password)
   }
@@ -98,6 +104,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         loading,
         signInWithGoogle: handleSignInWithGoogle,
         signInWithGithub: handleSignInWithGithub,
+        signInWithApple: handleSignInWithApple,
         signInWithEmail: handleSignInWithEmail,
         signUpWithEmail: handleSignUpWithEmail,
         signOut: handleSignOut,

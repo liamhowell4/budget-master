@@ -4,14 +4,14 @@ import Foundation
 
 /// Lightweight type-erased Codable wrapper for dynamic JSON values.
 /// Used for tool call args/results in conversation history.
-struct AnyCodable: Codable, @unchecked Sendable {
-    let value: Any
+public struct AnyCodable: Codable, @unchecked Sendable {
+    public let value: Any
 
-    init(_ value: Any) {
+    public init(_ value: Any) {
         self.value = value
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             value = NSNull()
@@ -35,7 +35,7 @@ struct AnyCodable: Codable, @unchecked Sendable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch value {
         case is NSNull:
@@ -63,13 +63,13 @@ struct AnyCodable: Codable, @unchecked Sendable {
 
 // MARK: - Generic Responses
 
-struct SuccessResponse: Codable, Sendable {
-    let success: Bool
-    let message: String?
+public struct SuccessResponse: Codable, Sendable {
+    public let success: Bool
+    public let message: String?
 }
 
-struct HealthResponse: Codable, Sendable {
-    let status: String
-    let version: String
-    let endpoints: [String]
+public struct HealthResponse: Codable, Sendable {
+    public let status: String
+    public let version: String
+    public let endpoints: [String]
 }

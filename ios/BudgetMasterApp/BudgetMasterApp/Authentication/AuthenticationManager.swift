@@ -103,6 +103,43 @@ class AuthenticationManager: ObservableObject {
         isLoading = false
     }
     
+    // MARK: - Profile Management
+
+    /// The authentication provider for the current user (password, google.com, apple.com, github.com)
+    var authProvider: String {
+        Auth.auth().currentUser?.providerData.first?.providerID ?? "unknown"
+    }
+
+    func updateDisplayName(_ name: String) async throws {
+        guard let firebaseUser = Auth.auth().currentUser else {
+            throw AuthenticationError.notAuthenticated
+        }
+        let changeRequest = firebaseUser.createProfileChangeRequest()
+        changeRequest.displayName = name
+        try await changeRequest.commitChanges()
+
+        // Update local state
+        currentUser = User(
+            id: firebaseUser.uid,
+            email: firebaseUser.email ?? "",
+            displayName: name
+        )
+    }
+
+    func updatePassword(currentPassword: String, newPassword: String) async throws {
+        guard let firebaseUser = Auth.auth().currentUser,
+              let email = firebaseUser.email else {
+            throw AuthenticationError.notAuthenticated
+        }
+
+        // Re-authenticate before changing password
+        let credential = EmailAuthProvider.credential(withEmail: email, password: currentPassword)
+        try await firebaseUser.reauthenticate(with: credential)
+
+        // Update password
+        try await firebaseUser.updatePassword(to: newPassword)
+    }
+
     func signOut() {
         do {
             try Auth.auth().signOut()

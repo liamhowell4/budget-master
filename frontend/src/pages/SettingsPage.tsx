@@ -4,12 +4,14 @@ import { cn } from '@/utils/cn'
 import { CategoriesTab } from '@/components/settings/CategoriesTab'
 import { AppearanceTab } from '@/components/settings/AppearanceTab'
 import { ProfileTab } from '@/components/settings/ProfileTab'
-import { Tag, Palette, User } from 'lucide-react'
+import { AIModelTab } from '@/components/settings/AIModelTab'
+import { Tag, Palette, User, Cpu } from 'lucide-react'
 
 const tabs = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'categories', label: 'Categories', icon: Tag },
+  { id: 'ai-model', label: 'AI Model', icon: Cpu },
 ] as const
 
 type TabId = typeof tabs[number]['id']
@@ -89,6 +91,7 @@ export function SettingsPage() {
                   {activeTab === 'profile' && <ProfileTab />}
                   {activeTab === 'appearance' && <AppearanceTab />}
                   {activeTab === 'categories' && <CategoriesTab />}
+                  {activeTab === 'ai-model' && <AIModelTab />}
                 </motion.div>
               </AnimatePresence>
             </div>

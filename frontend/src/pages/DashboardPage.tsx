@@ -58,16 +58,16 @@ function formatPaceDifference(diff: number): string {
 
 // Get pace status color class
 function getPaceColorClass(pace: number): string {
-  if (pace > 1.1) return 'text-red-600 dark:text-red-400'
-  if (pace > 0.9) return 'text-amber-600 dark:text-amber-400'
-  return 'text-emerald-600 dark:text-emerald-400'
+  if (pace > 1.1) return 'text-[var(--error)]'
+  if (pace > 0.9) return 'text-[var(--warning)]'
+  return 'text-[var(--success)]'
 }
 
 // Get color class for pace difference
 function getPaceDiffColorClass(diff: number): string {
-  if (diff > 0) return 'text-red-600 dark:text-red-400'
-  if (diff < 0) return 'text-emerald-600 dark:text-emerald-400'
-  return 'text-neutral-500 dark:text-neutral-400'
+  if (diff > 0) return 'text-[var(--error)]'
+  if (diff < 0) return 'text-[var(--success)]'
+  return 'text-[var(--text-muted)]'
 }
 
 // Helper to get category info
@@ -124,13 +124,13 @@ export function DashboardPage() {
   if (error) {
     return (
       <div className="flex h-[calc(100dvh-56px)] flex-col items-center justify-center gap-4 p-6">
-        <p className="text-sm text-red-500">{error}</p>
+        <p className="text-sm text-[var(--error)]">{error}</p>
         <button
           onClick={refetch}
           className={cn(
             'px-4 py-2 rounded-md text-sm font-medium',
-            'bg-neutral-900 dark:bg-neutral-100',
-            'text-white dark:text-neutral-900',
+            'bg-[var(--text-primary)]',
+            'text-[var(--text-inverted)]',
             'hover:opacity-90 transition-opacity'
           )}
         >
@@ -155,7 +155,7 @@ export function DashboardPage() {
     <div className="max-w-4xl mx-auto px-4 py-6 sm:p-6 space-y-6 sm:space-y-8">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">
               Dashboard
             </h1>
             <div className="flex items-center gap-2 mt-1">
@@ -163,9 +163,9 @@ export function DashboardPage() {
                 onClick={goToPreviousMonth}
                 className={cn(
                   'p-1 rounded-md',
-                  'text-neutral-500 dark:text-neutral-400',
-                  'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                  'hover:text-neutral-700 dark:hover:text-neutral-200',
+                  'text-[var(--text-muted)]',
+                  'hover:bg-[var(--surface-hover)]',
+                  'hover:text-[var(--text-primary)]',
                   'transition-colors'
                 )}
                 aria-label="Previous month"
@@ -177,8 +177,8 @@ export function DashboardPage() {
                 className={cn(
                   'text-sm font-medium min-w-[120px] text-center',
                   isCurrentMonthSelected
-                    ? 'text-neutral-900 dark:text-neutral-100'
-                    : 'text-blue-600 dark:text-blue-400 hover:underline'
+                    ? 'text-[var(--text-primary)]'
+                    : 'text-[var(--accent-primary)] hover:underline'
                 )}
                 disabled={isCurrentMonthSelected}
               >
@@ -191,8 +191,8 @@ export function DashboardPage() {
                   'p-1 rounded-md',
                   'transition-colors',
                   isCurrentMonthSelected
-                    ? 'text-neutral-300 dark:text-neutral-600 cursor-not-allowed'
-                    : 'text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
+                    ? 'text-[var(--text-muted)] opacity-50 cursor-not-allowed'
+                    : 'text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'
                 )}
                 aria-label="Next month"
               >
@@ -204,9 +204,9 @@ export function DashboardPage() {
             onClick={() => navigate('/settings')}
             className={cn(
               'p-2 rounded-md',
-              'text-neutral-500 dark:text-neutral-400',
-              'hover:bg-neutral-100 dark:hover:bg-neutral-800',
-              'hover:text-neutral-700 dark:hover:text-neutral-200',
+              'text-[var(--text-muted)]',
+              'hover:bg-[var(--surface-hover)]',
+              'hover:text-[var(--text-primary)]',
               'transition-colors'
             )}
             aria-label="Edit budget"
@@ -219,15 +219,15 @@ export function DashboardPage() {
           <div className="space-y-4">
             <div className="flex items-baseline justify-between">
               <div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">
+                <p className="text-sm text-[var(--text-muted)] mb-1">
                   Remaining
                 </p>
-                <span className="text-3xl font-semibold text-neutral-900 dark:text-neutral-100 tracking-tight">
+                <span className="text-3xl font-semibold text-[var(--text-primary)] tracking-tight">
                   {formatCurrency(budget.total_remaining)}
                 </span>
               </div>
               <div className="text-right">
-                <span className="text-sm text-neutral-500 dark:text-neutral-400 block">
+                <span className="text-sm text-[var(--text-muted)] block">
                   {budget.total_percentage.toFixed(0)}% used
                 </span>
                 {isCurrentMonthSelected && (
@@ -235,7 +235,7 @@ export function DashboardPage() {
                     <span className={getPaceColorClass(calculatePace(budget.total_percentage, budget.year, budget.month))}>
                       {formatPace(calculatePace(budget.total_percentage, budget.year, budget.month))}
                     </span>
-                    <span className="text-neutral-300 dark:text-neutral-600 mx-1">|</span>
+                    <span className="text-[var(--text-muted)] mx-1">|</span>
                     <span className={getPaceDiffColorClass(calculatePaceDifference(budget.total_spending, budget.total_cap, budget.year, budget.month))}>
                       {formatPaceDifference(calculatePaceDifference(budget.total_spending, budget.total_cap, budget.year, budget.month))}
                     </span>
@@ -244,25 +244,25 @@ export function DashboardPage() {
               </div>
             </div>
             <ProgressBar percentage={budget.total_percentage} />
-            <div className="flex justify-between text-sm text-neutral-400 dark:text-neutral-500">
+            <div className="flex justify-between text-sm text-[var(--text-muted)]">
               <span>Spent: {formatCurrency(budget.total_spending)}</span>
               <span>Budget: {formatCurrency(budget.total_cap)}</span>
             </div>
             {isCurrentMonthSelected && (
-              <div className="text-xs text-neutral-400 dark:text-neutral-500 text-center pt-2 border-t border-neutral-100 dark:border-neutral-800">
+              <div className="text-xs text-[var(--text-muted)] text-center pt-2 border-t border-[var(--border-primary)]">
                 Day {new Date().getDate()} of {getDaysInMonth(budget.year, budget.month)} ({((new Date().getDate() / getDaysInMonth(budget.year, budget.month)) * 100).toFixed(0)}% through month)
               </div>
             )}
             {budget.excluded_categories && budget.excluded_categories.length > 0 && (
               <div
-                className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 pt-1 border-t border-neutral-100 dark:border-neutral-800 cursor-help relative group"
+                className="flex items-center gap-1.5 text-xs text-[var(--warning)] pt-1 border-t border-[var(--border-primary)] cursor-help relative group"
                 title={budget.excluded_categories.map(catId => getCategoryDisplayName(catId, categories)).join(', ')}
               >
                 <EyeOff className="h-3 w-3" />
                 <span>
                   {budget.excluded_categories.length} {budget.excluded_categories.length === 1 ? 'category' : 'categories'} excluded from total
                 </span>
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-neutral-800 dark:bg-neutral-700 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[var(--text-primary)] text-[var(--text-inverted)] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
                   {budget.excluded_categories.map(catId => getCategoryDisplayName(catId, categories)).join(', ')}
                 </div>
               </div>
@@ -272,7 +272,7 @@ export function DashboardPage() {
 
         {activeCategories.length > 0 && (
           <div>
-            <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-4">
+            <h2 className="text-sm font-medium text-[var(--text-primary)] mb-4">
               Top Categories
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -306,23 +306,23 @@ export function DashboardPage() {
                           ) : (
                             <CategoryIcon
                               category={cat.category}
-                              className="h-5 w-5 text-neutral-500 dark:text-neutral-400"
+                              className="h-5 w-5 text-[var(--text-muted)]"
                             />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1.5">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                              <span className="text-sm font-medium text-[var(--text-primary)]">
                                 {displayName}
                               </span>
                               {isExcluded && (
                                 <span title="Not included in total">
-                                  <EyeOff className="h-3.5 w-3.5 text-amber-500" />
+                                  <EyeOff className="h-3.5 w-3.5 text-[var(--warning)]" />
                                 </span>
                               )}
                             </div>
-                            <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                            <span className="text-xs text-[var(--text-muted)]">
                               {formatCurrency(cat.spending)} / {formatCurrency(cat.cap)}
                             </span>
                           </div>
@@ -339,7 +339,7 @@ export function DashboardPage() {
 
         {activeCategories.length === 0 && (
           <Card padding="lg">
-            <p className="text-center text-sm text-neutral-500 dark:text-neutral-400">
+            <p className="text-center text-sm text-[var(--text-muted)]">
               No budget caps configured yet. Start tracking expenses to see category breakdowns.
             </p>
           </Card>

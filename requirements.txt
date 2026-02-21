@@ -6,6 +6,7 @@
 # AI/LLM Clients
 openai>=1.0.0
 anthropic>=0.18.0
+google-generativeai>=0.8.0
 
 # MCP (Model Context Protocol) - Phase 4.1
 mcp>=0.9.0

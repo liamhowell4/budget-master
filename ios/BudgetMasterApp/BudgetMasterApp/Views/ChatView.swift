@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 // MARK: - Data Models
 
@@ -81,11 +82,17 @@ func toolDisplayName(_ tool: String) -> String {
 
 struct ChatView: View {
     @StateObject private var viewModel = ChatViewModel()
+    @StateObject private var voiceRecorder = VoiceRecorder()
+    @Environment(\.appAccent) private var appAccent
     @FocusState private var isInputFocused: Bool
     @State private var showHistory = false
+    @State private var showBudgetSidebar = false
     @State private var chatSelectedExpense: APIExpense?
     @State private var chatSelectedCategory: CategoryBreakdown?
     @State private var chatSelectedRecurring: RecurringExpenseListItem?
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var selectedImageData: Data?
+    @State private var showImagePreview = false
 
     private let quickSuggestions = ["Coffee $5", "Lunch $15", "Groceries $80"]
 
@@ -109,18 +116,26 @@ struct ChatView: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button { viewModel.newConversation() } label: {
-                            Label("New Chat", systemImage: "square.and.pencil")
+                    HStack(spacing: 12) {
+                        Button { showBudgetSidebar = true } label: {
+                            Image(systemName: "chart.bar.fill")
                         }
-                        Button { Task { await viewModel.loadSuggestions() } } label: {
-                            Label("Get Suggestions", systemImage: "lightbulb")
-                        }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                        Menu {
+                            Button { viewModel.newConversation() } label: {
+                                Label("New Chat", systemImage: "square.and.pencil")
+                            }
+                            Button { Task { await viewModel.loadSuggestions() } } label: {
+                                Label("Get Suggestions", systemImage: "lightbulb")
+                            }
+                        } label: { Image(systemName: "ellipsis.circle") }
+                    }
                 }
             }
             .sheet(isPresented: $showHistory) {
                 ConversationHistorySheet(viewModel: viewModel, isPresented: $showHistory)
+            }
+            .sheet(isPresented: $showBudgetSidebar) {
+                BudgetSidebarSheet()
             }
             .sheet(item: $chatSelectedExpense) { expense in
                 EditExpenseView(
@@ -174,7 +189,7 @@ struct ChatView: View {
         VStack(spacing: 24) {
             Image(systemName: "dollarsign.circle.fill")
                 .font(.system(size: 64))
-                .foregroundStyle(AppTheme.accent)
+                .foregroundStyle(appAccent)
             VStack(spacing: 8) {
                 Text("Track your expenses").font(.title2).fontWeight(.bold)
                 Text("Start a conversation to log and manage your spending")
@@ -194,7 +209,17 @@ struct ChatView: View {
                     }.foregroundStyle(.primary)
                 }
             }
-        }.padding()
+        }
+        .padding()
+        .onTapGesture { isInputFocused = false }
+        .gesture(
+            DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                .onEnded { value in
+                    if value.translation.height > 0 {
+                        isInputFocused = false
+                    }
+                }
+        )
     }
 
     // MARK: Messages Scroll View
@@ -241,21 +266,136 @@ struct ChatView: View {
     // MARK: Input Area
 
     private var inputArea: some View {
-        HStack(spacing: 12) {
-            TextField("Track an expense...", text: $viewModel.inputText, axis: .vertical)
-                .textFieldStyle(.plain).lineLimit(1...4).focused($isInputFocused)
-            Button { Task { await viewModel.sendMessage() } } label: {
-                Circle()
-                    .fill(viewModel.canSend ? Color(uiColor: .label) : Color(uiColor: .systemGray4))
-                    .frame(width: 32, height: 32)
-                    .overlay {
-                        Image(systemName: "arrow.up").font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(viewModel.canSend
-                                ? Color(uiColor: .systemBackground) : Color(uiColor: .systemGray2))
+        VStack(spacing: 8) {
+            // Image preview
+            if let imageData = selectedImageData, let uiImage = UIImage(data: imageData) {
+                HStack {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 60, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(alignment: .topTrailing) {
+                            Button {
+                                selectedImageData = nil
+                                selectedPhotoItem = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.white)
+                                    .background(Circle().fill(.black.opacity(0.6)))
+                            }
+                            .offset(x: 4, y: -4)
+                        }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+            }
+
+            // Recording indicator
+            if voiceRecorder.isRecording {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 8, height: 8)
+                        .modifier(PulsingModifier())
+                    Text("Recording \(voiceRecorder.formattedDuration)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fontWeight(.medium)
+                    Spacer()
+                    Button {
+                        voiceRecorder.cancelRecording()
+                    } label: {
+                        Text("Cancel")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-            }.disabled(!viewModel.canSend)
+                }
+                .padding(.horizontal, 16)
+            }
+
+            HStack(spacing: 10) {
+                // Photo picker button
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 18))
+                        .foregroundStyle(selectedImageData != nil ? appAccent : Color(uiColor: .systemGray))
+                }
+                .onChange(of: selectedPhotoItem) { _, newItem in
+                    Task {
+                        if let data = try? await newItem?.loadTransferable(type: Data.self),
+                           let uiImage = UIImage(data: data),
+                           let compressed = uiImage.jpegData(compressionQuality: 0.7) {
+                            selectedImageData = compressed
+                        }
+                    }
+                }
+                .disabled(voiceRecorder.isRecording)
+
+                TextField("Track an expense...", text: $viewModel.inputText, axis: .vertical)
+                    .textFieldStyle(.plain).lineLimit(1...4).focused($isInputFocused)
+                    .disabled(voiceRecorder.isRecording)
+
+                // Mic button
+                Button {
+                    if voiceRecorder.isRecording {
+                        if let audioURL = voiceRecorder.stopRecording() {
+                            Task { await viewModel.sendAudio(url: audioURL, text: viewModel.inputText) }
+                        }
+                    } else {
+                        voiceRecorder.startRecording()
+                    }
+                } label: {
+                    Circle()
+                        .fill(voiceRecorder.isRecording ? .red : Color(uiColor: .systemGray5))
+                        .frame(width: 32, height: 32)
+                        .overlay {
+                            Image(systemName: voiceRecorder.isRecording ? "stop.fill" : "mic.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(voiceRecorder.isRecording ? .white : Color(uiColor: .systemGray))
+                        }
+                }
+
+                // Send button
+                Button {
+                    Task {
+                        if let imageData = selectedImageData {
+                            await viewModel.sendImage(data: imageData, text: viewModel.inputText)
+                            selectedImageData = nil
+                            selectedPhotoItem = nil
+                        } else {
+                            await viewModel.sendMessage()
+                        }
+                    }
+                } label: {
+                    Circle()
+                        .fill(canSendAnything ? Color(uiColor: .label) : Color(uiColor: .systemGray4))
+                        .frame(width: 32, height: 32)
+                        .overlay {
+                            Image(systemName: "arrow.up").font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(canSendAnything
+                                    ? Color(uiColor: .systemBackground) : Color(uiColor: .systemGray2))
+                        }
+                }.disabled(!canSendAnything)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10).glassInput()
         }
-        .padding(.horizontal, 16).padding(.vertical, 10).glassInput()
+        .alert("Microphone Access Denied", isPresented: $voiceRecorder.permissionDenied) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Please enable microphone access in Settings to record voice memos.")
+        }
+    }
+
+    private var canSendAnything: Bool {
+        (!viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedImageData != nil)
+            && !viewModel.isStreaming && !voiceRecorder.isRecording
     }
 }
 
@@ -264,6 +404,7 @@ struct ChatView: View {
 struct ConversationHistorySheet: View {
     @ObservedObject var viewModel: ChatViewModel
     @Binding var isPresented: Bool
+    @Environment(\.appAccent) private var appAccent
 
     var body: some View {
         NavigationStack {
@@ -273,7 +414,7 @@ struct ConversationHistorySheet: View {
                     isPresented = false
                 } label: {
                     Label("New Conversation", systemImage: "square.and.pencil")
-                        .foregroundStyle(AppTheme.accent)
+                        .foregroundStyle(appAccent)
                 }
 
                 if viewModel.isLoadingHistory {
@@ -419,6 +560,7 @@ struct TypingIndicator: View {
 
 struct StreamingToolCallView: View {
     let toolNames: [String]
+    @Environment(\.appAccent) private var appAccent
 
     var body: some View {
         HStack {
@@ -433,7 +575,7 @@ struct StreamingToolCallView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(AppTheme.accent.opacity(0.08))
+                    .background(appAccent.opacity(0.08))
                     .clipShape(Capsule())
                 }
             }
@@ -452,6 +594,7 @@ struct ToolCallCardView: View {
     var onSelectExpense: ((APIExpense) -> Void)? = nil
     var onSelectCategory: ((CategoryBreakdown) -> Void)? = nil
     var onSelectRecurring: ((RecurringExpenseListItem) -> Void)? = nil
+    @Environment(\.appAccent) private var appAccent
 
     var body: some View {
         let data = toolCall.resultJSON.data(using: .utf8) ?? Data()
@@ -521,7 +664,7 @@ struct ToolCallCardView: View {
     private var toolCompletionLabel: some View {
         HStack(spacing: 4) {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(AppTheme.accent)
+                .foregroundStyle(appAccent)
                 .font(.caption2)
             Text(toolDisplayName(toolCall.name))
                 .font(.caption2).foregroundStyle(.secondary)
@@ -677,6 +820,7 @@ struct ExpenseListCard: View {
     let result: ExpenseListResult
     let tool: String
     var onSelectExpense: ((APIExpense) -> Void)? = nil
+    @Environment(\.appAccent) private var appAccent
     @State private var showAll = false
 
     var title: String {
@@ -724,7 +868,7 @@ struct ExpenseListCard: View {
 
             if expenses.count > 5 {
                 Button(showAll ? "Show less" : "Show \(expenses.count - 5) more") { showAll.toggle() }
-                    .font(.caption).foregroundStyle(AppTheme.accent)
+                    .font(.caption).foregroundStyle(appAccent)
             }
 
             if let total = result.total {
@@ -954,6 +1098,7 @@ struct TopExpensesCard: View {
 
 struct PeriodComparisonCard: View {
     let result: PeriodComparisonResult
+    @Environment(\.appAccent) private var appAccent
 
     var body: some View {
         let diff = result.comparison.difference
@@ -971,11 +1116,11 @@ struct PeriodComparisonCard: View {
             Divider()
             HStack {
                 Image(systemName: diff > 0 ? "arrow.up.right" : diff < 0 ? "arrow.down.right" : "minus")
-                    .foregroundStyle(diff > 0 ? .red : diff < 0 ? AppTheme.accent : .secondary)
+                    .foregroundStyle(diff > 0 ? .red : diff < 0 ? appAccent : .secondary)
                     .font(.caption)
                 Text(abs(diff), format: .currency(code: "USD"))
                     .font(.caption).fontWeight(.semibold)
-                    .foregroundStyle(diff > 0 ? .red : diff < 0 ? AppTheme.accent : .secondary)
+                    .foregroundStyle(diff > 0 ? .red : diff < 0 ? appAccent : .secondary)
                 if let pct {
                     Text("(\(String(format: "%.1f", abs(pct)))%)")
                         .font(.caption2).foregroundStyle(.secondary)
@@ -1078,19 +1223,20 @@ struct RecurringExpenseListCard: View {
 
 struct GenericToolCard: View {
     let tool: String
+    @Environment(\.appAccent) private var appAccent
 
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(AppTheme.accent)
+                .foregroundStyle(appAccent)
                 .font(.caption)
             Text(toolDisplayName(tool))
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(10)
-        .background(AppTheme.accent.opacity(0.08))
+        .background(appAccent.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.accent.opacity(0.15), lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(appAccent.opacity(0.15), lineWidth: 0.5))
     }
 }
 
@@ -1263,6 +1409,166 @@ struct PendingExpensesSheet: View {
     }
 }
 
+// MARK: - Pulsing Animation Modifier
+
+struct PulsingModifier: ViewModifier {
+    @State private var isPulsing = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isPulsing ? 1.3 : 1.0)
+            .opacity(isPulsing ? 0.6 : 1.0)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
+            .onAppear { isPulsing = true }
+    }
+}
+
+// MARK: - Budget Sidebar Sheet
+
+struct BudgetSidebarSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var budget: BudgetAPIResponse?
+    @State private var recentExpenses: [APIExpense] = []
+    @State private var isLoading = true
+    private let api = APIService()
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if isLoading {
+                    ProgressView("Loading budget...")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let budget = budget {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            // Overall budget card
+                            VStack(spacing: 10) {
+                                HStack {
+                                    Text("Monthly Budget")
+                                        .font(.subheadline).fontWeight(.semibold)
+                                    Spacer()
+                                    Text("\(budget.month_name)")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(budget.total_remaining, format: .currency(code: "USD"))
+                                        .font(.title2).fontWeight(.bold)
+                                        .foregroundStyle(AppTheme.budgetProgressColor(budget.total_percentage))
+                                    Text("remaining")
+                                        .font(.caption).foregroundStyle(.secondary)
+                                    Spacer()
+                                }
+
+                                ProgressView(value: min(budget.total_percentage / 100, 1.0))
+                                    .tint(AppTheme.budgetProgressColor(budget.total_percentage))
+
+                                HStack {
+                                    Text(budget.total_spending, format: .currency(code: "USD"))
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                    Text("of")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                    Text(budget.total_cap, format: .currency(code: "USD"))
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                    Text("(\(Int(budget.total_percentage))%)")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                    Spacer()
+                                }
+                            }
+                            .padding(14)
+                            .cardStyle()
+
+                            // Top category breakdowns
+                            let topCategories = Array(budget.categories
+                                .sorted { $0.percentage > $1.percentage }
+                                .prefix(4))
+
+                            if !topCategories.isEmpty {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Top Categories")
+                                        .font(.subheadline).fontWeight(.semibold)
+
+                                    ForEach(topCategories, id: \.category) { cat in
+                                        HStack(spacing: 8) {
+                                            Circle()
+                                                .fill(AppTheme.categoryColor(cat.category))
+                                                .frame(width: 8, height: 8)
+                                            Text(cat.category.replacingOccurrences(of: "_", with: " ").capitalized)
+                                                .font(.caption)
+                                                .frame(width: 80, alignment: .leading)
+                                            ProgressView(value: min(cat.percentage / 100, 1.0))
+                                                .tint(AppTheme.budgetProgressColor(cat.percentage))
+                                            Text(cat.remaining, format: .currency(code: "USD"))
+                                                .font(.caption2).fontWeight(.semibold)
+                                                .foregroundStyle(AppTheme.budgetProgressColor(cat.percentage))
+                                        }
+                                    }
+                                }
+                                .padding(14)
+                                .cardStyle()
+                            }
+
+                            // Recent expenses
+                            if !recentExpenses.isEmpty {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Recent Expenses")
+                                        .font(.subheadline).fontWeight(.semibold)
+
+                                    ForEach(Array(recentExpenses.prefix(3)), id: \.id) { expense in
+                                        HStack(spacing: 8) {
+                                            Circle()
+                                                .fill(AppTheme.categoryColor(expense.category))
+                                                .frame(width: 8, height: 8)
+                                            Text(expense.expense_name)
+                                                .font(.caption).lineLimit(1)
+                                            Spacer()
+                                            Text(expense.amount, format: .currency(code: "USD"))
+                                                .font(.caption).fontWeight(.semibold)
+                                        }
+                                    }
+                                }
+                                .padding(14)
+                                .cardStyle()
+                            }
+                        }
+                        .padding()
+                    }
+                } else {
+                    ContentUnavailableView(
+                        "Could not load budget",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text("Please try again later.")
+                    )
+                }
+            }
+            .navigationTitle("Budget Overview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task { await loadData() }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func loadData() async {
+        isLoading = true
+        do {
+            budget = try await api.fetchBudget()
+        } catch { }
+
+        let cal = Calendar.current
+        let year = cal.component(.year, from: Date())
+        let month = cal.component(.month, from: Date())
+        do {
+            recentExpenses = try await api.fetchExpenses(year: year, month: month)
+        } catch { }
+        isLoading = false
+    }
+}
+
 // MARK: - Card Style Extension
 
 extension View {
@@ -1349,6 +1655,57 @@ class ChatViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    // MARK: Audio/Image Sending
+
+    func sendAudio(url: URL, text: String) async {
+        guard let audioData = try? Data(contentsOf: url) else {
+            errorMessage = "Could not read audio file."
+            return
+        }
+        let displayText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        messages.append(ChatMessage(content: displayText.isEmpty ? "[Voice memo]" : displayText, isUser: true))
+        inputText = ""
+        isStreaming = true
+
+        do {
+            try await api.ensureServerConnected()
+            let response = try await api.processExpenseMultipart(
+                text: displayText.isEmpty ? nil : displayText,
+                audioData: audioData,
+                conversationId: conversationId
+            )
+            if let id = response.conversation_id { conversationId = id }
+            messages.append(ChatMessage(content: response.message, isUser: false))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isStreaming = false
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    func sendImage(data: Data, text: String) async {
+        let displayText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        messages.append(ChatMessage(content: displayText.isEmpty ? "[Receipt photo]" : displayText, isUser: true))
+        inputText = ""
+        isStreaming = true
+
+        do {
+            try await api.ensureServerConnected()
+            let response = try await api.processExpenseMultipart(
+                text: displayText.isEmpty ? nil : displayText,
+                imageData: data,
+                conversationId: conversationId
+            )
+            if let id = response.conversation_id { conversationId = id }
+            messages.append(ChatMessage(content: response.message, isUser: false))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isStreaming = false
     }
 
     // MARK: Conversation History

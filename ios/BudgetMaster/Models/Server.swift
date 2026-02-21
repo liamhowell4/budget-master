@@ -2,19 +2,19 @@ import Foundation
 
 // MARK: - MCPServer
 
-struct MCPServer: Codable, Sendable, Identifiable {
-    let id: String
-    let name: String
-    let path: String
-    let description: String
+public struct MCPServer: Codable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+    public let path: String
+    public let description: String
 }
 
 // MARK: - ServerTool
 
-struct ServerTool: Codable, Sendable {
-    let name: String
-    let description: String?
-    let inputSchema: AnyCodable?
+public struct ServerTool: Codable, Sendable {
+    public let name: String
+    public let description: String?
+    public let inputSchema: AnyCodable?
 
     enum CodingKeys: String, CodingKey {
         case name, description
@@ -24,17 +24,17 @@ struct ServerTool: Codable, Sendable {
 
 // MARK: - ServerConnectResponse
 
-struct ServerConnectResponse: Codable, Sendable {
-    let success: Bool
-    let serverId: String
-    let serverName: String
-    let tools: [ServerTool]
+public struct ServerConnectResponse: Codable, Sendable {
+    public let success: Bool
+    public let serverId: String
+    public let serverName: String
+    public let tools: [ServerTool]
 }
 
 // MARK: - ServerStatus
 
-struct ServerStatus: Codable, Sendable {
-    let connected: Bool
-    let serverId: String?
-    let tools: [ServerTool]
+public struct ServerStatus: Codable, Sendable {
+    public let connected: Bool
+    public let serverId: String?
+    public let tools: [ServerTool]
 }
