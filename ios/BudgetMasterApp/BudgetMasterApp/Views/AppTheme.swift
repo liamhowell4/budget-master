@@ -117,20 +117,65 @@ extension AppTheme {
     }
 }
 
-// MARK: - Environment Key for Resolved Accent Color
+// MARK: - Environment Keys for Resolved Theme Tokens
 
-// Views read `appAccent` from the environment instead of reaching for
-// AppTheme.accent directly, so the ThemeManager's active scheme propagates
-// through the entire tree without needing ObservableObject subscriptions in
-// every leaf view.
+// Views read these keys from the environment so the ThemeManager's active
+// scheme propagates through the entire tree without ObservableObject
+// subscriptions in every leaf view.
+
 private struct AppAccentKey: EnvironmentKey {
     static let defaultValue: Color = AppTheme.accent
+}
+
+private struct AppBackgroundTintKey: EnvironmentKey {
+    static let defaultValue: Color = .clear
+}
+
+private struct AppUserBubbleKey: EnvironmentKey {
+    static let defaultValue: Color = .primary
+}
+
+private struct AppUserBubbleTextKey: EnvironmentKey {
+    static let defaultValue: Color = .white
+}
+
+private struct AppAiBubbleKey: EnvironmentKey {
+    static let defaultValue: Color = Color(hex: 0xF2F2F7)
+}
+
+private struct AppAiBubbleTextKey: EnvironmentKey {
+    static let defaultValue: Color = .primary
 }
 
 extension EnvironmentValues {
     var appAccent: Color {
         get { self[AppAccentKey.self] }
         set { self[AppAccentKey.self] = newValue }
+    }
+
+    var appBackgroundTint: Color {
+        get { self[AppBackgroundTintKey.self] }
+        set { self[AppBackgroundTintKey.self] = newValue }
+    }
+
+    var appUserBubble: Color {
+        get { self[AppUserBubbleKey.self] }
+        set { self[AppUserBubbleKey.self] = newValue }
+    }
+
+    var appUserBubbleText: Color {
+        get { self[AppUserBubbleTextKey.self] }
+        set { self[AppUserBubbleTextKey.self] = newValue }
+    }
+
+    var appAiBubble: Color {
+        get { self[AppAiBubbleKey.self] }
+        set { self[AppAiBubbleKey.self] = newValue }
+    }
+
+    var appAiBubbleText: Color {
+        get { self[AppAiBubbleTextKey.self] }
+        set { self[AppAiBubbleTextKey.self] = newValue }
     }
 }
 

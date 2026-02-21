@@ -10,10 +10,14 @@ struct ContentView: View {
 
     private let api = APIService()
 
-    /// The accent color resolved from the active theme scheme, taking the
-    /// system color scheme into account when the user follows system appearance.
+    /// The full scheme resolved from system appearance (or manual override).
+    var resolvedScheme: ThemeColorScheme {
+        themeManager.activeScheme(systemColorScheme: colorScheme)
+    }
+
+    /// Convenience accessor so downstream callsites remain unchanged.
     var resolvedAccent: Color {
-        themeManager.activeScheme(systemColorScheme: colorScheme).accentColor
+        resolvedScheme.accentColor
     }
 
     var body: some View {
@@ -78,11 +82,19 @@ struct ContentView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(3)
         }
-        // Propagate the resolved theme accent through the environment so every
-        // descendant view can read it via @Environment(\.appAccent), and set
-        // .tint so interactive controls (toggles, pickers, etc.) pick it up.
+        // Propagate all resolved theme tokens through the environment so every
+        // descendant view can read them via @Environment, and set .tint so
+        // interactive controls (toggles, pickers, etc.) pick up the accent.
         .environment(\.appAccent, resolvedAccent)
+        .environment(\.appBackgroundTint, resolvedScheme.backgroundTint)
+        .environment(\.appUserBubble, resolvedScheme.userBubbleColor)
+        .environment(\.appUserBubbleText, resolvedScheme.userBubbleText)
+        .environment(\.appAiBubble, resolvedScheme.aiBubbleColor)
+        .environment(\.appAiBubbleText, resolvedScheme.aiBubbleText)
         .tint(resolvedAccent)
+        // Subtle background tint gives the root canvas the theme's personality
+        // without competing with the glass-effect materials layered on top.
+        .background(resolvedScheme.backgroundTint.ignoresSafeArea())
     }
 
     // MARK: - Onboarding Check

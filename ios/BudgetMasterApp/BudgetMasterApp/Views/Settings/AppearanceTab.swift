@@ -118,19 +118,47 @@ struct AppearanceTab: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            VStack(spacing: 10) {
-                // Color preview bar
-                HStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(scheme.accentColor)
-                        .frame(height: 32)
+            VStack(alignment: .leading, spacing: 10) {
 
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(scheme.tintColor.opacity(0.5))
-                        .frame(width: 24, height: 32)
+                // Mini chat bubble preview — communicates the theme's personality
+                // at a glance rather than showing abstract color bars.
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: 8)
+                        // swatchCanvasColor handles the .clear case (Classic light)
+                        // without requiring Color to be Equatable.
+                        .fill(scheme.swatchCanvasColor)
+                        .frame(height: 64)
+
+                    VStack(alignment: .trailing, spacing: 5) {
+                        // User bubble — right-aligned
+                        HStack {
+                            Spacer()
+                            Text("Coffee $5")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(scheme.userBubbleText)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(scheme.userBubbleColor)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+
+                        // AI bubble — left-aligned
+                        HStack {
+                            Text("Saved!")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(scheme.accentColor)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(scheme.aiBubbleColor)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            Spacer()
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
                 }
 
-                VStack(spacing: 2) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(scheme.label)
                         .font(.subheadline)
                         .fontWeight(.medium)

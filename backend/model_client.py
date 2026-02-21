@@ -2,12 +2,12 @@
 UnifiedModelClient — routes LLM calls to Anthropic, OpenAI, or Google Gemini.
 
 Supported models:
-    claude-sonnet-4-6  (Anthropic)
-    claude-haiku-4-5   (Anthropic)
-    gpt-5-mini         (OpenAI — Responses API)
-    gpt-5.1            (OpenAI — Responses API)
-    gemini-3.1-pro     (Google Generative AI)
-    gemini-3-flash     (Google Generative AI)
+    claude-sonnet-4-6      (Anthropic)
+    claude-haiku-4-5       (Anthropic)
+    gpt-5-mini             (OpenAI — Responses API)
+    gpt-5.1                (OpenAI — Responses API)
+    gemini-3.1-pro-preview (Google Generative AI)
+    gemini-3-flash-preview (Google Generative AI)
 
 Tool format convention:
     Anthropic-style input_schema is the canonical format.
@@ -24,12 +24,12 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 SUPPORTED_MODELS: dict[str, dict] = {
-    "claude-sonnet-4-6": {"provider": "anthropic"},
-    "claude-haiku-4-5":  {"provider": "anthropic"},
-    "gpt-5-mini":        {"provider": "openai"},
-    "gpt-5.1":           {"provider": "openai"},
-    "gemini-3.1-pro":    {"provider": "google"},
-    "gemini-3-flash":    {"provider": "google"},
+    "claude-sonnet-4-6":      {"provider": "anthropic"},
+    "claude-haiku-4-5":       {"provider": "anthropic"},
+    "gpt-5-mini":             {"provider": "openai"},
+    "gpt-5.1":                {"provider": "openai"},
+    "gemini-3.1-pro-preview": {"provider": "google"},
+    "gemini-3-flash-preview": {"provider": "google"},
 }
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
@@ -220,9 +220,10 @@ class UnifiedModelClient:
         max_tokens: int,
     ) -> ModelResponse:
         """
-        Call Google Gemini via google-generativeai SDK.
+        Call Google Gemini via the google-genai SDK (google.genai).
         """
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
 
         api_key = os.environ.get("GOOGLE_API_KEY")
         if not api_key:
@@ -231,25 +232,36 @@ class UnifiedModelClient:
                 "Add it to your .env file to use Gemini models."
             )
 
-        genai.configure(api_key=api_key)
+        client = genai.Client(api_key=api_key)
 
         # Convert Anthropic-style tools to Gemini format
         gemini_tools = self._anthropic_tools_to_gemini(tools)
 
-        # Convert messages
+        # Build contents list from message history
         history, current_parts = self._anthropic_messages_to_gemini(messages)
+        all_contents: list[dict] = []
+        for item in history:
+            all_contents.append({
+                "role": item["role"],
+                "parts": [{"text": p} if isinstance(p, str) else p for p in item["parts"]],
+            })
+        if current_parts:
+            all_contents.append({
+                "role": "user",
+                "parts": [{"text": p} if isinstance(p, str) else p for p in current_parts],
+            })
 
-        generation_config = genai.GenerationConfig(max_output_tokens=max_tokens)
-
-        model_instance = genai.GenerativeModel(
-            model_name=self.model,
+        config = types.GenerateContentConfig(
             system_instruction=system,
             tools=gemini_tools if gemini_tools else None,
-            generation_config=generation_config,
+            max_output_tokens=max_tokens,
         )
 
-        chat = model_instance.start_chat(history=history)
-        response = chat.send_message(current_parts)
+        response = client.models.generate_content(
+            model=self.model,
+            contents=all_contents,
+            config=config,
+        )
 
         content_text: str | None = None
         tool_calls: list[ToolCall] = []
@@ -301,17 +313,15 @@ class UnifiedModelClient:
     @staticmethod
     def _anthropic_tools_to_gemini(tools: list[dict]):
         """Convert Anthropic tool definitions → Gemini FunctionDeclaration list."""
-        import google.generativeai as genai
-        from google.generativeai import protos
+        from google.genai import types
 
         declarations = []
         for tool in tools:
             schema = tool.get("input_schema", {})
-            # Build a minimal Schema for parameters
-            param_schema = protos.Schema(
-                type=protos.Type.OBJECT,
+            param_schema = types.Schema(
+                type=types.Type.OBJECT,
                 properties={
-                    k: protos.Schema(
+                    k: types.Schema(
                         type=_json_type_to_gemini_type(v.get("type", "string")),
                         description=v.get("description", ""),
                     )
@@ -320,14 +330,14 @@ class UnifiedModelClient:
                 required=schema.get("required", []),
             )
             declarations.append(
-                protos.FunctionDeclaration(
+                types.FunctionDeclaration(
                     name=tool["name"],
                     description=tool.get("description", ""),
                     parameters=param_schema,
                 )
             )
 
-        return [genai.protos.Tool(function_declarations=declarations)] if declarations else []
+        return [types.Tool(function_declarations=declarations)] if declarations else []
 
     @staticmethod
     def _anthropic_messages_to_openai(
@@ -409,15 +419,15 @@ class UnifiedModelClient:
 
 
 def _json_type_to_gemini_type(json_type: str):
-    """Map JSON Schema type strings to Gemini protos.Type values."""
-    from google.generativeai import protos
+    """Map JSON Schema type strings to google.genai types.Type values."""
+    from google.genai import types
 
     mapping = {
-        "string":  protos.Type.STRING,
-        "number":  protos.Type.NUMBER,
-        "integer": protos.Type.INTEGER,
-        "boolean": protos.Type.BOOLEAN,
-        "array":   protos.Type.ARRAY,
-        "object":  protos.Type.OBJECT,
+        "string":  types.Type.STRING,
+        "number":  types.Type.NUMBER,
+        "integer": types.Type.INTEGER,
+        "boolean": types.Type.BOOLEAN,
+        "array":   types.Type.ARRAY,
+        "object":  types.Type.OBJECT,
     }
-    return mapping.get(json_type, protos.Type.STRING)
+    return mapping.get(json_type, types.Type.STRING)

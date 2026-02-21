@@ -509,14 +509,19 @@ struct ChatMessageView: View {
 struct MessageBubble: View {
     let message: ChatMessage
 
+    @Environment(\.appUserBubble) private var userBubble
+    @Environment(\.appUserBubbleText) private var userBubbleText
+    @Environment(\.appAiBubble) private var aiBubble
+    @Environment(\.appAiBubbleText) private var aiBubbleText
+
     var body: some View {
         HStack {
             if message.isUser { Spacer(minLength: 60) }
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
                 Text(message.content)
                     .font(.subheadline).padding(12)
-                    .background(message.isUser ? Color(uiColor: .label) : Color(uiColor: .secondarySystemBackground))
-                    .foregroundStyle(message.isUser ? Color(uiColor: .systemBackground) : Color(uiColor: .label))
+                    .background(message.isUser ? userBubble : aiBubble)
+                    .foregroundStyle(message.isUser ? userBubbleText : aiBubbleText)
                     .overlay {
                         if !message.isUser {
                             RoundedRectangle(cornerRadius: 16)
@@ -538,14 +543,19 @@ struct MessageBubble: View {
 struct TypingIndicator: View {
     @State private var dotCount = 0
 
+    @Environment(\.appAiBubble) private var aiBubble
+    @Environment(\.appAiBubbleText) private var aiBubbleText
+
     var body: some View {
         HStack(spacing: 4) {
             ForEach(0..<3) { i in
-                Circle().fill(Color.gray).frame(width: 8, height: 8).opacity(dotCount == i ? 1 : 0.3)
+                Circle()
+                    .fill(aiBubbleText.opacity(dotCount == i ? 0.8 : 0.25))
+                    .frame(width: 8, height: 8)
             }
         }
         .padding(12)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(aiBubble)
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(uiColor: .quaternaryLabel), lineWidth: 0.5))
         .cornerRadius(16)
         .onAppear {
