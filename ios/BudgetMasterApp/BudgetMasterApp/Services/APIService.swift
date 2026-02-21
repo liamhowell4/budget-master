@@ -115,8 +115,8 @@ struct MCPExpenseResponse: Codable {
 enum SSEEvent {
     case conversationId(String)
     case text(String)
-    case toolStart(String)
-    case toolEnd(tool: String, resultJSON: String)
+    case toolStart(id: String, tool: String)
+    case toolEnd(id: String, tool: String, resultJSON: String)
     case done
     case error(String)
 }
@@ -552,15 +552,17 @@ extension APIService {
                 let content = json["content"] as? String ?? ""
                 event = .text(content)
             case "tool_start":
+                let id = json["id"] as? String ?? UUID().uuidString
                 let tool = json["name"] as? String ?? ""
-                event = .toolStart(tool)
+                event = .toolStart(id: id, tool: tool)
             case "tool_end":
+                let id = json["id"] as? String ?? UUID().uuidString
                 let tool = json["name"] as? String ?? ""
                 var resultJSON = "{}"
                 if let result = json["result"],
                    let d = try? JSONSerialization.data(withJSONObject: result),
                    let s = String(data: d, encoding: .utf8) { resultJSON = s }
-                event = .toolEnd(tool: tool, resultJSON: resultJSON)
+                event = .toolEnd(id: id, tool: tool, resultJSON: resultJSON)
             default:
                 continue
             }

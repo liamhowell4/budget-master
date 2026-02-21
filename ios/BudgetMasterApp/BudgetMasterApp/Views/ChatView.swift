@@ -2,36 +2,55 @@ import SwiftUI
 
 // MARK: - Data Models
 
-enum ChatItem: Identifiable {
-    case message(ChatMessage)
-    case toolCard(ToolCard)
+struct ToolCall: Identifiable {
+    let id: String
+    let name: String
+    var resultJSON: String
 
-    var id: UUID {
-        switch self {
-        case .message(let m): m.id
-        case .toolCard(let c): c.id
-        }
+    init(id: String = UUID().uuidString, name: String, resultJSON: String = "{}") {
+        self.id = id
+        self.name = name
+        self.resultJSON = resultJSON
     }
 }
 
-struct ToolCard: Identifiable {
-    let id = UUID()
-    let tool: String
-    let resultJSON: String
-    let timestamp: Date
-    var budgetWarning: String? = nil
-}
-
 struct ChatMessage: Identifiable {
-    let id = UUID()
+    let id: UUID = UUID()
     var content: String
     let isUser: Bool
     let timestamp: Date
+    var toolCalls: [ToolCall]
 
-    init(content: String, isUser: Bool, timestamp: Date = Date()) {
+    init(content: String, isUser: Bool, timestamp: Date = Date(), toolCalls: [ToolCall] = []) {
         self.content = content
         self.isUser = isUser
         self.timestamp = timestamp
+        self.toolCalls = toolCalls
+    }
+
+    /// Detects the save_expense + get_budget_status pattern (mirrors React ChatMessage.tsx)
+    var hasBudgetPattern: Bool {
+        toolCalls.contains { $0.name == "save_expense" }
+            && toolCalls.contains { $0.name == "get_budget_status" }
+    }
+
+    /// Extracts the budget warning string from get_budget_status result, if present
+    var budgetWarning: String? {
+        guard let tc = toolCalls.first(where: { $0.name == "get_budget_status" }),
+              let data = tc.resultJSON.data(using: .utf8),
+              let r = try? JSONDecoder().decode(BudgetStatusResult.self, from: data),
+              let w = r.budget_warning, !w.isEmpty else { return nil }
+        return w
+    }
+
+    /// Tool calls to display — hides get_budget_status when budget pattern is detected
+    var visibleToolCalls: [ToolCall] {
+        hasBudgetPattern ? toolCalls.filter { $0.name != "get_budget_status" } : toolCalls
+    }
+
+    /// Whether to show text content — hidden when budget pattern is detected
+    var shouldShowContent: Bool {
+        !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasBudgetPattern
     }
 }
 
@@ -73,7 +92,7 @@ struct ChatView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if viewModel.items.isEmpty && !viewModel.isStreaming {
+                if viewModel.messages.isEmpty && !viewModel.isStreaming {
                     emptyStateView.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     messagesScrollView
@@ -188,12 +207,12 @@ struct ChatView: View {
                         PendingBannerCard(viewModel: viewModel)
                     }
 
-                    ForEach(viewModel.items) { item in
-                        ChatItemView(item: item, viewModel: viewModel,
+                    ForEach(viewModel.messages) { message in
+                        ChatMessageView(message: message, viewModel: viewModel,
                             onSelectExpense: { chatSelectedExpense = $0 },
                             onSelectCategory: { chatSelectedCategory = $0 },
                             onSelectRecurring: { chatSelectedRecurring = $0 })
-                            .id(item.id)
+                            .id(message.id)
                     }
                     if viewModel.isStreaming {
                         if !viewModel.pendingToolNames.isEmpty {
@@ -208,9 +227,9 @@ struct ChatView: View {
                 .padding()
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: viewModel.items.count) { _, _ in
+            .onChange(of: viewModel.messages.count) { _, _ in
                 withAnimation {
-                    if let last = viewModel.items.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    if let last = viewModel.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
             }
             .onChange(of: viewModel.isStreaming) { _, streaming in
@@ -307,29 +326,39 @@ struct ConversationHistorySheet: View {
     }
 }
 
-// MARK: - Chat Item View
+// MARK: - Chat Message View
 
-struct ChatItemView: View {
-    let item: ChatItem
+struct ChatMessageView: View {
+    let message: ChatMessage
     @ObservedObject var viewModel: ChatViewModel
     var onSelectExpense: ((APIExpense) -> Void)? = nil
     var onSelectCategory: ((CategoryBreakdown) -> Void)? = nil
     var onSelectRecurring: ((RecurringExpenseListItem) -> Void)? = nil
 
     var body: some View {
-        switch item {
-        case .message(let msg):
-            MessageBubble(message: msg)
-        case .toolCard(let card):
-            HStack {
-                ToolCardView(card: card, viewModel: viewModel,
-                           onSelectExpense: onSelectExpense,
-                           onSelectCategory: onSelectCategory,
-                           onSelectRecurring: onSelectRecurring)
-                    .frame(maxWidth: 340, alignment: .leading)
-                Spacer(minLength: 0)
+        if message.isUser {
+            MessageBubble(message: message)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                // 1. Tool cards (filtered via visibleToolCalls)
+                ForEach(message.visibleToolCalls) { tc in
+                    HStack {
+                        ToolCallCardView(
+                            toolCall: tc,
+                            budgetWarning: tc.name == "save_expense" ? message.budgetWarning : nil,
+                            viewModel: viewModel,
+                            onSelectExpense: onSelectExpense,
+                            onSelectCategory: onSelectCategory,
+                            onSelectRecurring: onSelectRecurring
+                        ).frame(maxWidth: 340, alignment: .leading)
+                        Spacer(minLength: 0)
+                    }.padding(.horizontal)
+                }
+                // 2. Text content (hidden when budget pattern detected)
+                if message.shouldShowContent {
+                    MessageBubble(message: message)
+                }
             }
-            .padding(.horizontal)
         }
     }
 }
@@ -414,68 +443,88 @@ struct StreamingToolCallView: View {
     }
 }
 
-// MARK: - Tool Card Dispatcher
+// MARK: - Tool Call Card Dispatcher
 
-struct ToolCardView: View {
-    let card: ToolCard
+struct ToolCallCardView: View {
+    let toolCall: ToolCall
+    var budgetWarning: String? = nil
     @ObservedObject var viewModel: ChatViewModel
     var onSelectExpense: ((APIExpense) -> Void)? = nil
     var onSelectCategory: ((CategoryBreakdown) -> Void)? = nil
     var onSelectRecurring: ((RecurringExpenseListItem) -> Void)? = nil
 
     var body: some View {
-        let data = card.resultJSON.data(using: .utf8) ?? Data()
-        Group {
-            switch card.tool {
+        let data = toolCall.resultJSON.data(using: .utf8) ?? Data()
+        VStack(alignment: .leading, spacing: 4) {
+            switch toolCall.name {
             case "save_expense":
                 if let r = try? JSONDecoder().decode(SaveExpenseResult.self, from: data) {
-                    ExpenseCardView(result: r, cardId: card.id, budgetWarning: card.budgetWarning,
+                    toolCompletionLabel
+                    ExpenseCardView(result: r, budgetWarning: budgetWarning,
                                   viewModel: viewModel, onSelectExpense: onSelectExpense)
-                } else { GenericToolCard(tool: card.tool) }
+                } else { GenericToolCard(tool: toolCall.name) }
 
             case "get_recent_expenses", "search_expenses", "query_expenses":
                 if let r = try? JSONDecoder().decode(ExpenseListResult.self, from: data) {
-                    ExpenseListCard(result: r, tool: card.tool, onSelectExpense: onSelectExpense)
-                } else { GenericToolCard(tool: card.tool) }
+                    toolCompletionLabel
+                    ExpenseListCard(result: r, tool: toolCall.name, onSelectExpense: onSelectExpense)
+                } else { GenericToolCard(tool: toolCall.name) }
 
             case "get_budget_remaining":
                 if let r = try? JSONDecoder().decode(BudgetRemainingResult.self, from: data) {
+                    toolCompletionLabel
                     BudgetRemainingCard(result: r, onSelectCategory: onSelectCategory)
-                } else { GenericToolCard(tool: card.tool) }
+                } else { GenericToolCard(tool: toolCall.name) }
 
             case "get_spending_by_category":
                 if let r = try? JSONDecoder().decode(SpendingByCategoryResult.self, from: data) {
+                    toolCompletionLabel
                     SpendingByCategoryCard(result: r, onSelectCategory: onSelectCategory)
-                } else { GenericToolCard(tool: card.tool) }
+                } else { GenericToolCard(tool: toolCall.name) }
 
             case "get_spending_summary":
                 if let r = try? JSONDecoder().decode(SpendingSummaryResult.self, from: data) {
+                    toolCompletionLabel
                     SpendingSummaryCard(result: r)
-                } else { GenericToolCard(tool: card.tool) }
+                } else { GenericToolCard(tool: toolCall.name) }
 
             case "get_largest_expenses":
                 if let r = try? JSONDecoder().decode(LargestExpensesResult.self, from: data) {
+                    toolCompletionLabel
                     TopExpensesCard(result: r)
-                } else { GenericToolCard(tool: card.tool) }
+                } else { GenericToolCard(tool: toolCall.name) }
 
             case "compare_periods":
                 if let r = try? JSONDecoder().decode(PeriodComparisonResult.self, from: data) {
+                    toolCompletionLabel
                     PeriodComparisonCard(result: r)
-                } else { GenericToolCard(tool: card.tool) }
+                } else { GenericToolCard(tool: toolCall.name) }
 
             case "create_recurring_expense":
                 if let r = try? JSONDecoder().decode(RecurringExpenseResult.self, from: data) {
+                    toolCompletionLabel
                     RecurringExpenseCard(result: r)
-                } else { GenericToolCard(tool: card.tool) }
+                } else { GenericToolCard(tool: toolCall.name) }
 
             case "list_recurring_expenses":
                 if let r = try? JSONDecoder().decode(RecurringExpenseListResult.self, from: data) {
+                    toolCompletionLabel
                     RecurringExpenseListCard(result: r, onSelectRecurring: onSelectRecurring)
-                } else { GenericToolCard(tool: card.tool) }
+                } else { GenericToolCard(tool: toolCall.name) }
 
             default:
-                GenericToolCard(tool: card.tool)
+                GenericToolCard(tool: toolCall.name)
             }
+        }
+    }
+
+    private var toolCompletionLabel: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(AppTheme.accent)
+                .font(.caption2)
+            Text(toolDisplayName(toolCall.name))
+                .font(.caption2).foregroundStyle(.secondary)
         }
     }
 }
@@ -484,7 +533,6 @@ struct ToolCardView: View {
 
 struct ExpenseCardView: View {
     let result: SaveExpenseResult
-    let cardId: UUID
     var budgetWarning: String? = nil
     @ObservedObject var viewModel: ChatViewModel
     var onSelectExpense: ((APIExpense) -> Void)? = nil
@@ -1231,7 +1279,7 @@ extension View {
 
 @MainActor
 class ChatViewModel: ObservableObject {
-    @Published var items: [ChatItem] = []
+    @Published var messages: [ChatMessage] = []
     @Published var inputText = ""
     @Published var isStreaming = false
     @Published var errorMessage: String?
@@ -1243,7 +1291,6 @@ class ChatViewModel: ObservableObject {
     @Published var availableCategories: [APICategory] = []
 
     let api = APIService()
-    private var hasBudgetStatusTool = false
 
     var canSend: Bool {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isStreaming
@@ -1254,9 +1301,11 @@ class ChatViewModel: ObservableObject {
     func sendMessage() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        items.append(.message(ChatMessage(content: text, isUser: true)))
+        messages.append(ChatMessage(content: text, isUser: true))
         inputText = ""
         isStreaming = true
+        // Placeholder assistant message (mirrors React useChat.ts)
+        messages.append(ChatMessage(content: "", isUser: false))
         await streamResponse(for: text)
         isStreaming = false
     }
@@ -1269,49 +1318,29 @@ class ChatViewModel: ObservableObject {
         do {
             try await api.streamChat(message: query, conversationId: conversationId) { [weak self] event in
                 guard let self else { return }
+                let lastIdx = self.messages.count - 1
+                guard lastIdx >= 0 else { return }
                 switch event {
                 case .conversationId(let id):
                     self.conversationId = id
                 case .text(let chunk):
-                    if case .message(var last) = self.items.last, !last.isUser {
-                        last.content += chunk
-                        self.items[self.items.count - 1] = .message(last)
-                    } else {
-                        self.items.append(.message(ChatMessage(content: chunk, isUser: false)))
-                    }
-                case .toolStart(let tool):
+                    self.messages[lastIdx].content += chunk
+                case .toolStart(let id, let tool):
                     self.pendingToolNames.append(tool)
-                case .toolEnd(let tool, let resultJSON):
+                    self.messages[lastIdx].toolCalls.append(ToolCall(id: id, name: tool))
+                case .toolEnd(let id, let tool, let resultJSON):
                     self.pendingToolNames.removeAll { $0 == tool }
-                    if tool == "get_budget_status" {
-                        // Always suppress get_budget_status from showing as a card.
-                        // Try to attach the warning to the last save_expense card.
-                        self.hasBudgetStatusTool = true
-                        if let data = resultJSON.data(using: .utf8),
-                           let result = try? JSONDecoder().decode(BudgetStatusResult.self, from: data) {
-                            let warning = result.budget_warning ?? ""
-                            if !warning.isEmpty,
-                               let idx = self.items.lastIndex(where: {
-                                   if case .toolCard(let c) = $0 { return c.tool == "save_expense" }
-                                   return false
-                               }),
-                               case .toolCard(var card) = self.items[idx] {
-                                card.budgetWarning = warning
-                                self.items[idx] = .toolCard(card)
-                            }
-                        }
-                    } else {
-                        self.items.append(.toolCard(ToolCard(tool: tool, resultJSON: resultJSON, timestamp: Date())))
+                    if let tcIdx = self.messages[lastIdx].toolCalls.firstIndex(where: { $0.id == id }) {
+                        self.messages[lastIdx].toolCalls[tcIdx] = ToolCall(id: id, name: tool, resultJSON: resultJSON)
                     }
                 case .done:
                     self.pendingToolNames.removeAll()
                     self.isStreaming = false
-                    // Match React frontend behavior: hide redundant text when
-                    // save_expense + get_budget_status pattern is detected
-                    if self.hasBudgetStatusTool {
-                        self.suppressExpenseConfirmationText()
+                    // Remove empty placeholder if no content or tools
+                    if self.messages[lastIdx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && self.messages[lastIdx].toolCalls.isEmpty {
+                        self.messages.remove(at: lastIdx)
                     }
-                    self.hasBudgetStatusTool = false
                 case .error(let msg):
                     self.errorMessage = msg
                     self.isStreaming = false
@@ -1339,21 +1368,16 @@ class ChatViewModel: ObservableObject {
             let isoFull = ISO8601DateFormatter()
             isoFull.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let isoBasic = ISO8601DateFormatter()
-            var loaded: [ChatItem] = []
+            var loaded: [ChatMessage] = []
             for msg in detail.messages {
                 let date = msg.timestamp.flatMap { isoFull.date(from: $0) ?? isoBasic.date(from: $0) } ?? Date()
-                if msg.role == "user" {
-                    loaded.append(.message(ChatMessage(content: msg.content, isUser: true, timestamp: date)))
-                } else if msg.role == "assistant" {
-                    for tc in msg.toolCalls {
-                        loaded.append(.toolCard(ToolCard(tool: tc.name, resultJSON: tc.resultJSON, timestamp: date)))
-                    }
-                    if !msg.content.isEmpty {
-                        loaded.append(.message(ChatMessage(content: msg.content, isUser: false, timestamp: date)))
-                    }
-                }
+                let toolCalls = msg.toolCalls.map { ToolCall(name: $0.name, resultJSON: $0.resultJSON) }
+                loaded.append(ChatMessage(
+                    content: msg.content, isUser: msg.role == "user",
+                    timestamp: date, toolCalls: toolCalls
+                ))
             }
-            items = loaded
+            messages = loaded
             conversationId = id
         } catch { }
     }
@@ -1373,7 +1397,7 @@ class ChatViewModel: ObservableObject {
     }
 
     func newConversation() {
-        items = []
+        messages = []
         conversationId = nil
     }
 
@@ -1382,27 +1406,7 @@ class ChatViewModel: ObservableObject {
     }
 
     func loadSuggestions() async {
-        items.append(.message(ChatMessage(content: "Ask me about your spending, budget, or to add an expense!", isUser: false)))
-    }
-
-    // MARK: Text Suppression
-
-    /// Matches React frontend behavior: when save_expense + get_budget_status
-    /// pattern is detected, hide the redundant assistant confirmation text
-    /// since the expense card + budget warning already convey the information.
-    private func suppressExpenseConfirmationText() {
-        let hasSaveCard = items.contains(where: {
-            if case .toolCard(let c) = $0 { return c.tool == "save_expense" }
-            return false
-        })
-        guard hasSaveCard else { return }
-
-        // Remove the trailing assistant text message (if any)
-        if let lastIdx = items.indices.last,
-           case .message(let msg) = items[lastIdx],
-           !msg.isUser {
-            items.remove(at: lastIdx)
-        }
+        messages.append(ChatMessage(content: "Ask me about your spending, budget, or to add an expense!", isUser: false))
     }
 
     // MARK: Pending Expenses
