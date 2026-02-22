@@ -13,6 +13,7 @@
 		AF19A5C02F4418AF00B37B41 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = AF19A5BF2F4418AF00B37B41 /* FirebaseFirestore */; };
 		AF19A5C22F4418AF00B37B41 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = AF19A5C12F4418AF00B37B41 /* FirebaseFunctions */; };
 		AF19A5C42F4418AF00B37B41 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = AF19A5C32F4418AF00B37B41 /* FirebaseStorage */; };
+		AF7BE6BC2F4A7FF900A93ADE /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = AF7BE6BB2F4A7FF900A93ADE /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -51,6 +52,7 @@
 				AF19A5BE2F4418AF00B37B41 /* FirebaseCore in Frameworks */,
 				AF19A5BC2F4418AF00B37B41 /* FirebaseAuth in Frameworks */,
 				AF19A5C42F4418AF00B37B41 /* FirebaseStorage in Frameworks */,
+				AF7BE6BC2F4A7FF900A93ADE /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -107,6 +109,7 @@
 				AF19A5BF2F4418AF00B37B41 /* FirebaseFirestore */,
 				AF19A5C12F4418AF00B37B41 /* FirebaseFunctions */,
 				AF19A5C32F4418AF00B37B41 /* FirebaseStorage */,
+				AF7BE6BB2F4A7FF900A93ADE /* GoogleSignIn */,
 			);
 			productName = BudgetMasterApp;
 			productReference = AA000000000000000004 /* BudgetMasterLH.app */;
@@ -139,6 +142,7 @@
 			packageReferences = (
 				AFF2DDEA2F3D7F6500FBB92F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				AF19A57D2F44174000B37B41 /* XCLocalSwiftPackageReference "../BudgetMaster" */,
+				AF7BE6BA2F4A7FF900A93ADE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA000000000000000003 /* Products */;
@@ -312,7 +316,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.01;
+				MARKETING_VERSION = 1.01.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.budgetmaster.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -341,7 +345,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.01;
+				MARKETING_VERSION = 1.01.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.budgetmaster.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -381,6 +385,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		AF7BE6BA2F4A7FF900A93ADE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.1.0;
+			};
+		};
 		AFF2DDEA2F3D7F6500FBB92F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
@@ -420,6 +432,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AFF2DDEA2F3D7F6500FBB92F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
+		};
+		AF7BE6BB2F4A7FF900A93ADE /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AF7BE6BA2F4A7FF900A93ADE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

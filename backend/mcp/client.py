@@ -298,12 +298,16 @@ class ExpenseMCPClient:
             from backend.output_schemas import ExpenseType
             category_enum = [e.name for e in ExpenseType]
 
-        # Patch tool schemas to use user's dynamic categories
+        # Patch tool schemas: use user's dynamic categories and strip auth_token
+        # (auth_token is injected server-side before execution, models should never see it)
         for tool in response.tools:
+            patched_schema = self._patch_category_enum(tool.inputSchema, category_enum)
+            props = {k: v for k, v in patched_schema.get("properties", {}).items() if k != "auth_token"}
+            required = [r for r in patched_schema.get("required", []) if r != "auth_token"]
             tool_schema = {
                 "name": tool.name,
                 "description": tool.description,
-                "input_schema": self._patch_category_enum(tool.inputSchema, category_enum)
+                "input_schema": {**patched_schema, "properties": props, "required": required},
             }
             available_tools.append(tool_schema)
 
@@ -437,12 +441,12 @@ class ExpenseMCPClient:
                 except json.JSONDecodeError:
                     logger.warning("Could not parse tool result as JSON: %s", result_text)
 
-                # Add tool_use to assistant content
+                # Add tool_use to assistant content (strip auth_token from context)
                 assistant_content.append({
                     "type": "tool_use",
                     "id": tool_use_id,
                     "name": tool_name,
-                    "input": tool_args
+                    "input": {k: v for k, v in tool_args.items() if k != "auth_token"},
                 })
 
                 # Collect tool result

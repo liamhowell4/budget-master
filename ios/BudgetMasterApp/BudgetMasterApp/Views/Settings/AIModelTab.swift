@@ -15,8 +15,8 @@ struct AIModelTab: View {
             ("gpt-5.1", "GPT-5.1"),
         ]),
         ("Google", [
-            ("gemini-3.1-pro", "Gemini 3.1 Pro"),
-            ("gemini-3-flash", "Gemini 3 Flash"),
+            ("gemini-3.1-pro-preview", "Gemini 3.1 Pro"),
+            ("gemini-3-flash-preview", "Gemini 3 Flash"),
         ]),
     ]
 

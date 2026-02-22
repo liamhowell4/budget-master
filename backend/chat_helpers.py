@@ -143,12 +143,19 @@ async def run_claude_tool_loop(
         firebase_client_instance: FirebaseClient scoped to the user (optional).
     """
     # Get available tools from MCP server
+    # Strip auth_token from schemas — it's injected server-side before execution,
+    # so models should never see or attempt to fill it.
     mcp_response = await client.session.list_tools()
-    available_tools = [{
-        "name": tool.name,
-        "description": tool.description,
-        "input_schema": tool.inputSchema,
-    } for tool in mcp_response.tools]
+    available_tools = []
+    for tool in mcp_response.tools:
+        schema = tool.inputSchema
+        props = {k: v for k, v in schema.get("properties", {}).items() if k != "auth_token"}
+        required = [r for r in schema.get("required", []) if r != "auth_token"]
+        available_tools.append({
+            "name": tool.name,
+            "description": tool.description,
+            "input_schema": {**schema, "properties": props, "required": required},
+        })
 
     model_client = UnifiedModelClient(model)
     provider = SUPPORTED_MODELS[model]["provider"]
@@ -242,12 +249,12 @@ async def run_claude_tool_loop(
                 "result": parsed_result,
             })
 
-            # Add tool_use to assistant content
+            # Add tool_use to assistant content (strip auth_token from context)
             assistant_content.append({
                 "type": "tool_use",
                 "id": tool_use_id,
                 "name": tool_name,
-                "input": tool_args,
+                "input": {k: v for k, v in tool_args.items() if k != "auth_token"},
             })
 
             # Collect tool result

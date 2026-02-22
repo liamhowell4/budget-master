@@ -28,6 +28,17 @@
 	<string>Budget Master uses the camera to capture receipts.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Budget Master accesses your photos to upload receipt images.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.857587891388-e5ve5mip10nalh475gbvhe2nk7dc3mdc</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
