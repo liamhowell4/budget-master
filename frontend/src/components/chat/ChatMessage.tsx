@@ -75,13 +75,15 @@ export function ChatMessage({ message, deletedExpenseIds, onExpenseDelete, onExp
         >
           <div
             className={cn(
-              'max-w-[85%] rounded-lg px-3.5 py-2.5',
               isUser
-                ? 'bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900'
-                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 border border-neutral-200 dark:border-neutral-700'
+                ? 'max-w-[85%] rounded-lg px-3.5 py-2.5 bg-[var(--text-primary)] text-[var(--text-inverted)]'
+                : 'max-w-[90%] pl-1'
             )}
           >
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+            <p className={cn(
+              'whitespace-pre-wrap text-sm leading-relaxed',
+              isUser ? '' : 'text-[var(--text-primary)]'
+            )}>{message.content}</p>
           </div>
         </div>
       )}

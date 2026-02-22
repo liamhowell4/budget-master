@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject var authManager: AuthenticationManager
+    @Environment(\.appBackgroundTint) private var backgroundTint
 
     @State private var email = ""
     @State private var password = ""
@@ -16,8 +17,17 @@ struct LoginView: View {
 
     var body: some View {
         ZStack {
-            Color(uiColor: .systemGroupedBackground)
-                .ignoresSafeArea()
+            // Use the theme tint when available (authenticated theme context);
+            // fall back to the system grouped background when tint is clear
+            // (pre-auth context where no theme is injected).
+            Group {
+                if backgroundTint == .clear {
+                    Color(uiColor: .systemGroupedBackground)
+                } else {
+                    backgroundTint
+                }
+            }
+            .ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 32) {

@@ -34,9 +34,9 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="min-h-[calc(100dvh-3.5rem)] bg-neutral-50 dark:bg-neutral-950">
+    <div className="min-h-[calc(100dvh-3.5rem)] bg-[var(--bg-primary)]">
       <div className="max-w-4xl mx-auto px-4 py-6">
-        <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 mb-6">
+        <h1 className="text-xl font-semibold text-[var(--text-primary)] mb-6">
           Settings
         </h1>
 
@@ -52,7 +52,7 @@ export function SettingsPage() {
                     {isActive && (
                       <motion.div
                         layoutId="activeTab"
-                        className="absolute inset-0 bg-white dark:bg-neutral-900 rounded-lg shadow-sm border border-neutral-200 dark:border-neutral-800"
+                        className="absolute inset-0 bg-[var(--surface-primary)] rounded-lg shadow-sm border border-[var(--border-primary)]"
                         transition={{ type: 'spring', bounce: 0.2, duration: 0.4 }}
                       />
                     )}
@@ -62,8 +62,8 @@ export function SettingsPage() {
                         'relative w-full flex items-center gap-2 px-3 py-2',
                         'text-sm font-medium rounded-lg transition-colors',
                         isActive
-                          ? 'text-neutral-900 dark:text-neutral-100'
-                          : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-900'
+                          ? 'text-[var(--text-primary)]'
+                          : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
                       )}
                     >
                       <Icon className="h-4 w-4" />
@@ -77,7 +77,7 @@ export function SettingsPage() {
 
           {/* Content area */}
           <div className="flex-1 min-w-0">
-            <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6 overflow-hidden">
+            <div className="bg-[var(--surface-primary)] rounded-xl border border-[var(--border-primary)] p-4 sm:p-6 overflow-hidden">
               <AnimatePresence mode="wait" initial={false} custom={direction}>
                 <motion.div
                   key={activeTab}

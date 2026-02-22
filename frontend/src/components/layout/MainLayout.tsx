@@ -7,7 +7,7 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   return (
-    <div className="min-h-[100dvh] bg-white dark:bg-neutral-950">
+    <div className="min-h-[100dvh] bg-[var(--bg-primary)]">
       <Header />
       <main className="flex-1">
         {children}

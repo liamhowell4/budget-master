@@ -100,6 +100,7 @@ struct ChatView: View {
     @StateObject private var viewModel = ChatViewModel()
     @StateObject private var voiceRecorder = VoiceRecorder()
     @Environment(\.appAccent) private var appAccent
+    @Environment(\.appBackgroundTint) private var backgroundTint
     @FocusState private var isInputFocused: Bool
     @State private var showHistory = false
     @State private var showBudgetSidebar = false
@@ -220,7 +221,7 @@ struct ChatView: View {
                     } label: {
                         Text(s).font(.subheadline).fontWeight(.medium)
                             .padding(.horizontal, 14).padding(.vertical, 10)
-                            .background(Color(uiColor: .secondarySystemBackground))
+                            .background(backgroundTint.opacity(0.5))
                             .clipShape(Capsule())
                     }.foregroundStyle(.primary)
                 }
@@ -417,9 +418,9 @@ struct ChatView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color(uiColor: .systemGray))
+                    .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
-                    .background(Color(uiColor: .systemGray5))
+                    .background(.secondary.opacity(0.15))
                     .clipShape(Circle())
             }
             .accessibilityLabel("Cancel recording")
@@ -451,9 +452,9 @@ struct ChatView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color(uiColor: .systemGray))
+                    .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
-                    .background(Color(uiColor: .systemGray5))
+                    .background(.secondary.opacity(0.15))
                     .clipShape(Circle())
             }
             .accessibilityLabel("Discard recording")
@@ -535,12 +536,12 @@ struct ChatView: View {
         let gesture = longPress.sequenced(before: drag)
 
         return Circle()
-            .fill(Color(uiColor: .systemGray5))
+            .fill(.secondary.opacity(0.15))
             .frame(width: 32, height: 32)
             .overlay {
                 Image(systemName: "mic.fill")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color(uiColor: .systemGray))
+                    .foregroundStyle(.secondary)
             }
             // Tap for quick start
             .onTapGesture {
@@ -674,28 +675,31 @@ struct MessageBubble: View {
 
     @Environment(\.appUserBubble) private var userBubble
     @Environment(\.appUserBubbleText) private var userBubbleText
-    @Environment(\.appAiBubble) private var aiBubble
-    @Environment(\.appAiBubbleText) private var aiBubbleText
 
     var body: some View {
         HStack {
             if message.isUser { Spacer(minLength: 60) }
             VStack(alignment: message.isUser ? .trailing : .leading, spacing: 4) {
-                Text(message.content)
-                    .font(.subheadline).padding(12)
-                    .background(message.isUser ? userBubble : aiBubble)
-                    .foregroundStyle(message.isUser ? userBubbleText : aiBubbleText)
-                    .overlay {
-                        if !message.isUser {
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color(uiColor: .quaternaryLabel), lineWidth: 0.5)
-                        }
-                    }
-                    .cornerRadius(16)
+                if message.isUser {
+                    // User bubble: themed background with text color
+                    Text(message.content)
+                        .font(.subheadline).padding(12)
+                        .background(userBubble)
+                        .foregroundStyle(userBubbleText)
+                        .cornerRadius(16)
+                } else {
+                    // AI text: no bubble — conversational prose rendered directly
+                    // with leading padding to align with the left margin of cards.
+                    Text(message.content)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 Text(message.timestamp, style: .time)
                     .font(.caption2).foregroundStyle(.secondary)
             }
-            if !message.isUser { Spacer(minLength: 60) }
+            if !message.isUser { Spacer(minLength: 0) }
         }
         .padding(.horizontal)
     }
@@ -1251,7 +1255,7 @@ struct TopExpensesCard: View {
                     Text("\(idx + 1)")
                         .font(.caption2).fontWeight(.bold)
                         .frame(width: 18, height: 18)
-                        .background(idx == 0 ? Color.orange.opacity(0.2) : Color(uiColor: .systemGray5))
+                        .background(idx == 0 ? Color.orange.opacity(0.2) : .secondary.opacity(0.15))
                         .clipShape(Circle())
                     Circle().fill(AppTheme.categoryColor(e.category ?? "")).frame(width: 6, height: 6)
                     Text(e.name).font(.caption).lineLimit(1)
@@ -1375,7 +1379,7 @@ struct RecurringExpenseListCard: View {
                     Text(e.frequency.capitalized)
                         .font(.caption2)
                         .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Color(uiColor: .systemGray5))
+                        .background(.secondary.opacity(0.15))
                         .clipShape(Capsule())
                     Text(e.amount, format: .currency(code: "USD")).font(.caption).fontWeight(.semibold)
                 }
@@ -1745,12 +1749,15 @@ struct BudgetSidebarSheet: View {
 // MARK: - Card Style Extension
 
 extension View {
+    /// Applies the shared surface style for AI tool-result cards.
+    /// Uses ultraThinMaterial so the card picks up the theme's background tint
+    /// that is rendered behind the full screen by ContentView's ZStack underlay.
     func cardStyle() -> some View {
         self
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemBackground))
+            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(uiColor: .separator), lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color(uiColor: .separator).opacity(0.6), lineWidth: 0.5))
     }
 }
 

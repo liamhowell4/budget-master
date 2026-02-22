@@ -8,6 +8,7 @@ struct OnboardingView: View {
 
     @EnvironmentObject private var authManager: AuthenticationManager
     @Environment(\.appAccent) private var appAccent
+    @Environment(\.appBackgroundTint) private var backgroundTint
     @State private var currentStep = 0
     @State private var totalBudget: Double = 0
     @State private var budgetText = ""
@@ -25,7 +26,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            Color(uiColor: .systemGroupedBackground)
+            backgroundTint
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -643,7 +644,7 @@ struct OnboardingView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(Color(uiColor: .systemGray5))
+                .background(.secondary.opacity(0.15))
                 .clipShape(Capsule())
         }
         .padding(14)
@@ -1008,7 +1009,7 @@ struct AddCustomCategorySheet: View {
                             .foregroundStyle(.secondary)
                         TextField("Category name", text: $name)
                             .padding(14)
-                            .background(Color(uiColor: .secondarySystemBackground))
+                            .background(.secondary.opacity(0.1))
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .padding(.horizontal, 24)
@@ -1025,7 +1026,7 @@ struct AddCustomCategorySheet: View {
                                 .keyboardType(.decimalPad)
                         }
                         .padding(14)
-                        .background(Color(uiColor: .secondarySystemBackground))
+                        .background(.secondary.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .padding(.horizontal, 24)
@@ -1052,7 +1053,7 @@ struct AddCustomCategorySheet: View {
                                         .background(
                                             selectedIcon == icon
                                                 ? (Color(hex: selectedColor) ?? .gray)
-                                                : Color(uiColor: .secondarySystemBackground)
+                                                : Color.secondary.opacity(0.1)
                                         )
                                         .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
