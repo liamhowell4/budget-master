@@ -11,19 +11,19 @@ public struct MCPServer: Codable, Sendable, Identifiable {
 
 // MARK: - ServerTool
 
+/// JSON keys: "name", "description", "input_schema"
+/// `APIClient` decodes with `convertFromSnakeCase`: "input_schema" → "inputSchema".
+/// Swift property `inputSchema` matches; no custom CodingKeys needed.
 public struct ServerTool: Codable, Sendable {
     public let name: String
     public let description: String?
     public let inputSchema: AnyCodable?
-
-    enum CodingKeys: String, CodingKey {
-        case name, description
-        case inputSchema = "input_schema"
-    }
 }
 
 // MARK: - ServerConnectResponse
 
+/// JSON keys: "success", "server_id", "server_name", "tools"
+/// convertFromSnakeCase: "server_id" → "serverId", "server_name" → "serverName"
 public struct ServerConnectResponse: Codable, Sendable {
     public let success: Bool
     public let serverId: String
@@ -33,6 +33,8 @@ public struct ServerConnectResponse: Codable, Sendable {
 
 // MARK: - ServerStatus
 
+/// JSON keys: "connected", "server_id", "tools"
+/// convertFromSnakeCase: "server_id" → "serverId"
 public struct ServerStatus: Codable, Sendable {
     public let connected: Bool
     public let serverId: String?

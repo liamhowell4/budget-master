@@ -2,6 +2,9 @@ import Foundation
 
 // MARK: - ChatRequest
 
+/// Encoded via `APIClient` with `keyEncodingStrategy = .convertToSnakeCase`.
+/// Property names are camelCase; the strategy converts them to snake_case automatically.
+/// `conversationId` encodes as `"conversation_id"`, which is what the backend expects.
 public struct ChatRequest: Codable, Sendable {
     public let message: String
     public let conversationId: String?
@@ -9,11 +12,6 @@ public struct ChatRequest: Codable, Sendable {
     public init(message: String, conversationId: String? = nil) {
         self.message = message
         self.conversationId = conversationId
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case message
-        case conversationId = "conversation_id"
     }
 }
 
@@ -41,14 +39,12 @@ public struct ToolCallStored: Codable, Sendable {
 
 // MARK: - StoredMessage
 
+/// JSON keys: "role", "content", "timestamp", "tool_calls"
+/// `APIClient` decodes with `convertFromSnakeCase`: "tool_calls" → "toolCalls".
+/// Swift property `toolCalls` matches; no custom CodingKeys needed.
 public struct StoredMessage: Codable, Sendable {
     public let role: String
     public let content: String
     public let timestamp: String?
     public let toolCalls: [ToolCallStored]?
-
-    enum CodingKeys: String, CodingKey {
-        case role, content, timestamp
-        case toolCalls = "tool_calls"
-    }
 }

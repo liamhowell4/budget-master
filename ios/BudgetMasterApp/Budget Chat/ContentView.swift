@@ -65,22 +65,33 @@ struct ContentView: View {
     // MARK: - Authenticated Layout
 
     private var authenticatedView: some View {
-        TabView {
-            DashboardView()
-                .tabItem { Label("Dashboard", systemImage: "chart.pie") }
-                .tag(0)
+        // ZStack wrapping the TabView so SwiftUI — not UIKit — owns the
+        // background layer. Applying .background() directly on a TabView targets
+        // the UITabBarController's UIView.backgroundColor, which UIKit manages
+        // independently of SwiftUI's layout/diffing pass; it may not update when
+        // theme tokens change. Rendering the tint color as a ZStack underlay
+        // ensures full reactive re-rendering whenever resolvedScheme changes.
+        ZStack {
+            resolvedScheme.backgroundTint
+                .ignoresSafeArea()
 
-            ChatView()
-                .tabItem { Label("Chat", systemImage: "message") }
-                .tag(1)
+            TabView {
+                DashboardView()
+                    .tabItem { Label("Dashboard", systemImage: "chart.pie") }
+                    .tag(0)
 
-            ExpensesView()
-                .tabItem { Label("Expenses", systemImage: "dollarsign.circle") }
-                .tag(2)
+                ChatView()
+                    .tabItem { Label("Chat", systemImage: "message") }
+                    .tag(1)
 
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
-                .tag(3)
+                ExpensesView()
+                    .tabItem { Label("Expenses", systemImage: "dollarsign.circle") }
+                    .tag(2)
+
+                SettingsView()
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
+                    .tag(3)
+            }
         }
         // Propagate all resolved theme tokens through the environment so every
         // descendant view can read them via @Environment, and set .tint so
@@ -92,9 +103,7 @@ struct ContentView: View {
         .environment(\.appAiBubble, resolvedScheme.aiBubbleColor)
         .environment(\.appAiBubbleText, resolvedScheme.aiBubbleText)
         .tint(resolvedAccent)
-        // Subtle background tint gives the root canvas the theme's personality
-        // without competing with the glass-effect materials layered on top.
-        .background(resolvedScheme.backgroundTint.ignoresSafeArea())
+        .animation(.easeInOut(duration: 0.25), value: resolvedScheme.id)
     }
 
     // MARK: - Onboarding Check

@@ -260,15 +260,6 @@ struct DashboardView: View {
             return appAccent
         }()
 
-        let paceLabel: String = {
-            let formatted = String(format: "%.1fx pace", pace)
-            if paceDifference > 0 {
-                return "\(formatted)  --  \(formatCurrency(abs(paceDifference))) over"
-            } else {
-                return "\(formatted)  --  \(formatCurrency(abs(paceDifference))) under"
-            }
-        }()
-
         return VStack(spacing: 10) {
             HStack {
                 Image(systemName: "gauge.with.dots.needle.50percent")

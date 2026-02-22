@@ -1,7 +1,6 @@
 import Foundation
 import FirebaseAuth
 import FirebaseCore
-import Combine
 import GoogleSignIn
 import AuthenticationServices
 import CryptoKit
@@ -16,7 +15,6 @@ class AuthenticationManager: ObservableObject {
     @Published var isLoading = true // true until Firebase resolves the initial auth state
 
     private var authStateHandle: AuthStateDidChangeListenerHandle?
-    private var cancellables = Set<AnyCancellable>()
 
     // Held across the async Apple Sign-In flow; must survive from request → delegate callback
     private var currentNonce: String?
@@ -373,11 +371,44 @@ private final class AppleSignInCoordinator: NSObject,
     // MARK: ASAuthorizationControllerPresentationContextProviding
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        // Return the key window of the first connected scene
-        let scene = UIApplication.shared.connectedScenes
+        // Walk connected scenes from most-active to least-active and return the key window.
+        // UIWindowScene.keyWindow (iOS 15+) is the correct, non-deprecated API.
+        // We never return a bare UIWindow() — a detached window with no scene will itself
+        // trigger ASAuthorizationError 1000 because AuthenticationServices cannot present
+        // its sheet from a window that has no scene attachment.
+        let scenes = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }
-        return scene?.windows.first { $0.isKeyWindow } ?? UIWindow()
+
+        // Prefer the foreground-active scene with a key window.
+        if let window = scenes
+            .first(where: { $0.activationState == .foregroundActive })?
+            .keyWindow {
+            return window
+        }
+
+        // Fall back to any foreground scene that has a key window (covers foreground-inactive).
+        if let window = scenes
+            .first(where: { $0.activationState == .foregroundInactive })?
+            .keyWindow {
+            return window
+        }
+
+        // Last resort: any scene's key window. This should never be reached in practice,
+        // but is safer than constructing a detached UIWindow().
+        if let window = scenes.compactMap({ $0.keyWindow }).first {
+            return window
+        }
+
+        // Absolute fallback — construct a window attached to the first available scene
+        // so AuthenticationServices can at least derive a scene from the window's windowScene.
+        if let scene = scenes.first {
+            let fallback = UIWindow(windowScene: scene)
+            return fallback
+        }
+
+        // If there are truly no connected scenes, return an empty UIWindow.
+        // This path should be unreachable in a running app.
+        return UIWindow()
     }
 }
 

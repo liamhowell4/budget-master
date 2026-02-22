@@ -144,16 +144,38 @@ extension ThemeColorScheme {
 final class ThemeManager: ObservableObject {
 
     // MARK: Persisted preferences
+    //
+    // Theme preferences use @Published so SwiftUI dependency tracking correctly
+    // registers re-renders. Each property writes through to UserDefaults in didSet
+    // so values survive app restarts. We avoid @AppStorage here because it does not
+    // reliably trigger objectWillChange on ObservableObject classes, which caused
+    // background colors to not update on theme switch.
 
-    @AppStorage("useSystemTheme") var useSystemTheme: Bool = true
-    @AppStorage("preferredLightTheme") var preferredLightTheme: String = "light-classic"
-    @AppStorage("preferredDarkTheme") var preferredDarkTheme: String = "dark-charcoal"
-    @AppStorage("manualTheme") var manualTheme: String = "light-classic"
+    @Published var useSystemTheme: Bool {
+        didSet { UserDefaults.standard.set(useSystemTheme, forKey: "useSystemTheme") }
+    }
+
+    @Published var preferredLightTheme: String {
+        didSet { UserDefaults.standard.set(preferredLightTheme, forKey: "preferredLightTheme") }
+    }
+
+    @Published var preferredDarkTheme: String {
+        didSet { UserDefaults.standard.set(preferredDarkTheme, forKey: "preferredDarkTheme") }
+    }
+
+    @Published var manualTheme: String {
+        didSet { UserDefaults.standard.set(manualTheme, forKey: "manualTheme") }
+    }
+
+    init() {
+        self.useSystemTheme = UserDefaults.standard.object(forKey: "useSystemTheme") as? Bool ?? true
+        self.preferredLightTheme = UserDefaults.standard.string(forKey: "preferredLightTheme") ?? "light-classic"
+        self.preferredDarkTheme = UserDefaults.standard.string(forKey: "preferredDarkTheme") ?? "dark-charcoal"
+        self.manualTheme = UserDefaults.standard.string(forKey: "manualTheme") ?? "light-classic"
+    }
 
     // MARK: Computed properties
 
-    /// The scheme ID that is currently active, resolved from system appearance
-    /// when `useSystemTheme` is true, or from `manualTheme` otherwise.
     func activeScheme(systemColorScheme: ColorScheme) -> ThemeColorScheme {
         let id: String
         if useSystemTheme {
@@ -161,13 +183,10 @@ final class ThemeManager: ObservableObject {
         } else {
             id = manualTheme
         }
-        // Falls back to allSchemes[0] gracefully — handles migration from old theme IDs.
         return ThemeColorScheme.scheme(for: id)
             ?? ThemeColorScheme.allSchemes[0]
     }
 
-    /// The SwiftUI `ColorScheme` the app should present.
-    /// Returns `nil` when tracking the system (lets the OS decide).
     var activeColorScheme: ColorScheme? {
         guard !useSystemTheme else { return nil }
         guard let scheme = ThemeColorScheme.scheme(for: manualTheme) else { return nil }

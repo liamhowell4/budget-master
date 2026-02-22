@@ -3,6 +3,18 @@ import PhotosUI
 
 // MARK: - Data Models
 
+// MARK: AudioMetadata
+
+/// Metadata attached to a voice memo ChatMessage.
+struct AudioMetadata {
+    /// Total duration of the recording in seconds.
+    let duration: TimeInterval
+    /// Normalized amplitude samples (0...1) captured during recording.
+    let waveformSamples: [Float]
+    /// Persistent local file URL in the caches directory for in-app playback.
+    var localFileURL: URL?
+}
+
 struct ToolCall: Identifiable {
     let id: String
     let name: String
@@ -21,12 +33,16 @@ struct ChatMessage: Identifiable {
     let isUser: Bool
     let timestamp: Date
     var toolCalls: [ToolCall]
+    var audioMetadata: AudioMetadata?
 
-    init(content: String, isUser: Bool, timestamp: Date = Date(), toolCalls: [ToolCall] = []) {
+    var isAudioMessage: Bool { audioMetadata != nil }
+
+    init(content: String, isUser: Bool, timestamp: Date = Date(), toolCalls: [ToolCall] = [], audioMetadata: AudioMetadata? = nil) {
         self.content = content
         self.isUser = isUser
         self.timestamp = timestamp
         self.toolCalls = toolCalls
+        self.audioMetadata = audioMetadata
     }
 
     /// Detects the save_expense + get_budget_status pattern (mirrors React ChatMessage.tsx)
@@ -267,119 +283,14 @@ struct ChatView: View {
 
     private var inputArea: some View {
         VStack(spacing: 8) {
-            // Image preview
-            if let imageData = selectedImageData, let uiImage = UIImage(data: imageData) {
-                HStack {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 60, height: 60)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(alignment: .topTrailing) {
-                            Button {
-                                selectedImageData = nil
-                                selectedPhotoItem = nil
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.white)
-                                    .background(Circle().fill(.black.opacity(0.6)))
-                            }
-                            .offset(x: 4, y: -4)
-                        }
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
+            switch voiceRecorder.state {
+            case .idle:
+                idleInputContent
+            case .recording:
+                recordingInputContent
+            case .preview:
+                previewInputContent
             }
-
-            // Recording indicator
-            if voiceRecorder.isRecording {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(.red)
-                        .frame(width: 8, height: 8)
-                        .modifier(PulsingModifier())
-                    Text("Recording \(voiceRecorder.formattedDuration)")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .fontWeight(.medium)
-                    Spacer()
-                    Button {
-                        voiceRecorder.cancelRecording()
-                    } label: {
-                        Text("Cancel")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-
-            HStack(spacing: 10) {
-                // Photo picker button
-                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                    Image(systemName: "photo")
-                        .font(.system(size: 18))
-                        .foregroundStyle(selectedImageData != nil ? appAccent : Color(uiColor: .systemGray))
-                }
-                .onChange(of: selectedPhotoItem) { _, newItem in
-                    Task {
-                        if let data = try? await newItem?.loadTransferable(type: Data.self),
-                           let uiImage = UIImage(data: data),
-                           let compressed = uiImage.jpegData(compressionQuality: 0.7) {
-                            selectedImageData = compressed
-                        }
-                    }
-                }
-                .disabled(voiceRecorder.isRecording)
-
-                TextField("Track an expense...", text: $viewModel.inputText, axis: .vertical)
-                    .textFieldStyle(.plain).lineLimit(1...4).focused($isInputFocused)
-                    .disabled(voiceRecorder.isRecording)
-
-                // Mic button
-                Button {
-                    if voiceRecorder.isRecording {
-                        if let audioURL = voiceRecorder.stopRecording() {
-                            Task { await viewModel.sendAudio(url: audioURL, text: viewModel.inputText) }
-                        }
-                    } else {
-                        voiceRecorder.startRecording()
-                    }
-                } label: {
-                    Circle()
-                        .fill(voiceRecorder.isRecording ? .red : Color(uiColor: .systemGray5))
-                        .frame(width: 32, height: 32)
-                        .overlay {
-                            Image(systemName: voiceRecorder.isRecording ? "stop.fill" : "mic.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(voiceRecorder.isRecording ? .white : Color(uiColor: .systemGray))
-                        }
-                }
-
-                // Send button
-                Button {
-                    Task {
-                        if let imageData = selectedImageData {
-                            await viewModel.sendImage(data: imageData, text: viewModel.inputText)
-                            selectedImageData = nil
-                            selectedPhotoItem = nil
-                        } else {
-                            await viewModel.sendMessage()
-                        }
-                    }
-                } label: {
-                    Circle()
-                        .fill(canSendAnything ? Color(uiColor: .label) : Color(uiColor: .systemGray4))
-                        .frame(width: 32, height: 32)
-                        .overlay {
-                            Image(systemName: "arrow.up").font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(canSendAnything
-                                    ? Color(uiColor: .systemBackground) : Color(uiColor: .systemGray2))
-                        }
-                }.disabled(!canSendAnything)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 10).glassInput()
         }
         .alert("Microphone Access Denied", isPresented: $voiceRecorder.permissionDenied) {
             Button("Open Settings") {
@@ -393,9 +304,256 @@ struct ChatView: View {
         }
     }
 
+    // MARK: Idle Input
+
+    @ViewBuilder
+    private var idleInputContent: some View {
+        // Image preview row — only shown in idle state
+        if let imageData = selectedImageData, let uiImage = UIImage(data: imageData) {
+            HStack {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 60, height: 60)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            selectedImageData = nil
+                            selectedPhotoItem = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.white)
+                                .background(Circle().fill(.black.opacity(0.6)))
+                        }
+                        .offset(x: 4, y: -4)
+                    }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+        }
+
+        HStack(spacing: 10) {
+            // Photo picker button
+            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                Image(systemName: "photo")
+                    .font(.system(size: 18))
+                    .foregroundStyle(selectedImageData != nil ? appAccent : Color(uiColor: .systemGray))
+            }
+            .onChange(of: selectedPhotoItem) { _, newItem in
+                Task {
+                    if let data = try? await newItem?.loadTransferable(type: Data.self),
+                       let uiImage = UIImage(data: data),
+                       let compressed = uiImage.jpegData(compressionQuality: 0.7) {
+                        selectedImageData = compressed
+                    }
+                }
+            }
+
+            TextField("Track an expense...", text: $viewModel.inputText, axis: .vertical)
+                .textFieldStyle(.plain).lineLimit(1...4).focused($isInputFocused)
+
+            // Mic button: tap to start, long-press-and-release also starts then stops to preview
+            micButton
+
+            // Send button
+            Button {
+                Task {
+                    if let imageData = selectedImageData {
+                        await viewModel.sendImage(data: imageData, text: viewModel.inputText)
+                        selectedImageData = nil
+                        selectedPhotoItem = nil
+                    } else {
+                        await viewModel.sendMessage()
+                    }
+                }
+            } label: {
+                Circle()
+                    .fill(canSendAnything ? Color(uiColor: .label) : Color(uiColor: .systemGray4))
+                    .frame(width: 32, height: 32)
+                    .overlay {
+                        Image(systemName: "arrow.up").font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(canSendAnything
+                                ? Color(uiColor: .systemBackground) : Color(uiColor: .systemGray2))
+                    }
+            }.disabled(!canSendAnything)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10).glassInput()
+    }
+
+    // MARK: Recording Input
+
+    @ViewBuilder
+    private var recordingInputContent: some View {
+        HStack(spacing: 12) {
+            // Pulsing record indicator
+            Circle()
+                .fill(.red)
+                .frame(width: 10, height: 10)
+                .modifier(PulsingModifier())
+
+            // Live waveform — show the most recent samples so the display stays
+            // bounded and doesn't require constant layout recalculation
+            WaveformView(
+                samples: Array(voiceRecorder.waveformSamples.suffix(50)),
+                progress: 1.0,
+                activeColor: .red,
+                inactiveColor: Color(uiColor: .systemGray4)
+            )
+            .frame(height: 28)
+
+            // Duration counter
+            Text(voiceRecorder.formattedDuration)
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(.red)
+                .fontWeight(.medium)
+                .frame(minWidth: 36, alignment: .trailing)
+
+            Spacer(minLength: 0)
+
+            // Cancel
+            Button {
+                voiceRecorder.cancelRecording()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color(uiColor: .systemGray))
+                    .frame(width: 28, height: 28)
+                    .background(Color(uiColor: .systemGray5))
+                    .clipShape(Circle())
+            }
+            .accessibilityLabel("Cancel recording")
+
+            // Stop → preview
+            Button {
+                voiceRecorder.stopRecording()
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+                    .background(Color.red)
+                    .clipShape(Circle())
+            }
+            .accessibilityLabel("Stop and preview recording")
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10).glassInput()
+    }
+
+    // MARK: Preview Input
+
+    @ViewBuilder
+    private var previewInputContent: some View {
+        HStack(spacing: 12) {
+            // Cancel / discard
+            Button {
+                voiceRecorder.cancelRecording()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color(uiColor: .systemGray))
+                    .frame(width: 28, height: 28)
+                    .background(Color(uiColor: .systemGray5))
+                    .clipShape(Circle())
+            }
+            .accessibilityLabel("Discard recording")
+
+            // Play / pause toggle
+            Button {
+                if voiceRecorder.isPlaying {
+                    voiceRecorder.pausePreview()
+                } else {
+                    voiceRecorder.playPreview()
+                }
+            } label: {
+                Image(systemName: voiceRecorder.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(appAccent)
+                    .clipShape(Circle())
+            }
+            .accessibilityLabel(voiceRecorder.isPlaying ? "Pause preview" : "Play preview")
+
+            // Static waveform with playback scrub position
+            WaveformView(
+                samples: voiceRecorder.waveformSamples,
+                progress: voiceRecorder.isPlaying ? voiceRecorder.playbackProgress : 1.0,
+                activeColor: appAccent,
+                inactiveColor: Color(uiColor: .systemGray4)
+            )
+            .frame(height: 28)
+
+            // Duration
+            Text(voiceRecorder.formattedDuration)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .fontWeight(.medium)
+
+            // Send — capture samples and duration BEFORE finishAndGetURL() resets state
+            Button {
+                let samples = voiceRecorder.waveformSamples
+                let duration = voiceRecorder.recordingDuration
+                guard let audioURL = voiceRecorder.finishAndGetURL() else { return }
+                Task {
+                    await viewModel.sendAudio(
+                        url: audioURL,
+                        text: viewModel.inputText,
+                        waveformSamples: samples,
+                        duration: duration
+                    )
+                }
+            } label: {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(appAccent)
+            }
+            .accessibilityLabel("Send voice memo")
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10).glassInput()
+    }
+
+    // MARK: Mic Button (idle state)
+
+    private var micButton: some View {
+        // Tap: start recording.  Long press (0.4 s): also starts recording;
+        // releasing finger stops to preview — mimicking iMessage hold-to-record.
+        let longPress = LongPressGesture(minimumDuration: 0.4)
+            .onEnded { _ in
+                // Long press recognized — start recording if not already
+                if voiceRecorder.state == .idle {
+                    voiceRecorder.startRecording()
+                }
+            }
+        let drag = DragGesture(minimumDistance: 0)
+            .onEnded { _ in
+                // Finger lifted — stop to preview if currently recording
+                if voiceRecorder.state == .recording {
+                    voiceRecorder.stopRecording()
+                }
+            }
+        let gesture = longPress.sequenced(before: drag)
+
+        return Circle()
+            .fill(Color(uiColor: .systemGray5))
+            .frame(width: 32, height: 32)
+            .overlay {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color(uiColor: .systemGray))
+            }
+            // Tap for quick start
+            .onTapGesture {
+                voiceRecorder.startRecording()
+            }
+            // Simultaneous so tap still fires when long press threshold isn't met
+            .simultaneousGesture(gesture)
+            .accessibilityLabel("Record voice memo")
+    }
+
     private var canSendAnything: Bool {
         (!viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedImageData != nil)
-            && !viewModel.isStreaming && !voiceRecorder.isRecording
+            && !viewModel.isStreaming && voiceRecorder.state == .idle
     }
 }
 
@@ -478,7 +636,12 @@ struct ChatMessageView: View {
 
     var body: some View {
         if message.isUser {
-            MessageBubble(message: message)
+            // Audio messages get their own bubble; text messages use the standard bubble
+            if message.isAudioMessage {
+                AudioMessageBubble(message: message)
+            } else {
+                MessageBubble(message: message)
+            }
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 // 1. Tool cards (filtered via visibleToolCalls)
@@ -1669,13 +1832,32 @@ class ChatViewModel: ObservableObject {
 
     // MARK: Audio/Image Sending
 
-    func sendAudio(url: URL, text: String) async {
+    func sendAudio(url: URL, text: String, waveformSamples: [Float] = [], duration: TimeInterval = 0) async {
         guard let audioData = try? Data(contentsOf: url) else {
             errorMessage = "Could not read audio file."
             return
         }
+
+        // Copy the temp file to the caches directory so it persists for in-app playback
+        // after the original temp file is removed at the end of this function.
+        let cachesDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let cachedURL = cachesDir.appendingPathComponent("voice_\(UUID().uuidString).m4a")
+        try? FileManager.default.copyItem(at: url, to: cachedURL)
+
         let displayText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        messages.append(ChatMessage(content: displayText.isEmpty ? "[Voice memo]" : displayText, isUser: true))
+
+        // Build audio metadata and attach it to the user message so the bubble
+        // renders as AudioMessageBubble rather than a plain text bubble.
+        let meta = AudioMetadata(
+            duration: duration,
+            waveformSamples: waveformSamples,
+            localFileURL: cachedURL
+        )
+        messages.append(ChatMessage(
+            content: displayText.isEmpty ? "" : displayText,
+            isUser: true,
+            audioMetadata: meta
+        ))
         inputText = ""
         isStreaming = true
 
@@ -1693,6 +1875,7 @@ class ChatViewModel: ObservableObject {
         }
 
         isStreaming = false
+        // Remove the original temp file; the cached copy remains for playback
         try? FileManager.default.removeItem(at: url)
     }
 

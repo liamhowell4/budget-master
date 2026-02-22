@@ -6,6 +6,7 @@ import BudgetMaster
 struct OnboardingView: View {
     let onComplete: () -> Void
 
+    @EnvironmentObject private var authManager: AuthenticationManager
     @Environment(\.appAccent) private var appAccent
     @State private var currentStep = 0
     @State private var totalBudget: Double = 0
@@ -45,6 +46,20 @@ struct OnboardingView: View {
                 navigationButtons
                     .padding(.horizontal, 24)
                     .padding(.bottom, 16)
+            }
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button("Sign Out") {
+                        authManager.signOut()
+                    }
+                    .font(.body.bold())
+                    .foregroundStyle(.red)
+                    .padding(.trailing, 20)
+                    .padding(.top, 16)
+                }
+                Spacer()
             }
         }
         .task {

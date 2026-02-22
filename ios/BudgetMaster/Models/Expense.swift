@@ -10,6 +10,13 @@ public struct ExpenseDate: Codable, Sendable {
 
 // MARK: - Expense
 
+/// `APIClient` uses `keyDecodingStrategy = .convertFromSnakeCase`, which converts each
+/// incoming JSON key to camelCase before matching against `CodingKeys` raw values.
+///
+/// The `id` property is a genuine rename: the JSON field `"expense_id"` converts to
+/// `"expenseId"`, so we need `case id = "expenseId"` to redirect that into `id`.
+/// All other properties whose Swift names match the camelCase form of their JSON keys
+/// do not need explicit CodingKeys entries.
 public struct Expense: Codable, Sendable, Identifiable {
     public let id: String
     public let expenseName: String
@@ -20,10 +27,11 @@ public struct Expense: Codable, Sendable, Identifiable {
     public let inputType: String?
 
     enum CodingKeys: String, CodingKey {
-        case id = "expense_id"
-        case expenseName = "expense_name"
+        // Rename: JSON "expense_id" → strategy converts to "expenseId" → mapped to Swift `id`
+        case id = "expenseId"
+        case expenseName
         case amount, date, category, timestamp
-        case inputType = "input_type"
+        case inputType
     }
 }
 
@@ -39,6 +47,9 @@ public struct ExpensesResponse: Codable, Sendable {
 
 // MARK: - ExpenseUpdateRequest
 
+/// Encoded via `APIClient` with `keyEncodingStrategy = .convertToSnakeCase`.
+/// Property names are camelCase; the strategy converts them to snake_case automatically.
+/// No custom CodingKeys needed.
 public struct ExpenseUpdateRequest: Codable, Sendable {
     public var expenseName: String?
     public var amount: Double?
@@ -49,41 +60,33 @@ public struct ExpenseUpdateRequest: Codable, Sendable {
         self.amount = amount
         self.category = category
     }
-
-    enum CodingKeys: String, CodingKey {
-        case expenseName = "expense_name"
-        case amount, category
-    }
 }
 
 // MARK: - ExpenseUpdateResponse
 
+/// JSON keys: "success", "expense_id", "updated_fields"
+/// convertFromSnakeCase: "expense_id" → "expenseId", "updated_fields" → "updatedFields"
+/// Property names already match; no custom CodingKeys needed.
 public struct ExpenseUpdateResponse: Codable, Sendable {
     public let success: Bool
     public let expenseId: String
     public let updatedFields: [String: AnyCodable]
-
-    enum CodingKeys: String, CodingKey {
-        case success
-        case expenseId = "expense_id"
-        case updatedFields = "updated_fields"
-    }
 }
 
 // MARK: - ExpenseDeleteResponse
 
+/// JSON keys: "success", "expense_id"
+/// convertFromSnakeCase: "expense_id" → "expenseId"
 public struct ExpenseDeleteResponse: Codable, Sendable {
     public let success: Bool
     public let expenseId: String
-
-    enum CodingKeys: String, CodingKey {
-        case success
-        case expenseId = "expense_id"
-    }
 }
 
-// MARK: - ExpenseResponse (from /mcp/process_expense)
+// MARK: - ExpenseProcessResponse (from /mcp/process_expense)
 
+/// JSON keys: "success", "message", "expense_id", "expense_name",
+///            "amount", "category", "budget_warning", "conversation_id"
+/// convertFromSnakeCase handles all snake_case → camelCase conversions.
 public struct ExpenseProcessResponse: Codable, Sendable {
     public let success: Bool
     public let message: String
@@ -93,12 +96,4 @@ public struct ExpenseProcessResponse: Codable, Sendable {
     public let category: String?
     public let budgetWarning: String?
     public let conversationId: String?
-
-    enum CodingKeys: String, CodingKey {
-        case success, message, amount, category
-        case expenseId = "expense_id"
-        case expenseName = "expense_name"
-        case budgetWarning = "budget_warning"
-        case conversationId = "conversation_id"
-    }
 }
