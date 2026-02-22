@@ -1012,8 +1012,9 @@ class FirebaseClient:
         old_caps = self.get_all_budget_caps()
 
         if not old_caps:
-            # No old data, initialize with defaults
-            return self.initialize_default_categories(0, list(DEFAULT_CATEGORIES.keys()))
+            # No old data — this is a brand-new user who needs onboarding.
+            # Don't auto-create categories; let the onboarding flow handle it.
+            return False
 
         # Extract total budget
         total_budget = old_caps.pop("TOTAL", 0)
