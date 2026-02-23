@@ -56,6 +56,12 @@ class UnifiedModelClient:
     """
     Provider-agnostic LLM client.
 
+    For Google Gemini models this client is stateful: it maintains native Gemini
+    content history between calls so that thought_signatures embedded in function
+    call parts are preserved and replayed verbatim.  The same instance must be
+    reused for all turns in a single tool loop (which is already the case in
+    _run_non_anthropic_tool_loop).
+
     Args:
         model: One of the keys in SUPPORTED_MODELS (defaults to DEFAULT_MODEL).
     """
@@ -67,6 +73,10 @@ class UnifiedModelClient:
             )
         self.model = model
         self.provider = SUPPORTED_MODELS[model]["provider"]
+        # Native Gemini history (list of content objects / dicts).  Populated
+        # after the first _call_google invocation so subsequent calls can replay
+        # the raw candidate.content rather than a reconstructed version.
+        self._gemini_native_contents: list = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -221,6 +231,13 @@ class UnifiedModelClient:
     ) -> ModelResponse:
         """
         Call Google Gemini via the google-genai SDK (google.genai).
+
+        On the first call contents are built by converting the Anthropic-format
+        messages.  The raw candidate.content returned by the API is then stored
+        in self._gemini_native_contents.  On subsequent calls only the latest
+        user message (tool result) is converted and appended — the stored native
+        content is replayed verbatim so that thought_signatures embedded in
+        function call parts are preserved.
         """
         from google import genai
         from google.genai import types
@@ -237,19 +254,33 @@ class UnifiedModelClient:
         # Convert Anthropic-style tools to Gemini format
         gemini_tools = self._anthropic_tools_to_gemini(tools)
 
-        # Build contents list from message history
-        history, current_parts = self._anthropic_messages_to_gemini(messages)
-        all_contents: list[dict] = []
-        for item in history:
-            all_contents.append({
-                "role": item["role"],
-                "parts": [{"text": p} if isinstance(p, str) else p for p in item["parts"]],
-            })
-        if current_parts:
-            all_contents.append({
-                "role": "user",
-                "parts": [{"text": p} if isinstance(p, str) else p for p in current_parts],
-            })
+        # Build the contents list for this request.
+        if not self._gemini_native_contents:
+            # First call: convert all messages from Anthropic format.
+            history, current_parts = self._anthropic_messages_to_gemini(messages)
+            all_contents: list = []
+            for item in history:
+                all_contents.append({
+                    "role": item["role"],
+                    "parts": [{"text": p} if isinstance(p, str) else p for p in item["parts"]],
+                })
+            if current_parts:
+                all_contents.append({
+                    "role": "user",
+                    "parts": [{"text": p} if isinstance(p, str) else p for p in current_parts],
+                })
+        else:
+            # Subsequent calls: replay stored native history and append only the
+            # new user message (tool result) converted from Anthropic format.
+            # This preserves thought_signatures in assistant function call parts.
+            last_msg = messages[-1]
+            _, new_parts = self._anthropic_messages_to_gemini([last_msg])
+            all_contents = list(self._gemini_native_contents)
+            if new_parts:
+                all_contents.append({
+                    "role": "user",
+                    "parts": [{"text": p} if isinstance(p, str) else p for p in new_parts],
+                })
 
         config = types.GenerateContentConfig(
             system_instruction=system,
@@ -267,7 +298,7 @@ class UnifiedModelClient:
         tool_calls: list[ToolCall] = []
 
         candidate = response.candidates[0] if response.candidates else None
-        if candidate:
+        if candidate and candidate.content and candidate.content.parts:
             for part in candidate.content.parts:
                 if hasattr(part, "text") and part.text:
                     content_text = part.text
@@ -280,6 +311,14 @@ class UnifiedModelClient:
                             arguments=dict(fc.args),
                         )
                     )
+
+        # Update the stored native history: current contents + raw candidate.
+        # This raw candidate.content is replayed verbatim on the next call so
+        # that thought_signatures (and other internal metadata) are preserved.
+        if candidate and candidate.content:
+            self._gemini_native_contents = list(all_contents) + [candidate.content]
+        else:
+            self._gemini_native_contents = list(all_contents)
 
         stop_reason = "tool_use" if tool_calls else "end_turn"
 
@@ -383,11 +422,17 @@ class UnifiedModelClient:
         """
         Split Anthropic messages into Gemini chat history + current user parts.
 
+        Converts:
+        - tool_use blocks (assistant) → function_call parts
+        - tool_result blocks (user)   → function_response parts
+
         Returns:
             (history, current_parts) where history is a list of
             {'role': ..., 'parts': [...]} and current_parts is the
             latest user message parts list.
         """
+        import json as _json
+
         history = []
         current_parts = []
 
@@ -403,8 +448,29 @@ class UnifiedModelClient:
                     if isinstance(block, dict):
                         if block.get("type") == "text":
                             parts.append(block.get("text", ""))
+                        elif block.get("type") == "tool_use":
+                            # Assistant requesting a function call
+                            parts.append({
+                                "function_call": {
+                                    "name": block["name"],
+                                    "args": block.get("input", {}),
+                                }
+                            })
                         elif block.get("type") == "tool_result":
-                            parts.append(str(block.get("content", "")))
+                            # User returning function response — Gemini needs a
+                            # function_response part; plain text causes an infinite
+                            # tool-call loop because the model never sees the result.
+                            raw = block.get("content", "")
+                            try:
+                                response_data = _json.loads(raw) if isinstance(raw, str) else raw
+                            except Exception:
+                                response_data = {"result": str(raw)}
+                            parts.append({
+                                "function_response": {
+                                    "name": block["tool_use_id"],
+                                    "response": response_data,
+                                }
+                            })
                     else:
                         parts.append(str(block))
             else:

@@ -29,6 +29,9 @@ struct ToolCall: Identifiable {
 
 struct ChatMessage: Identifiable {
     let id: UUID = UUID()
+    /// Text that arrived before the first tool call (rendered above widgets).
+    var contentBefore: String
+    /// Text that arrived after tool calls complete (rendered below widgets).
     var content: String
     let isUser: Bool
     let timestamp: Date
@@ -38,6 +41,7 @@ struct ChatMessage: Identifiable {
     var isAudioMessage: Bool { audioMetadata != nil }
 
     init(content: String, isUser: Bool, timestamp: Date = Date(), toolCalls: [ToolCall] = [], audioMetadata: AudioMetadata? = nil) {
+        self.contentBefore = ""
         self.content = content
         self.isUser = isUser
         self.timestamp = timestamp
@@ -65,7 +69,12 @@ struct ChatMessage: Identifiable {
         hasBudgetPattern ? toolCalls.filter { $0.name != "get_budget_status" } : toolCalls
     }
 
-    /// Whether to show text content — hidden when budget pattern is detected
+    /// Whether to show pre-widget text — hidden when budget pattern is detected
+    var shouldShowContentBefore: Bool {
+        !contentBefore.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasBudgetPattern
+    }
+
+    /// Whether to show post-widget text — hidden when budget pattern is detected
     var shouldShowContent: Bool {
         !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasBudgetPattern
     }
@@ -251,6 +260,7 @@ struct ChatView: View {
 
                     ForEach(viewModel.messages) { message in
                         ChatMessageView(message: message, viewModel: viewModel,
+                            isLast: viewModel.messages.last?.id == message.id,
                             onSelectExpense: { chatSelectedExpense = $0 },
                             onSelectCategory: { chatSelectedCategory = $0 },
                             onSelectRecurring: { chatSelectedRecurring = $0 })
@@ -626,14 +636,114 @@ struct ConversationHistorySheet: View {
     }
 }
 
+// MARK: - Message Action Bar
+
+struct MessageActionBar: View {
+    let message: ChatMessage
+    @ObservedObject var viewModel: ChatViewModel
+    let isLast: Bool
+
+    @State private var copied = false
+    @Environment(\.appAccent) private var appAccent
+
+    private static let availableModels: [(key: String, label: String)] = [
+        ("claude-sonnet-4-6", "Claude Sonnet 4.6"),
+        ("claude-haiku-4-5", "Claude Haiku 4.5"),
+        ("gpt-5-mini", "GPT-5 Mini"),
+        ("gpt-5.1", "GPT-5.1"),
+        ("gemini-3.1-pro-preview", "Gemini 3.1 Pro"),
+        ("gemini-3-flash-preview", "Gemini 3 Flash"),
+    ]
+
+    private var fullText: String {
+        [message.contentBefore, message.content]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n\n")
+    }
+
+    var body: some View {
+        let hasContent = !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !message.visibleToolCalls.isEmpty
+        if hasContent {
+            HStack(spacing: 12) {
+                // Copy
+                if !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button {
+                        UIPasteboard.general.string = fullText
+                        withAnimation(.easeInOut(duration: 0.15)) { copied = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            withAnimation(.easeInOut(duration: 0.15)) { copied = false }
+                        }
+                    } label: {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .font(.caption)
+                            .foregroundStyle(copied ? appAccent : Color(uiColor: .tertiaryLabel))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if isLast && !viewModel.isStreaming {
+                    // Regenerate
+                    Button {
+                        Task { await viewModel.regenerate() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Rerun with different model
+                    Menu {
+                        ForEach(Self.availableModels, id: \.key) { model in
+                            Button(model.label) {
+                                Task { await viewModel.regenerate(withModel: model.key) }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "cpu")
+                                .font(.caption)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 7, weight: .medium))
+                        }
+                        .foregroundStyle(.tertiary)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 2)
+        }
+    }
+}
+
 // MARK: - Chat Message View
 
 struct ChatMessageView: View {
     let message: ChatMessage
     @ObservedObject var viewModel: ChatViewModel
+    var isLast: Bool = false
     var onSelectExpense: ((APIExpense) -> Void)? = nil
     var onSelectCategory: ((CategoryBreakdown) -> Void)? = nil
     var onSelectRecurring: ((RecurringExpenseListItem) -> Void)? = nil
+
+    @ViewBuilder
+    private func aiTextView(_ text: String, timestamp: Date?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let ts = timestamp {
+                Text(ts, style: .time)
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal)
+    }
 
     var body: some View {
         if message.isUser {
@@ -644,25 +754,38 @@ struct ChatMessageView: View {
                 MessageBubble(message: message)
             }
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                // 1. Tool cards (filtered via visibleToolCalls)
-                ForEach(message.visibleToolCalls) { tc in
-                    HStack {
-                        ToolCallCardView(
-                            toolCall: tc,
-                            budgetWarning: tc.name == "save_expense" ? message.budgetWarning : nil,
-                            viewModel: viewModel,
-                            onSelectExpense: onSelectExpense,
-                            onSelectCategory: onSelectCategory,
-                            onSelectRecurring: onSelectRecurring
-                        ).frame(maxWidth: 340, alignment: .leading)
-                        Spacer(minLength: 0)
-                    }.padding(.horizontal)
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 8) {
+                    // 1. Text that arrived before tool calls
+                    if message.shouldShowContentBefore {
+                        aiTextView(
+                            message.contentBefore,
+                            timestamp: !message.shouldShowContent && message.visibleToolCalls.isEmpty
+                                ? message.timestamp : nil
+                        )
+                    }
+                    // 2. Tool cards (filtered via visibleToolCalls)
+                    ForEach(message.visibleToolCalls) { tc in
+                        HStack {
+                            ToolCallCardView(
+                                toolCall: tc,
+                                budgetWarning: tc.name == "save_expense" ? message.budgetWarning : nil,
+                                viewModel: viewModel,
+                                onSelectExpense: onSelectExpense,
+                                onSelectCategory: onSelectCategory,
+                                onSelectRecurring: onSelectRecurring
+                            ).frame(maxWidth: 340, alignment: .leading)
+                            Spacer(minLength: 0)
+                        }.padding(.horizontal)
+                    }
+                    // 3. Text that arrived after tool calls
+                    if message.shouldShowContent {
+                        aiTextView(message.content, timestamp: message.timestamp)
+                    }
                 }
-                // 2. Text content (hidden when budget pattern detected)
-                if message.shouldShowContent {
-                    MessageBubble(message: message)
-                }
+                // 4. Action bar
+                MessageActionBar(message: message, viewModel: viewModel, isLast: isLast)
+                    .padding(.top, 4)
             }
         }
     }
@@ -687,6 +810,13 @@ struct MessageBubble: View {
                         .background(userBubble)
                         .foregroundStyle(userBubbleText)
                         .cornerRadius(16)
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = message.content
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                        }
                 } else {
                     // AI text: no bubble — conversational prose rendered directly
                     // with leading padding to align with the left margin of cards.
@@ -1796,13 +1926,24 @@ class ChatViewModel: ObservableObject {
         isStreaming = false
     }
 
-    private func streamResponse(for query: String) async {
+    func regenerate(withModel model: String? = nil) async {
+        guard let lastUserIdx = messages.lastIndex(where: { $0.isUser }),
+              !isStreaming else { return }
+        let query = messages[lastUserIdx].content
+        messages.removeSubrange((lastUserIdx + 1)...)
+        isStreaming = true
+        messages.append(ChatMessage(content: "", isUser: false))
+        await streamResponse(for: query, modelOverride: model)
+        isStreaming = false
+    }
+
+    private func streamResponse(for query: String, modelOverride: String? = nil) async {
         do { try await api.ensureServerConnected() } catch {
             errorMessage = "Could not connect to server: \(error.localizedDescription)"
             return
         }
         do {
-            try await api.streamChat(message: query, conversationId: conversationId) { [weak self] event in
+            try await api.streamChat(message: query, conversationId: conversationId, modelOverride: modelOverride) { [weak self] event in
                 guard let self else { return }
                 let lastIdx = self.messages.count - 1
                 guard lastIdx >= 0 else { return }
@@ -1810,7 +1951,12 @@ class ChatViewModel: ObservableObject {
                 case .conversationId(let id):
                     self.conversationId = id
                 case .text(let chunk):
-                    self.messages[lastIdx].content += chunk
+                    // Route pre-tool text above widgets, post-tool text below
+                    if self.messages[lastIdx].toolCalls.isEmpty {
+                        self.messages[lastIdx].contentBefore += chunk
+                    } else {
+                        self.messages[lastIdx].content += chunk
+                    }
                 case .toolStart(let id, let tool):
                     self.pendingToolNames.append(tool)
                     self.messages[lastIdx].toolCalls.append(ToolCall(id: id, name: tool))
@@ -1823,7 +1969,8 @@ class ChatViewModel: ObservableObject {
                     self.pendingToolNames.removeAll()
                     self.isStreaming = false
                     // Remove empty placeholder if no content or tools
-                    if self.messages[lastIdx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    if self.messages[lastIdx].contentBefore.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && self.messages[lastIdx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                         && self.messages[lastIdx].toolCalls.isEmpty {
                         self.messages.remove(at: lastIdx)
                     }
