@@ -50,6 +50,24 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'amount-asc', label: 'Lowest amount' },
 ]
 
+const ROW1_CHIPS = [
+  'Chipotle $14.50 for lunch',
+  'How much on food this month?',
+  'Groceries $67 at Whole Foods',
+  'Delete that last one',
+  'Uber home $18',
+  'Compare this month to last',
+]
+
+const ROW2_CHIPS = [
+  "What's left in my dining budget?",
+  'Amazon order $34.99',
+  'Am I on track this month?',
+  'Add $1,400 rent every month',
+  'Coffee $4.75 this morning',
+  'Show my top 5 expenses',
+]
+
 function sortExpenses(expenses: Expense[], sortBy: SortOption): Expense[] {
   return [...expenses].sort((a, b) => {
     switch (sortBy) {
@@ -421,33 +439,51 @@ export function ChatPage() {
           <div className="flex-1 overflow-y-auto">
             <div className="max-w-2xl mx-auto px-4 py-6">
               {messages.length === 0 ? (
-                <div className="flex h-full min-h-[50vh] items-center justify-center">
-                  <div className="text-center">
+                <div className="flex flex-col items-center justify-center min-h-[50vh] py-8">
+
+                  {/* Icon + heading + subtitle */}
+                  <div className="text-center mb-6">
+                    <div className="flex justify-center mb-3">
+                      <MessageSquare className="h-7 w-7 text-[var(--text-muted)]" />
+                    </div>
                     <h2 className="text-lg font-medium text-[var(--text-primary)] mb-1">
-                      Track your expenses
+                      Ask me anything
                     </h2>
-                    <p className="text-sm text-[var(--text-muted)] mb-4">
-                      Start a conversation to log and manage your spending
+                    <p className="text-sm text-[var(--text-muted)] max-w-xs mx-auto leading-relaxed">
+                      Log expenses, track budgets, and query your spending — all in plain English.
                     </p>
-                    <div className="flex flex-wrap justify-center gap-2">
-                      {['Coffee $5', 'Lunch $15', 'Groceries $80'].map((example) => (
-                        <button
-                          key={example}
-                          onClick={() => sendMessage(example)}
-                          className={cn(
-                            'px-3 py-1.5 rounded-md text-sm',
-                            'bg-[var(--surface-secondary)]',
-                            'border border-[var(--border-primary)]',
-                            'text-[var(--text-secondary)]',
-                            'hover:bg-[var(--surface-hover)]',
-                            'transition-colors'
-                          )}
-                        >
-                          {example}
-                        </button>
-                      ))}
+                  </div>
+
+                  {/* "Try asking" divider */}
+                  <div className="flex items-center gap-3 w-full mb-5">
+                    <div className="flex-1 h-px bg-[var(--border-primary)]" />
+                    <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">Try asking</span>
+                    <div className="flex-1 h-px bg-[var(--border-primary)]" />
+                  </div>
+
+                  {/* Conveyor rows */}
+                  <div className="w-full space-y-2.5">
+                    <div className="conveyor-track">
+                      <div className="conveyor-belt conveyor-belt--left">
+                        {[...ROW1_CHIPS, ...ROW1_CHIPS].map((chip, i) => (
+                          <button key={i} className="conveyor-chip" onClick={() => sendMessage(chip)}>
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="conveyor-track">
+                      <div className="conveyor-belt conveyor-belt--right">
+                        {[...ROW2_CHIPS, ...ROW2_CHIPS].map((chip, i) => (
+                          <button key={i} className="conveyor-chip" onClick={() => sendMessage(chip)}>
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
+
                 </div>
               ) : (
                 <div className="space-y-4">

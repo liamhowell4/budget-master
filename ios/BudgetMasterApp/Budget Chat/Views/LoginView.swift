@@ -6,13 +6,14 @@ struct LoginView: View {
 
     @State private var email = ""
     @State private var password = ""
+    @State private var confirmPassword = ""
     @State private var displayName = ""
     @State private var isSignUpMode = false
     @State private var showingResetPassword = false
     @FocusState private var focusedField: Field?
 
     enum Field {
-        case email, password, displayName
+        case email, password, confirmPassword, displayName
     }
 
     var body: some View {
@@ -73,6 +74,27 @@ struct LoginView: View {
                             .background(Color(uiColor: .systemBackground).opacity(0.6))
                             .cornerRadius(10)
 
+                        // Confirm password — only visible in sign-up mode
+                        if isSignUpMode {
+                            VStack(alignment: .leading, spacing: 6) {
+                                SecureField("Confirm Password", text: $confirmPassword)
+                                    .textContentType(.newPassword)
+                                    .focused($focusedField, equals: .confirmPassword)
+                                    .padding()
+                                    .background(Color(uiColor: .systemBackground).opacity(0.6))
+                                    .cornerRadius(10)
+
+                                // Inline mismatch hint — only shown when both fields are non-empty
+                                if !confirmPassword.isEmpty && password != confirmPassword {
+                                    Text("Passwords do not match")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                        .padding(.leading, 4)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                }
+                            }
+                        }
+
                         if let error = authManager.errorMessage {
                             Text(error)
                                 .font(.caption)
@@ -126,20 +148,35 @@ struct LoginView: View {
                     SocialSignInSection()
                         .padding(.horizontal, 24)
 
-                    // Toggle sign in / sign up
-                    HStack {
-                        Text(isSignUpMode ? "Already have an account?" : "Don't have an account?")
+                    // Prominent mode-toggle section — full-width outlined button so new users
+                    // immediately see the sign-up path without hunting for small secondary text.
+                    VStack(spacing: 12) {
+                        Text(isSignUpMode ? "Already have an account?" : "New to Budget Master?")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
 
-                        Button(isSignUpMode ? "Sign In" : "Sign Up") {
-                            withAnimation {
+                        Button {
+                            withAnimation(.spring(duration: 0.3)) {
                                 isSignUpMode.toggle()
                                 password = ""
+                                confirmPassword = ""
                                 displayName = ""
                             }
+                        } label: {
+                            Text(isSignUpMode ? "Sign In Instead" : "Create an Account")
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
                         }
-                        .fontWeight(.semibold)
+                        .buttonStyle(.plain)
                         .foregroundStyle(AppTheme.accent)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(AppTheme.accent, lineWidth: 1.5)
+                        )
+                        .padding(.horizontal, 24)
+                        .accessibilityLabel(isSignUpMode ? "Sign in instead" : "Create an account")
+                        .accessibilityHint(isSignUpMode ? "Switch to sign-in form" : "Switch to account creation form")
                     }
 
                     Spacer(minLength: 32)
@@ -159,7 +196,11 @@ struct LoginView: View {
 
     private var isFormValid: Bool {
         if isSignUpMode {
-            return !email.isEmpty && !password.isEmpty && !displayName.isEmpty && password.count >= 6
+            return !email.isEmpty
+                && !password.isEmpty
+                && !displayName.isEmpty
+                && password.count >= 6
+                && password == confirmPassword
         } else {
             return !email.isEmpty && !password.isEmpty
         }

@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct DashboardView: View {
-    @EnvironmentObject var authManager: AuthenticationManager
     @StateObject private var viewModel = DashboardViewModel()
     @Environment(\.appAccent) private var appAccent
     @State private var selectedCategory: CategoryBreakdown?
+    @State private var showSettings = false
     @State private var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State private var selectedMonth: Int = Calendar.current.component(.month, from: Date())
 
@@ -54,24 +54,13 @@ struct DashboardView: View {
             .navigationTitle("Dashboard")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            Task { await viewModel.loadData(year: selectedYear, month: selectedMonth) }
-                        } label: {
-                            Label("Refresh", systemImage: "arrow.clockwise")
-                        }
-
-                        Divider()
-
-                        Button(role: .destructive) {
-                            authManager.signOut()
-                        } label: {
-                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+                    Button { showSettings = true } label: {
+                        Image(systemName: "gearshape")
                     }
                 }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
             .refreshable {
                 await viewModel.loadData(year: selectedYear, month: selectedMonth)

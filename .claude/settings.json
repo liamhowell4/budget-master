@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "swift-ios-frontend",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/liamhowell/coding_projects/personal/finance_bot/scripts/ios-build-check.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -542,6 +542,35 @@ actor APIService {
         }
     }
 
+    // MARK: Feedback
+
+    func submitFeedback(type: String, message: String, userEmail: String) async throws {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/feedback") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+
+        let body: [String: Any] = [
+            "type": type,
+            "message": message,
+            "user_email": userEmail
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+
+        // Expect { "status": "ok" } — no further decoding needed beyond a success check.
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              json["status"] as? String == "ok" else {
+            let raw = String(data: data, encoding: .utf8) ?? "Unknown response"
+            throw APIError.serverError(200, raw)
+        }
+    }
+
     // MARK: Server Connection
 
     func ensureServerConnected() async throws {
@@ -559,7 +588,7 @@ actor APIService {
 
     // MARK: Chat Stream Request Builder
 
-    func makeChatStreamRequest(message: String, conversationId: String?) async throws -> URLRequest {
+    func makeChatStreamRequest(message: String, conversationId: String?, modelOverride: String? = nil) async throws -> URLRequest {
         let token = try await tokenHeader()
         guard let url = URL(string: "\(baseURL)/chat/stream") else {
             throw APIError.networkError(URLError(.badURL))
@@ -572,6 +601,9 @@ actor APIService {
         var body: [String: Any] = ["message": message]
         if let conversationId = conversationId {
             body["conversation_id"] = conversationId
+        }
+        if let modelOverride = modelOverride {
+            body["model_override"] = modelOverride
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
@@ -617,9 +649,10 @@ extension APIService {
     nonisolated func streamChat(
         message: String,
         conversationId: String?,
+        modelOverride: String? = nil,
         onEvent: @escaping @MainActor (SSEEvent) -> Void
     ) async throws {
-        let request = try await makeChatStreamRequest(message: message, conversationId: conversationId)
+        let request = try await makeChatStreamRequest(message: message, conversationId: conversationId, modelOverride: modelOverride)
 
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
 

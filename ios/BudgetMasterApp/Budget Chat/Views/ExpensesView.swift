@@ -17,6 +17,7 @@ struct ExpensesView: View {
     @State private var selectedTab = 0
     @State private var sortOrder: ExpenseSort = .newest
     @State private var recurringToDelete: RecurringExpenseAPI?
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -92,8 +93,15 @@ struct ExpensesView: View {
                                 Image(systemName: "plus.circle.fill")
                             }
                         }
+
+                        Button { showSettings = true } label: {
+                            Image(systemName: "gearshape")
+                        }
                     }
                 }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
             .sheet(isPresented: $showingAddExpense) {
                 AddExpenseView(availableCategories: viewModel.availableCategories) { expense in

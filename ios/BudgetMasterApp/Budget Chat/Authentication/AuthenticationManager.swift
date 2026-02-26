@@ -26,11 +26,9 @@ class AuthenticationManager: ObservableObject {
         // Safety timeout: if Firebase doesn't respond in 5 seconds, stop loading
         Task {
             try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
-            if await isLoading {
+            if isLoading {
                 print("⚠️ AuthenticationManager: Timeout reached, forcing isLoading = false")
-                await MainActor.run {
-                    self.isLoading = false
-                }
+                self.isLoading = false
             }
         }
     }
@@ -406,9 +404,8 @@ private final class AppleSignInCoordinator: NSObject,
             return fallback
         }
 
-        // If there are truly no connected scenes, return an empty UIWindow.
-        // This path should be unreachable in a running app.
-        return UIWindow()
+        // This path is unreachable in a running app — there are always connected scenes.
+        fatalError("No connected UIWindowScenes found")
     }
 }
 

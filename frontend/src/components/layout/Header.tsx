@@ -7,9 +7,9 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { SegmentedControl } from '@/components/ui'
 
 const navItems = [
+  { value: '/expenses', label: 'Expenses' },
   { value: '/chat', label: 'Chat' },
   { value: '/dashboard', label: 'Dashboard' },
-  { value: '/expenses', label: 'Expenses' },
 ]
 
 export function Header() {

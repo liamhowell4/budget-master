@@ -3,9 +3,9 @@ import { MessageSquare, LayoutDashboard, Receipt, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 const navItems = [
+  { path: '/expenses', label: 'Expenses', icon: Receipt },
   { path: '/chat', label: 'Chat', icon: MessageSquare },
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/expenses', label: 'Expenses', icon: Receipt },
 ]
 
 interface SidebarProps {

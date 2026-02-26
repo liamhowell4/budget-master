@@ -1143,3 +1143,93 @@ textarea, textarea:focus, textarea:focus-visible, textarea:focus-within {
     0 25px 50px rgba(0, 0, 0, 0.15),
     inset 0 1px 0 var(--glass-shine) !important;
 }
+
+/* ── Slow Drift Conveyor — Chat Empty State ──────────────────────────────── */
+
+@keyframes drift-left {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes drift-right {
+  from { transform: translateX(-50%); }
+  to   { transform: translateX(0); }
+}
+
+/* Clip container — hosts the ::before/::after fade masks */
+.conveyor-track {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* Gradient edge fades — color-mix avoids the rgba(0,0,0,0) grey-smear bug
+   that occurs when using the `transparent` keyword with colored backgrounds */
+.conveyor-track::before,
+.conveyor-track::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 64px;
+  z-index: 10;
+  pointer-events: none;
+}
+.conveyor-track::before {
+  left: 0;
+  background: linear-gradient(
+    to right,
+    var(--bg-primary),
+    color-mix(in srgb, var(--bg-primary), transparent 100%)
+  );
+}
+.conveyor-track::after {
+  right: 0;
+  background: linear-gradient(
+    to left,
+    var(--bg-primary),
+    color-mix(in srgb, var(--bg-primary), transparent 100%)
+  );
+}
+
+/* The scrolling flex row — must contain content duplicated exactly once
+   so that translateX(-50%) or translateX(0→-50%) loops seamlessly */
+.conveyor-belt {
+  display: flex;
+  gap: 0.5rem;
+  width: max-content;
+  will-change: transform;
+  padding: 4px 0;
+}
+
+.conveyor-belt--left  { animation: drift-left  68s linear infinite; }
+.conveyor-belt--right { animation: drift-right 74s linear infinite; }
+
+/* Pause only the row being hovered */
+.conveyor-track:hover .conveyor-belt {
+  animation-play-state: paused;
+}
+
+/* Pill-shaped suggestion chip */
+.conveyor-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.375rem 0.875rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-secondary);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.conveyor-chip:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.conveyor-chip:active {
+  transform: scale(0.97);
+}

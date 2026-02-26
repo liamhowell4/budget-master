@@ -112,7 +112,7 @@ struct ChatView: View {
     @Environment(\.appBackgroundTint) private var backgroundTint
     @FocusState private var isInputFocused: Bool
     @State private var showHistory = false
-    @State private var showBudgetSidebar = false
+    @State private var showSettings = false
     @State private var chatSelectedExpense: APIExpense?
     @State private var chatSelectedCategory: CategoryBreakdown?
     @State private var chatSelectedRecurring: RecurringExpenseListItem?
@@ -143,25 +143,20 @@ struct ChatView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 12) {
-                        Button { showBudgetSidebar = true } label: {
-                            Image(systemName: "chart.bar.fill")
+                        Button { viewModel.newConversation() } label: {
+                            Image(systemName: "square.and.pencil")
                         }
-                        Menu {
-                            Button { viewModel.newConversation() } label: {
-                                Label("New Chat", systemImage: "square.and.pencil")
-                            }
-                            Button { Task { await viewModel.loadSuggestions() } } label: {
-                                Label("Get Suggestions", systemImage: "lightbulb")
-                            }
-                        } label: { Image(systemName: "ellipsis.circle") }
+                        Button { showSettings = true } label: {
+                            Image(systemName: "gearshape")
+                        }
                     }
                 }
             }
             .sheet(isPresented: $showHistory) {
                 ConversationHistorySheet(viewModel: viewModel, isPresented: $showHistory)
             }
-            .sheet(isPresented: $showBudgetSidebar) {
-                BudgetSidebarSheet()
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
             }
             .sheet(item: $chatSelectedExpense) { expense in
                 EditExpenseView(
@@ -646,15 +641,6 @@ struct MessageActionBar: View {
     @State private var copied = false
     @Environment(\.appAccent) private var appAccent
 
-    private static let availableModels: [(key: String, label: String)] = [
-        ("claude-sonnet-4-6", "Claude Sonnet 4.6"),
-        ("claude-haiku-4-5", "Claude Haiku 4.5"),
-        ("gpt-5-mini", "GPT-5 Mini"),
-        ("gpt-5.1", "GPT-5.1"),
-        ("gemini-3.1-pro-preview", "Gemini 3.1 Pro"),
-        ("gemini-3-flash-preview", "Gemini 3 Flash"),
-    ]
-
     private var fullText: String {
         [message.contentBefore, message.content]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -692,23 +678,6 @@ struct MessageActionBar: View {
                             .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
-
-                    // Rerun with different model
-                    Menu {
-                        ForEach(Self.availableModels, id: \.key) { model in
-                            Button(model.label) {
-                                Task { await viewModel.regenerate(withModel: model.key) }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 2) {
-                            Image(systemName: "cpu")
-                                .font(.caption)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 7, weight: .medium))
-                        }
-                        .foregroundStyle(.tertiary)
-                    }
                 }
 
                 Spacer()
@@ -1727,152 +1696,6 @@ struct PulsingModifier: ViewModifier {
             .opacity(isPulsing ? 0.6 : 1.0)
             .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
             .onAppear { isPulsing = true }
-    }
-}
-
-// MARK: - Budget Sidebar Sheet
-
-struct BudgetSidebarSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var budget: BudgetAPIResponse?
-    @State private var recentExpenses: [APIExpense] = []
-    @State private var isLoading = true
-    private let api = APIService()
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if isLoading {
-                    ProgressView("Loading budget...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let budget = budget {
-                    ScrollView {
-                        VStack(spacing: 16) {
-                            // Overall budget card
-                            VStack(spacing: 10) {
-                                HStack {
-                                    Text("Monthly Budget")
-                                        .font(.subheadline).fontWeight(.semibold)
-                                    Spacer()
-                                    Text("\(budget.month_name)")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-
-                                HStack(alignment: .firstTextBaseline) {
-                                    Text(budget.total_remaining, format: .currency(code: "USD"))
-                                        .font(.title2).fontWeight(.bold)
-                                        .foregroundStyle(AppTheme.budgetProgressColor(budget.total_percentage))
-                                    Text("remaining")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                    Spacer()
-                                }
-
-                                ProgressView(value: min(budget.total_percentage / 100, 1.0))
-                                    .tint(AppTheme.budgetProgressColor(budget.total_percentage))
-
-                                HStack {
-                                    Text(budget.total_spending, format: .currency(code: "USD"))
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                    Text("of")
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                    Text(budget.total_cap, format: .currency(code: "USD"))
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                    Text("(\(Int(budget.total_percentage))%)")
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                    Spacer()
-                                }
-                            }
-                            .padding(14)
-                            .cardStyle()
-
-                            // Top category breakdowns
-                            let topCategories = Array(budget.categories
-                                .sorted { $0.percentage > $1.percentage }
-                                .prefix(4))
-
-                            if !topCategories.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Top Categories")
-                                        .font(.subheadline).fontWeight(.semibold)
-
-                                    ForEach(topCategories, id: \.category) { cat in
-                                        HStack(spacing: 8) {
-                                            Circle()
-                                                .fill(AppTheme.categoryColor(cat.category))
-                                                .frame(width: 8, height: 8)
-                                            Text(cat.category.replacingOccurrences(of: "_", with: " ").capitalized)
-                                                .font(.caption)
-                                                .frame(width: 80, alignment: .leading)
-                                            ProgressView(value: min(cat.percentage / 100, 1.0))
-                                                .tint(AppTheme.budgetProgressColor(cat.percentage))
-                                            Text(cat.remaining, format: .currency(code: "USD"))
-                                                .font(.caption2).fontWeight(.semibold)
-                                                .foregroundStyle(AppTheme.budgetProgressColor(cat.percentage))
-                                        }
-                                    }
-                                }
-                                .padding(14)
-                                .cardStyle()
-                            }
-
-                            // Recent expenses
-                            if !recentExpenses.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Recent Expenses")
-                                        .font(.subheadline).fontWeight(.semibold)
-
-                                    ForEach(Array(recentExpenses.prefix(3)), id: \.id) { expense in
-                                        HStack(spacing: 8) {
-                                            Circle()
-                                                .fill(AppTheme.categoryColor(expense.category))
-                                                .frame(width: 8, height: 8)
-                                            Text(expense.expense_name)
-                                                .font(.caption).lineLimit(1)
-                                            Spacer()
-                                            Text(expense.amount, format: .currency(code: "USD"))
-                                                .font(.caption).fontWeight(.semibold)
-                                        }
-                                    }
-                                }
-                                .padding(14)
-                                .cardStyle()
-                            }
-                        }
-                        .padding()
-                    }
-                } else {
-                    ContentUnavailableView(
-                        "Could not load budget",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text("Please try again later.")
-                    )
-                }
-            }
-            .navigationTitle("Budget Overview")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
-            .task { await loadData() }
-        }
-        .presentationDetents([.medium, .large])
-    }
-
-    private func loadData() async {
-        isLoading = true
-        do {
-            budget = try await api.fetchBudget()
-        } catch { }
-
-        let cal = Calendar.current
-        let year = cal.component(.year, from: Date())
-        let month = cal.component(.month, from: Date())
-        do {
-            recentExpenses = try await api.fetchExpenses(year: year, month: month)
-        } catch { }
-        isLoading = false
     }
 }
 

@@ -11,7 +11,6 @@ struct SettingsView: View {
                     Text("Profile").tag(0)
                     Text("Appearance").tag(1)
                     Text("Categories").tag(2)
-                    Text("AI Model").tag(3)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
@@ -27,8 +26,6 @@ struct SettingsView: View {
                         AppearanceTab()
                     case 2:
                         CategoriesTab()
-                    case 3:
-                        AIModelTab()
                     default:
                         ProfileTab()
                     }

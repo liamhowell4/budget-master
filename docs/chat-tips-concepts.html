@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Tips — 5 Design Concepts</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+      background: #0d0d0d;
+      color: #fff;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ───────────────────────────────────────────────────────────── */
+    .nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(13,13,13,0.94);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      padding: 12px 20px;
+      display: flex; gap: 8px; overflow-x: auto;
+    }
+    .nav-btn {
+      padding: 7px 16px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.13);
+      background: transparent;
+      color: rgba(255,255,255,0.42);
+      font-size: 13px; font-family: inherit;
+      cursor: pointer; white-space: nowrap;
+      transition: all 0.18s;
+    }
+    .nav-btn:hover { color: rgba(255,255,255,0.75); border-color: rgba(255,255,255,0.22); }
+    .nav-btn.active { background: #0A84FF; border-color: transparent; color: #fff; }
+
+    /* ── Page layout ────────────────────────────────────────────────────── */
+    .page {
+      display: flex; gap: 48px;
+      align-items: flex-start; justify-content: center;
+      padding: 48px 24px 72px;
+    }
+
+    /* ── Phone frame ────────────────────────────────────────────────────── */
+    .phone {
+      width: 390px; height: 820px;
+      border-radius: 52px;
+      background: #000;
+      border: 7px solid #1e1e1e;
+      box-shadow:
+        0 0 0 1px #2c2c2e,
+        0 0 0 2px #111,
+        0 52px 100px rgba(0,0,0,0.8),
+        0 24px 48px rgba(0,0,0,0.5),
+        inset 0 0 0 0.5px rgba(255,255,255,0.04);
+      position: relative; overflow: hidden;
+      display: flex; flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    /* Dynamic Island */
+    .island {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      width: 120px; height: 34px;
+      background: #000; border-radius: 20px;
+      z-index: 20;
+      box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.07), 0 0 0 0.5px #111;
+    }
+
+    /* Status bar */
+    .status {
+      height: 54px; padding: 17px 28px 0;
+      display: flex; justify-content: space-between; align-items: center;
+      flex-shrink: 0;
+    }
+    .status-time { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: white; }
+    .status-right { display: flex; align-items: center; gap: 7px; color: white; }
+
+    /* App header */
+    .app-header {
+      height: 50px; padding: 0 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      flex-shrink: 0;
+    }
+    .app-title { font-size: 17px; font-weight: 600; color: white; }
+    .icon-btn {
+      width: 32px; height: 32px; border-radius: 9px;
+      background: rgba(255,255,255,0.07);
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.5);
+    }
+
+    /* Chat body */
+    .chat-body {
+      flex: 1; overflow: hidden;
+      position: relative;
+    }
+
+    /* Input bar */
+    .input-bar { padding: 10px 16px 26px; flex-shrink: 0; }
+    .input-wrap {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 24px; padding: 10px 10px 10px 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .input-ghost { flex: 1; font-size: 15px; color: rgba(255,255,255,0.26); }
+    .input-actions { display: flex; gap: 5px; }
+    .action-btn {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      display: flex; align-items: center; justify-content: center;
+      color: rgba(255,255,255,0.4);
+    }
+
+    /* ── Designs show/hide ──────────────────────────────────────────────── */
+    .design {
+      display: none;
+      position: absolute; inset: 0;
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 28px 0 18px;
+    }
+    .design.active { display: flex; }
+
+    /* ── Empty state text ───────────────────────────────────────────────── */
+    .empty-icon {
+      width: 50px; height: 50px; border-radius: 14px;
+      background: rgba(255,255,255,0.07);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 14px; font-size: 22px;
+    }
+    .empty-h { font-size: 20px; font-weight: 600; text-align: center; color: white; }
+    .empty-p {
+      font-size: 14px; color: rgba(255,255,255,0.38); text-align: center;
+      line-height: 1.45; padding: 0 28px; margin-top: 5px;
+    }
+
+    /* ── Chips ──────────────────────────────────────────────────────────── */
+    .chip {
+      display: inline-flex; align-items: center;
+      padding: 8px 15px; border-radius: 100px;
+      background: rgba(255,255,255,0.09); border: 1px solid rgba(255,255,255,0.11);
+      color: rgba(255,255,255,0.82); font-size: 13px;
+      white-space: nowrap; cursor: pointer; font-family: inherit;
+      transition: background 0.15s, transform 0.1s; user-select: none;
+      letter-spacing: -0.1px;
+    }
+    .chip:hover { background: rgba(255,255,255,0.14); }
+    .chip:active { transform: scale(0.96); }
+
+    .chip-b { background: rgba(10,132,255,0.13); border-color: rgba(10,132,255,0.26); color: #5DB8FF; }
+    .chip-o { background: rgba(255,149,0,0.12); border-color: rgba(255,149,0,0.24); color: #FFB340; }
+    .chip-g { background: rgba(48,209,88,0.10); border-color: rgba(48,209,88,0.20); color: #32D74B; }
+
+    /* ── Conveyor / Marquee ─────────────────────────────────────────────── */
+    .cveyor {
+      width: 100%; overflow: hidden; position: relative; padding: 4px 0;
+    }
+    .cveyor::before, .cveyor::after {
+      content: ''; position: absolute; top: 0; bottom: 0; width: 60px; z-index: 2;
+      pointer-events: none;
+    }
+    .cveyor::before { left: 0;  background: linear-gradient(to right, #000 25%, transparent); }
+    .cveyor::after  { right: 0; background: linear-gradient(to left,  #000 25%, transparent); }
+
+    .track {
+      display: flex; gap: 8px; width: max-content;
+      will-change: transform;
+    }
+
+    @keyframes mL { from { transform: translateX(0); }    to { transform: translateX(-50%); } }
+    @keyframes mR { from { transform: translateX(-50%); } to { transform: translateX(0); }    }
+
+    .mL-xs { animation: mL 68s linear infinite; }
+    .mL-s  { animation: mL 42s linear infinite; }
+    .mL    { animation: mL 36s linear infinite; }
+    .mL-f  { animation: mL 30s linear infinite; }
+    .mR-s  { animation: mR 48s linear infinite; }
+    .mR    { animation: mR 38s linear infinite; }
+
+    /* Pause on hover */
+    .cveyor:hover .track { animation-play-state: paused; }
+
+    /* ── Design 3: Swim lanes ───────────────────────────────────────────── */
+    .swim { display: flex; align-items: center; width: 100%; }
+    .swim-lbl {
+      font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; color: rgba(255,255,255,0.2);
+      flex-shrink: 0; width: 40px; text-align: right; padding-right: 10px;
+    }
+    .swim-inner { flex: 1; overflow: hidden; position: relative; }
+    .swim-inner::after {
+      content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 40px;
+      background: linear-gradient(to left, #000, transparent);
+      z-index: 2; pointer-events: none;
+    }
+
+    /* ── Design 5: divider ──────────────────────────────────────────────── */
+    .try-divider {
+      display: flex; align-items: center; gap: 10px;
+      padding: 0 24px; margin: 18px 0 6px; width: 100%;
+    }
+    .div-line { flex: 1; height: 1px; background: rgba(255,255,255,0.08); }
+    .div-txt { font-size: 11px; color: rgba(255,255,255,0.26); font-weight: 500; letter-spacing: 0.04em; }
+
+    /* ── Description panel ──────────────────────────────────────────────── */
+    .desc { width: 264px; flex-shrink: 0; padding-top: 48px; }
+    .desc-num  { font-size: 54px; font-weight: 700; color: rgba(255,255,255,0.055); line-height: 1; }
+    .desc-name { font-size: 22px; font-weight: 600; margin: 6px 0 12px; color: white; }
+    .desc-body { font-size: 14px; color: rgba(255,255,255,0.48); line-height: 1.65; margin-bottom: 20px; }
+    .pros-cons { display: flex; flex-direction: column; gap: 8px; }
+    .pro, .con { font-size: 13px; display: flex; gap: 8px; line-height: 1.45; }
+    .pro { color: rgba(52,199,89,0.85); }
+    .con { color: rgba(255,69,58,0.62); }
+    .pro span:first-child, .con span:first-child { flex-shrink: 0; margin-top: 1px; }
+
+    @media (max-width: 760px) {
+      .page { flex-direction: column; align-items: center; }
+      .desc { padding-top: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <button class="nav-btn active" onclick="show(1)">1 · Three Lanes</button>
+  <button class="nav-btn" onclick="show(2)">2 · Opposing Current</button>
+  <button class="nav-btn" onclick="show(3)">3 · Swim Lanes</button>
+  <button class="nav-btn" onclick="show(4)">4 · Color Rows</button>
+  <button class="nav-btn" onclick="show(5)">5 · Slow Drift</button>
+</nav>
+
+<div class="page">
+
+  <!-- ── Phone ── -->
+  <div class="phone">
+    <div class="island"></div>
+
+    <!-- Status bar -->
+    <div class="status">
+      <span class="status-time">9:41</span>
+      <div class="status-right">
+        <!-- Signal -->
+        <svg width="17" height="12" viewBox="0 0 17 12" fill="none">
+          <rect x="0"   y="5"   width="3" height="7"  rx="0.8" fill="white" opacity="0.35"/>
+          <rect x="4.5" y="3"   width="3" height="9"  rx="0.8" fill="white" opacity="0.6"/>
+          <rect x="9"   y="1"   width="3" height="11" rx="0.8" fill="white" opacity="0.8"/>
+          <rect x="13.5" y="0"  width="3" height="12" rx="0.8" fill="white"/>
+        </svg>
+        <!-- WiFi -->
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="none">
+          <circle cx="8" cy="11" r="1.1" fill="white"/>
+          <path d="M5.2 8.2a3.9 3.9 0 015.6 0" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity="0.7"/>
+          <path d="M2.6 5.5a7.2 7.2 0 0110.8 0" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity="0.38"/>
+        </svg>
+        <!-- Battery -->
+        <svg width="26" height="13" viewBox="0 0 26 13" fill="none">
+          <rect x="0.5" y="0.5" width="21" height="12" rx="3.5" stroke="white" stroke-opacity="0.33"/>
+          <rect x="1.5" y="1.5" width="18" height="10" rx="2.5" fill="white"/>
+          <path d="M23.5 4.5v4c1-.45 1.5-1.1 1.5-2s-.5-1.55-1.5-2z" fill="white" opacity="0.38"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- App header -->
+    <div class="app-header">
+      <div class="icon-btn">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <rect x="0.5" y="0.5" width="5.5" height="5.5" rx="1.5" stroke="currentColor" stroke-opacity="0.65"/>
+          <rect x="8.5" y="0.5" width="5.5" height="5.5" rx="1.5" fill="currentColor"/>
+          <rect x="0.5" y="8.5" width="5.5" height="5.5" rx="1.5" fill="currentColor" opacity="0.38"/>
+          <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1.5" stroke="currentColor" stroke-opacity="0.45"/>
+        </svg>
+      </div>
+      <span class="app-title">Budget</span>
+      <div class="icon-btn">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+          <circle cx="6.2" cy="6.2" r="4.2" stroke="currentColor" stroke-width="1.4" opacity="0.75"/>
+          <line x1="9.3" y1="9.3" x2="13.5" y2="13.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Chat body -->
+    <div class="chat-body">
+
+      <!-- ━━━ Design 1: Three Lanes ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+      <div class="design active" id="d1">
+        <div class="empty-h">Track your expenses</div>
+        <div class="empty-p">Log, query, and manage your<br>spending — all in plain English.</div>
+
+        <div style="width:100%;display:flex;flex-direction:column;gap:9px;margin-top:28px;">
+          <div class="cveyor">
+            <div class="track mL-s">
+              <button class="chip">Chipotle $14.50</button>
+              <button class="chip">Uber home $18</button>
+              <button class="chip">Groceries $67</button>
+              <button class="chip">Coffee $4.75</button>
+              <button class="chip">Amazon $34.99</button>
+              <button class="chip">Happy hour $28</button>
+              <button class="chip">Gas $52</button>
+              <button class="chip">Gym $45 monthly</button>
+              <!-- duplicate -->
+              <button class="chip">Chipotle $14.50</button>
+              <button class="chip">Uber home $18</button>
+              <button class="chip">Groceries $67</button>
+              <button class="chip">Coffee $4.75</button>
+              <button class="chip">Amazon $34.99</button>
+              <button class="chip">Happy hour $28</button>
+              <button class="chip">Gas $52</button>
+              <button class="chip">Gym $45 monthly</button>
+            </div>
+          </div>
+
+          <div class="cveyor">
+            <div class="track mL">
+              <button class="chip">How much did I spend on food?</button>
+              <button class="chip">What's my top category?</button>
+              <button class="chip">Compare to last month</button>
+              <button class="chip">Am I over budget?</button>
+              <button class="chip">Show my top 5 expenses</button>
+              <button class="chip">What did I spend last week?</button>
+              <!-- duplicate -->
+              <button class="chip">How much did I spend on food?</button>
+              <button class="chip">What's my top category?</button>
+              <button class="chip">Compare to last month</button>
+              <button class="chip">Am I over budget?</button>
+              <button class="chip">Show my top 5 expenses</button>
+              <button class="chip">What did I spend last week?</button>
+            </div>
+          </div>
+
+          <div class="cveyor">
+            <div class="track mL-f">
+              <button class="chip">What's left in my dining budget?</button>
+              <button class="chip">Delete that last expense</button>
+              <button class="chip">Change it to $16.50</button>
+              <button class="chip">Add $1,400 rent monthly</button>
+              <button class="chip">How am I doing this month?</button>
+              <button class="chip">Update my grocery budget</button>
+              <!-- duplicate -->
+              <button class="chip">What's left in my dining budget?</button>
+              <button class="chip">Delete that last expense</button>
+              <button class="chip">Change it to $16.50</button>
+              <button class="chip">Add $1,400 rent monthly</button>
+              <button class="chip">How am I doing this month?</button>
+              <button class="chip">Update my grocery budget</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ━━━ Design 2: Opposing Current ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+      <div class="design" id="d2">
+        <div class="empty-h">What can I help with?</div>
+        <div class="empty-p">Log expenses, ask questions,<br>track your budget.</div>
+
+        <div style="width:100%;display:flex;flex-direction:column;gap:10px;margin-top:26px;">
+          <div class="cveyor">
+            <div class="track mR">
+              <button class="chip">Chipotle $14.50 for lunch</button>
+              <button class="chip">Groceries at Whole Foods $67</button>
+              <button class="chip">Uber home $18</button>
+              <button class="chip">Coffee this morning $4.75</button>
+              <button class="chip">Monthly gym $45</button>
+              <button class="chip">Amazon order $34.99</button>
+              <!-- duplicate -->
+              <button class="chip">Chipotle $14.50 for lunch</button>
+              <button class="chip">Groceries at Whole Foods $67</button>
+              <button class="chip">Uber home $18</button>
+              <button class="chip">Coffee this morning $4.75</button>
+              <button class="chip">Monthly gym $45</button>
+              <button class="chip">Amazon order $34.99</button>
+            </div>
+          </div>
+
+          <div class="cveyor">
+            <div class="track mL">
+              <button class="chip">How much did I spend on food?</button>
+              <button class="chip">Compare this month to last</button>
+              <button class="chip">What's my biggest category?</button>
+              <button class="chip">Show my top 5 expenses</button>
+              <button class="chip">Am I on track this month?</button>
+              <!-- duplicate -->
+              <button class="chip">How much did I spend on food?</button>
+              <button class="chip">Compare this month to last</button>
+              <button class="chip">What's my biggest category?</button>
+              <button class="chip">Show my top 5 expenses</button>
+              <button class="chip">Am I on track this month?</button>
+            </div>
+          </div>
+
+          <div class="cveyor">
+            <div class="track mR-s">
+              <button class="chip">Delete that last expense</button>
+              <button class="chip">Change it to $16.50</button>
+              <button class="chip">Add $1,400 rent on the 1st</button>
+              <button class="chip">What's left in my budget?</button>
+              <button class="chip">How am I doing this month?</button>
+              <button class="chip">Set up a weekly coffee budget</button>
+              <!-- duplicate -->
+              <button class="chip">Delete that last expense</button>
+              <button class="chip">Change it to $16.50</button>
+              <button class="chip">Add $1,400 rent on the 1st</button>
+              <button class="chip">What's left in my budget?</button>
+              <button class="chip">How am I doing this month?</button>
+              <button class="chip">Set up a weekly coffee budget</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ━━━ Design 3: Swim Lanes ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+      <div class="design" id="d3">
+        <div class="empty-h">Track your expenses</div>
+        <div class="empty-p">Log, ask, and manage your budget.</div>
+
+        <div style="width:100%;display:flex;flex-direction:column;gap:11px;margin-top:24px;">
+          <div class="swim">
+            <span class="swim-lbl">Log</span>
+            <div class="swim-inner">
+              <div class="track mL-s">
+                <button class="chip">Chipotle $14.50</button>
+                <button class="chip">Groceries $67</button>
+                <button class="chip">Uber home $18</button>
+                <button class="chip">Coffee $4.75</button>
+                <button class="chip">Amazon $34.99</button>
+                <button class="chip">Gas $52</button>
+                <!-- duplicate -->
+                <button class="chip">Chipotle $14.50</button>
+                <button class="chip">Groceries $67</button>
+                <button class="chip">Uber home $18</button>
+                <button class="chip">Coffee $4.75</button>
+                <button class="chip">Amazon $34.99</button>
+                <button class="chip">Gas $52</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="swim">
+            <span class="swim-lbl">Ask</span>
+            <div class="swim-inner">
+              <div class="track mL">
+                <button class="chip">How much did I spend on food?</button>
+                <button class="chip">What's my top category?</button>
+                <button class="chip">Compare to last month</button>
+                <button class="chip">Show top 5 expenses</button>
+                <button class="chip">Am I over budget?</button>
+                <!-- duplicate -->
+                <button class="chip">How much did I spend on food?</button>
+                <button class="chip">What's my top category?</button>
+                <button class="chip">Compare to last month</button>
+                <button class="chip">Show top 5 expenses</button>
+                <button class="chip">Am I over budget?</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="swim">
+            <span class="swim-lbl">Edit</span>
+            <div class="swim-inner">
+              <div class="track mL-f">
+                <button class="chip">Delete that last one</button>
+                <button class="chip">Change it to $16.50</button>
+                <button class="chip">$1,400 rent on the 1st</button>
+                <button class="chip">What's left in dining?</button>
+                <button class="chip">Update my grocery budget</button>
+                <!-- duplicate -->
+                <button class="chip">Delete that last one</button>
+                <button class="chip">Change it to $16.50</button>
+                <button class="chip">$1,400 rent on the 1st</button>
+                <button class="chip">What's left in dining?</button>
+                <button class="chip">Update my grocery budget</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ━━━ Design 4: Color Rows ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+      <div class="design" id="d4">
+        <div class="empty-h">Track your expenses</div>
+        <div class="empty-p">Ask anything about your spending.</div>
+
+        <div style="width:100%;display:flex;flex-direction:column;gap:10px;margin-top:28px;">
+          <div class="cveyor">
+            <div class="track mL-s">
+              <button class="chip chip-b">Chipotle $14.50</button>
+              <button class="chip chip-b">Groceries $67</button>
+              <button class="chip chip-b">Uber home $18</button>
+              <button class="chip chip-b">Coffee $4.75</button>
+              <button class="chip chip-b">Amazon $34.99</button>
+              <button class="chip chip-b">Gas $52</button>
+              <button class="chip chip-b">Happy hour $28</button>
+              <!-- duplicate -->
+              <button class="chip chip-b">Chipotle $14.50</button>
+              <button class="chip chip-b">Groceries $67</button>
+              <button class="chip chip-b">Uber home $18</button>
+              <button class="chip chip-b">Coffee $4.75</button>
+              <button class="chip chip-b">Amazon $34.99</button>
+              <button class="chip chip-b">Gas $52</button>
+              <button class="chip chip-b">Happy hour $28</button>
+            </div>
+          </div>
+
+          <div class="cveyor">
+            <div class="track mR">
+              <button class="chip chip-o">How much did I spend on food?</button>
+              <button class="chip chip-o">What's my top category?</button>
+              <button class="chip chip-o">Compare to last month</button>
+              <button class="chip chip-o">Am I over budget?</button>
+              <button class="chip chip-o">Show my top 5 expenses</button>
+              <!-- duplicate -->
+              <button class="chip chip-o">How much did I spend on food?</button>
+              <button class="chip chip-o">What's my top category?</button>
+              <button class="chip chip-o">Compare to last month</button>
+              <button class="chip chip-o">Am I over budget?</button>
+              <button class="chip chip-o">Show my top 5 expenses</button>
+            </div>
+          </div>
+
+          <div class="cveyor">
+            <div class="track mL">
+              <button class="chip chip-g">What's left in my budget?</button>
+              <button class="chip chip-g">Delete that last expense</button>
+              <button class="chip chip-g">Change it to $16.50</button>
+              <button class="chip chip-g">Add rent $1,400 monthly</button>
+              <button class="chip chip-g">How am I doing this month?</button>
+              <!-- duplicate -->
+              <button class="chip chip-g">What's left in my budget?</button>
+              <button class="chip chip-g">Delete that last expense</button>
+              <button class="chip chip-g">Change it to $16.50</button>
+              <button class="chip chip-g">Add rent $1,400 monthly</button>
+              <button class="chip chip-g">How am I doing this month?</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ━━━ Design 5: Slow Drift ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+      <div class="design" id="d5">
+        <div class="empty-icon">💬</div>
+        <div class="empty-h">Ask me anything</div>
+        <div class="empty-p">Log expenses, track budgets, and query<br>your spending — all in plain English.</div>
+
+        <div class="try-divider">
+          <div class="div-line"></div>
+          <span class="div-txt">Try asking</span>
+          <div class="div-line"></div>
+        </div>
+
+        <div style="width:100%;display:flex;flex-direction:column;gap:12px;">
+          <div class="cveyor">
+            <div class="track mL-xs">
+              <button class="chip">Chipotle $14.50 for lunch</button>
+              <button class="chip">How much on food this month?</button>
+              <button class="chip">Groceries $67 at Whole Foods</button>
+              <button class="chip">Delete that last one</button>
+              <button class="chip">Uber home $18</button>
+              <button class="chip">Compare this month to January</button>
+              <!-- duplicate -->
+              <button class="chip">Chipotle $14.50 for lunch</button>
+              <button class="chip">How much on food this month?</button>
+              <button class="chip">Groceries $67 at Whole Foods</button>
+              <button class="chip">Delete that last one</button>
+              <button class="chip">Uber home $18</button>
+              <button class="chip">Compare this month to January</button>
+            </div>
+          </div>
+
+          <div class="cveyor">
+            <div class="track" style="animation: mR 74s linear infinite;">
+              <button class="chip">What's left in my dining budget?</button>
+              <button class="chip">Amazon order $34.99</button>
+              <button class="chip">Am I on track this month?</button>
+              <button class="chip">Add $1,400 rent every month</button>
+              <button class="chip">Coffee $4.75 this morning</button>
+              <button class="chip">Show my top 5 expenses</button>
+              <!-- duplicate -->
+              <button class="chip">What's left in my dining budget?</button>
+              <button class="chip">Amazon order $34.99</button>
+              <button class="chip">Am I on track this month?</button>
+              <button class="chip">Add $1,400 rent every month</button>
+              <button class="chip">Coffee $4.75 this morning</button>
+              <button class="chip">Show my top 5 expenses</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end chat-body -->
+
+    <!-- Input bar -->
+    <div class="input-bar">
+      <div class="input-wrap">
+        <span class="input-ghost">Track an expense...</span>
+        <div class="input-actions">
+          <div class="action-btn">
+            <!-- mic icon -->
+            <svg width="14" height="16" viewBox="0 0 14 16" fill="none">
+              <rect x="4.5" y="0.5" width="5" height="8" rx="2.5" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M2 7.5a5 5 0 0010 0" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              <line x1="7" y1="12.5" x2="7" y2="15" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              <line x1="4.5" y1="15" x2="9.5" y2="15" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="action-btn" style="background:rgba(255,255,255,0.055);">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <line x1="7" y1="11.5" x2="7" y2="2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              <path d="M3.5 6L7 2.5 10.5 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- end phone -->
+
+  <!-- ── Description panel ── -->
+  <div class="desc" id="desc-panel"></div>
+
+</div><!-- end page -->
+
+<script>
+  const data = {
+    1: {
+      n: '01', name: 'Three Lanes',
+      body: 'Three rows scroll left at slightly different speeds — slowest on top, fastest on bottom. Gradient fades mask both edges. The most polished and approachable option.',
+      pros: [
+        'Feels intentional and structured',
+        'Consistent direction is easy on the eyes',
+        'Three rows showcase all major use cases'
+      ],
+      cons: [
+        'Uniform direction can feel repetitive',
+        'No visual hierarchy between row types'
+      ]
+    },
+    2: {
+      n: '02', name: 'Opposing Current',
+      body: 'Top and bottom rows scroll right; middle row scrolls left. Creates a flowing, river-like effect with gentle visual tension. More dynamic and energetic than uniform direction.',
+      pros: [
+        'More visually interesting — feels alive',
+        'Contrast between rows draws the eye to each',
+        'Adds depth without adding complexity'
+      ],
+      cons: [
+        'Mixed directions can feel slightly chaotic',
+        'Middle row is harder to read in motion'
+      ]
+    },
+    3: {
+      n: '03', name: 'Swim Lanes',
+      body: 'Each row has a fixed category label on the left (Log, Ask, Edit). Labels stay put while chips scroll past. The most instructive option — it teaches users exactly what the app can do.',
+      pros: [
+        'Teaches functionality at a glance',
+        'Clean, grid-like structure feels intentional',
+        'Labels add meaning without clutter'
+      ],
+      cons: [
+        'Most "UI-ish" — slightly less fluid feeling',
+        'Labels eat into chip display width'
+      ]
+    },
+    4: {
+      n: '04', name: 'Color Rows',
+      body: 'Blue chips for logging expenses, orange for questions, green for budget management. Rows alternate scroll direction. The most expressive, personality-forward option.',
+      pros: [
+        'Visually memorable — stands out on first open',
+        'Color instantly communicates category type',
+        'Shows the app has depth and range'
+      ],
+      cons: [
+        'Color meanings aren\'t universally obvious',
+        'Could feel too vivid for a finance context'
+      ]
+    },
+    5: {
+      n: '05', name: 'Slow Drift',
+      body: 'Two rows of mixed examples drifting very slowly (40–44s). A "Try asking" divider adds context without being prescriptive. The calmest, most premium-feeling option.',
+      pros: [
+        'Least distracting — feels ambient, not pushy',
+        'Slow speed reads as intentional and polished',
+        'Mixed examples naturally show the app\'s range'
+      ],
+      cons: [
+        'Fewer chips visible — less content density',
+        'Could feel underwhelming vs. 3-row layouts'
+      ]
+    }
+  };
+
+  function show(n) {
+    document.querySelectorAll('.design').forEach(d => d.classList.remove('active'));
+    document.getElementById('d' + n).classList.add('active');
+    document.querySelectorAll('.nav-btn').forEach((b, i) => b.classList.toggle('active', i + 1 === n));
+
+    const d = data[n];
+    document.getElementById('desc-panel').innerHTML = `
+      <div class="desc-num">${d.n}</div>
+      <div class="desc-name">${d.name}</div>
+      <div class="desc-body">${d.body}</div>
+      <div class="pros-cons">
+        ${d.pros.map(p => `<div class="pro"><span>✓</span><span>${p}</span></div>`).join('')}
+        ${d.cons.map(c => `<div class="con"><span>✗</span><span>${c}</span></div>`).join('')}
+      </div>
+    `;
+  }
+
+  show(1);
+</script>
+</body>
+</html>
