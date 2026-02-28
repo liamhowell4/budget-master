@@ -13,11 +13,13 @@ import BudgetMaster
 struct RecordView: View {
 
     @StateObject private var recorder = WatchVoiceRecorder()
+    @StateObject private var realtimeService = WatchRealtimeService()
     @State private var budgetStatus: BudgetStatus?
     @State private var showExpenses = false
     @State private var showConfirmation = false
     @State private var successResponse: ExpenseProcessResponse?
     @State private var isHolding = false
+    @AppStorage("watchVoiceEnabled") private var voiceEnabled: Bool = true
 
     var body: some View {
         ZStack {
@@ -26,8 +28,12 @@ struct RecordView: View {
                 idleView
             case .recording:
                 recordingView
-            case .uploading:
-                uploadingView
+            case .processingResponse:
+                processingView
+            case .receivingResponse(let text):
+                receivingView(text)
+            case .queryResult(let text):
+                queryResultView(text)
             case .success(let response):
                 Color.clear.onAppear {
                     successResponse = response
@@ -52,7 +58,19 @@ struct RecordView: View {
                 ExpensesGlanceView()
             }
         }
-        .task { refreshBudget() }
+        .task {
+            refreshBudget()
+            // Wire recorder to service before connecting
+            realtimeService.recorder = recorder
+            recorder.realtimeService = realtimeService
+            await connectRealtime()
+        }
+        .onChange(of: voiceEnabled) { _, _ in
+            Task { await connectRealtime() }
+        }
+        .onDisappear {
+            realtimeService.disconnect()
+        }
     }
 
     // MARK: - Idle View
@@ -72,15 +90,24 @@ struct RecordView: View {
             // Hold-to-record button
             holdButton(isRecording: false)
 
-            // Expenses glance link
-            Button {
-                showExpenses = true
-            } label: {
-                Label("Expenses", systemImage: "list.bullet")
-                    .font(.caption2)
+            // Expenses glance link + voice/text mode toggle
+            HStack(spacing: 16) {
+                Button { showExpenses = true } label: {
+                    Label("Expenses", systemImage: "list.bullet")
+                        .font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+
+                Button { voiceEnabled.toggle() } label: {
+                    Image(systemName: voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                        .font(.caption2)
+                        .foregroundStyle(voiceEnabled ? .blue : .secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(voiceEnabled ? "Voice responses on" : "Voice responses off")
+                .accessibilityHint("Toggles whether the assistant speaks its responses aloud")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
         }
     }
 
@@ -115,6 +142,54 @@ struct RecordView: View {
             Text("Processing…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Processing View
+
+    private var processingView: some View {
+        VStack(spacing: 8) {
+            ProgressView()
+            Text("Thinking...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Receiving Response View
+
+    private func receivingView(_ text: String) -> some View {
+        ScrollView {
+            Text(text.isEmpty ? "..." : text)
+                .font(.caption2)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+        }
+    }
+
+    // MARK: - Query Result View
+
+    private func queryResultView(_ text: String) -> some View {
+        VStack(spacing: 8) {
+            ScrollView {
+                Text(text)
+                    .font(.caption2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+            }
+            Button("Done") {
+                recorder.reset()
+            }
+            .font(.caption)
+        }
+        .task {
+            // Auto-dismiss after 8 seconds
+            try? await Task.sleep(for: .seconds(8))
+            if case .queryResult = recorder.state {
+                recorder.reset()
+            }
         }
     }
 
@@ -161,13 +236,22 @@ struct RecordView: View {
                 .onEnded { _ in
                     isHolding = false
                     if case .recording = recorder.state {
-                        recorder.stopAndUpload()
+                        recorder.stopStreaming()
                     }
                 }
         )
     }
 
     // MARK: - Helpers
+
+    /// Disconnects any existing WebSocket session and opens a fresh one,
+    /// passing the current voiceEnabled preference as the `mode` query param.
+    private func connectRealtime() async {
+        realtimeService.disconnect()
+        if let token = try? await WatchTokenProvider.shared.getToken() {
+            realtimeService.connect(token: token, voiceEnabled: voiceEnabled)
+        }
+    }
 
     private func refreshBudget() {
         Task { budgetStatus = try? await WatchExpenseService.fetchBudget() }

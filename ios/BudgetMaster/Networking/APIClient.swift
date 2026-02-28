@@ -36,6 +36,11 @@ public actor APIClient {
         self.baseURL = url
     }
 
+    /// Returns the current base URL (used by the Watch realtime service to build WebSocket URLs).
+    public func getBaseURL() -> URL {
+        return baseURL
+    }
+
     // MARK: - Request Building
 
     private func buildRequest(endpoint: APIEndpoint) async throws -> URLRequest {

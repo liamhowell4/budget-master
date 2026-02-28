@@ -8,7 +8,9 @@ import BudgetMaster
 enum WatchRecordingState {
     case idle
     case recording
-    case uploading
+    case processingResponse
+    case receivingResponse(String)
+    case queryResult(String)
     case success(ExpenseProcessResponse)
     case error(String)
 }
@@ -39,6 +41,10 @@ class WatchVoiceRecorder: NSObject, ObservableObject {
     private var meteringTimer: Timer?
     private var safetyTimer: Timer?
 
+    // Streaming support
+    var realtimeService: WatchRealtimeService?
+    private var lastByteOffset: Int = 0
+
     private static let meteringInterval: TimeInterval = 1.0 / 30.0
     private static let maxDuration: TimeInterval = 60.0
 
@@ -53,16 +59,18 @@ class WatchVoiceRecorder: NSObject, ObservableObject {
 
     func startRecording() {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("watch_voice_\(UUID().uuidString).m4a")
+            .appendingPathComponent("watch_voice_\(UUID().uuidString).pcm")
         recordingURL = url
         waveformSamples = []
         recordingDuration = 0
 
         let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 16000,
+            AVFormatIDKey: Int(kAudioFormatLinearPCM),
+            AVSampleRateKey: 24000,
             AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false
         ]
 
         do {
@@ -87,6 +95,16 @@ class WatchVoiceRecorder: NSObject, ObservableObject {
                     let normalized = Float(max(0.0, (dB + 60.0) / 60.0))
                     self.waveformSamples.append(normalized)
                     self.recordingDuration += Self.meteringInterval
+
+                    // Stream new PCM bytes to the realtime service
+                    if let url = self.recordingURL,
+                       let fileData = try? Data(contentsOf: url, options: .mappedRead) {
+                        let newBytes = fileData.subdata(in: self.lastByteOffset..<fileData.count)
+                        if !newBytes.isEmpty {
+                            self.realtimeService?.send(audioChunk: newBytes)
+                            self.lastByteOffset = fileData.count
+                        }
+                    }
                 }
             }
 
@@ -94,7 +112,7 @@ class WatchVoiceRecorder: NSObject, ObservableObject {
                 withTimeInterval: Self.maxDuration,
                 repeats: false
             ) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.stopAndUpload() }
+                Task { @MainActor [weak self] in self?.stopStreaming() }
             }
         } catch {
             state = .error("Failed to start recording: \(error.localizedDescription)")
@@ -116,7 +134,7 @@ class WatchVoiceRecorder: NSObject, ObservableObject {
             return
         }
 
-        state = .uploading
+        state = .processingResponse
 
         Task {
             defer {
@@ -133,16 +151,54 @@ class WatchVoiceRecorder: NSObject, ObservableObject {
         }
     }
 
+    // MARK: Stop & Stream Done
+
+    /// Stops the recorder, flushes remaining bytes, then signals audio_done to the relay.
+    func stopStreaming() {
+        guard case .recording = state else { return }
+
+        stopTimers()
+        audioRecorder?.stop()
+        audioRecorder = nil
+
+        guard let url = recordingURL else {
+            state = .error("No recording file found.")
+            return
+        }
+
+        // Flush remaining bytes
+        if let fileData = try? Data(contentsOf: url, options: .mappedRead) {
+            let newBytes = fileData.subdata(in: lastByteOffset..<fileData.count)
+            if !newBytes.isEmpty {
+                realtimeService?.send(audioChunk: newBytes)
+            }
+        }
+
+        // Restore audio session for playback later
+        try? AVAudioSession.sharedInstance().setActive(false)
+
+        // Signal end of audio to relay
+        realtimeService?.sendAudioDone()
+        state = .processingResponse
+
+        // Clean up temp file
+        try? FileManager.default.removeItem(at: url)
+        recordingURL = nil
+        lastByteOffset = 0
+    }
+
     // MARK: Cancel
 
     func cancelRecording() {
         stopTimers()
         audioRecorder?.stop()
         audioRecorder = nil
+        realtimeService?.sendCancel()
         if let url = recordingURL {
             try? FileManager.default.removeItem(at: url)
             recordingURL = nil
         }
+        lastByteOffset = 0
         reset()
     }
 
@@ -151,6 +207,7 @@ class WatchVoiceRecorder: NSObject, ObservableObject {
     func reset() {
         waveformSamples = []
         recordingDuration = 0
+        lastByteOffset = 0
         state = .idle
     }
 

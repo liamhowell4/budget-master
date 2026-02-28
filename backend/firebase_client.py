@@ -1795,3 +1795,54 @@ class FirebaseClient:
 
         results["_total"] = total_deleted
         return results
+
+    def get_all_token_usage(self, days: int = 30) -> list[dict]:
+        """Collection group query across all users/{uid}/token_usage/"""
+        from datetime import timedelta
+        import pytz
+        cutoff = datetime.now(pytz.utc) - timedelta(days=days)
+        # No where() filter to avoid requiring a composite index — filter in Python
+        docs = self.db.collection_group('token_usage').stream()
+        results = []
+        for doc in docs:
+            data = doc.to_dict()
+            # Skip docs outside the date range
+            ts = data.get('timestamp')
+            if ts is not None:
+                ts_aware = ts.replace(tzinfo=pytz.utc) if ts.tzinfo is None else ts
+                if ts_aware < cutoff:
+                    continue
+            # Extract uid from path: users/{uid}/token_usage/{doc_id}
+            uid = doc.reference.path.split('/')[1]
+            data['uid'] = uid
+            # Convert Firestore timestamps to ISO strings
+            if hasattr(data.get('timestamp'), 'isoformat'):
+                data['timestamp'] = data['timestamp'].isoformat()
+            results.append(data)
+        return results
+
+    def get_all_conversations(self, days: int = 30) -> list[dict]:
+        """Collection group query across all users/{uid}/conversations/"""
+        from datetime import timedelta
+        import pytz
+        cutoff = datetime.now(pytz.utc) - timedelta(days=days)
+        # No where() filter to avoid requiring a composite index — filter in Python
+        docs = self.db.collection_group('conversations').stream()
+        results = []
+        for doc in docs:
+            data = doc.to_dict()
+            # Skip docs outside the date range
+            la = data.get('last_activity')
+            if la is not None:
+                la_aware = la.replace(tzinfo=pytz.utc) if la.tzinfo is None else la
+                if la_aware < cutoff:
+                    continue
+            uid = doc.reference.path.split('/')[1]
+            data['uid'] = uid
+            data['conversation_id'] = doc.id
+            # Convert timestamps
+            for key in ('created_at', 'last_activity'):
+                if hasattr(data.get(key), 'isoformat'):
+                    data[key] = data[key].isoformat()
+            results.append(data)
+        return results

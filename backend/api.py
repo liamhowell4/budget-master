@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(env_path, override=True)
 
-from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Header, Depends
+from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Header, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -61,6 +61,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",   # Vite dev server (default)
         "http://127.0.0.1:5173",
+        "http://localhost:5174",   # Admin dashboard
+        "http://127.0.0.1:5174",
         "http://localhost:3000",   # React Frontend (alt port)
         "http://127.0.0.1:3000",
         "http://localhost:8000",   # Allow same-origin too
@@ -1694,6 +1696,99 @@ async def admin_cleanup_conversations(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/admin/users")
+async def admin_get_users(x_api_key: Optional[str] = Header(None)):
+    """
+    Get all Firebase Auth users.
+    Returns list of {uid, email, display_name, photo_url, last_sign_in, created_at}.
+    Requires X-API-Key header.
+    """
+    if not ADMIN_API_KEY:
+        raise HTTPException(status_code=500, detail="ADMIN_API_KEY not configured on server")
+    if x_api_key != ADMIN_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
+
+    try:
+        import firebase_admin.auth as firebase_auth_mod
+        users = []
+        page = firebase_auth_mod.list_users()
+        while page:
+            for user in page.users:
+                users.append({
+                    "uid": user.uid,
+                    "email": user.email,
+                    "display_name": user.display_name,
+                    "photo_url": user.photo_url,
+                    "last_sign_in": user.user_metadata.last_sign_in_timestamp if user.user_metadata else None,
+                    "created_at": user.user_metadata.creation_timestamp if user.user_metadata else None,
+                })
+            page = page.get_next_page()
+        return {"users": users}
+    except Exception as e:
+        logger.exception("[Admin] Error listing users")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/admin/analytics")
+async def admin_get_analytics(
+    x_api_key: Optional[str] = Header(None),
+    days: int = 30
+):
+    """
+    Get usage analytics across all users.
+    Returns token_usage docs, extracted tool_calls, and summary stats.
+    Requires X-API-Key header.
+    """
+    if not ADMIN_API_KEY:
+        raise HTTPException(status_code=500, detail="ADMIN_API_KEY not configured on server")
+    if x_api_key != ADMIN_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
+
+    try:
+        # Use a global (no user_id) FirebaseClient for collection group queries
+        global_firebase = FirebaseClient()
+        token_usage = global_firebase.get_all_token_usage(days=days)
+        conversations = global_firebase.get_all_conversations(days=days)
+
+        # Extract tool calls from conversation messages
+        tool_calls = []
+        for conv in conversations:
+            uid = conv.get('uid', 'unknown')
+            conv_id = conv.get('conversation_id', '')
+            messages = conv.get('messages', [])
+            for msg in messages:
+                # Each message may have tool_calls list: [{id, name, args, result}]
+                for tc in msg.get('tool_calls', []):
+                    tool_name = tc.get('name', '')
+                    if tool_name:
+                        tool_calls.append({
+                            "uid": uid,
+                            "tool_name": tool_name,
+                            "conversation_id": conv_id,
+                            "timestamp": msg.get('timestamp'),
+                        })
+
+        # Build summary
+        total_input = sum(d.get('input_tokens', 0) for d in token_usage)
+        total_output = sum(d.get('output_tokens', 0) for d in token_usage)
+        unique_users = len(set(d.get('uid') for d in token_usage))
+
+        return {
+            "token_usage": token_usage,
+            "tool_calls": tool_calls,
+            "summary": {
+                "total_api_calls": len(token_usage),
+                "total_input_tokens": total_input,
+                "total_output_tokens": total_output,
+                "unique_users": unique_users,
+                "date_range_days": days,
+            }
+        }
+    except Exception as e:
+        logger.exception("[Admin] Error fetching analytics")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== User Settings Endpoints ====================
 
 class UserSettingsResponse(BaseModel):
@@ -1788,6 +1883,8 @@ async def health_check():
             "DELETE /conversations/{id}",
             "POST /admin/check-recurring",
             "POST /admin/cleanup-conversations",
+            "GET /admin/users",
+            "GET /admin/analytics",
             "GET /health",
             "GET /servers",
             "POST /connect/{server_id}",
@@ -2023,3 +2120,73 @@ async def chat_stream(
             yield f"data: {error_msg}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ==================== WebSocket: Realtime Voice Assistant ====================
+
+@app.websocket("/ws/realtime")
+async def ws_realtime(websocket: WebSocket, token: str = None, mode: str = "voice"):
+    """
+    WebSocket endpoint for the Watch conversational voice assistant.
+
+    Auth: Firebase token via ?token= query param (watchOS cannot send
+    custom WS upgrade headers, so the token is passed as a query param).
+
+    Protocol:
+      Watch → Backend: {"type": "audio_chunk", "data": "<base64 pcm16>"}
+                       {"type": "audio_done"}
+                       {"type": "cancel"}
+      Backend → Watch: {"type": "input_transcript",     "text": "..."}
+                       {"type": "response_text_delta",  "text": "..."}
+                       {"type": "response_audio_delta", "data": "<base64 pcm16>"}
+                       {"type": "response_done",        "expense_saved": {...} | null}
+                       {"type": "error",                "message": "..."}
+    """
+    await websocket.accept()
+
+    # Auth: verify token from query param
+    if not token:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Missing token"}))
+        await websocket.close(code=4001)
+        return
+
+    try:
+        import firebase_admin.auth as firebase_auth_mod
+        decoded = firebase_auth_mod.verify_id_token(token)
+        from .auth import AuthenticatedUser
+        user = AuthenticatedUser(
+            uid=decoded["uid"],
+            email=decoded.get("email"),
+            token=token,
+        )
+    except Exception as exc:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Invalid token"}))
+        await websocket.close(code=4001)
+        return
+
+    if not _mcp_client:
+        await websocket.send_text(json.dumps({"type": "error", "message": "MCP backend not ready"}))
+        await websocket.close(code=1011)
+        return
+
+    # Fetch user categories for dynamic tool schemas
+    try:
+        user_firebase = FirebaseClient.for_user(user.uid)
+        if not user_firebase.has_categories_setup():
+            user_firebase.migrate_from_budget_caps()
+        user_categories = user_firebase.get_user_categories()
+    except Exception:
+        user_categories = None
+
+    # Run the relay session
+    try:
+        from .realtime_relay import handle_realtime_session
+        await handle_realtime_session(websocket, user, _mcp_client, user_categories, mode=mode)
+    except WebSocketDisconnect:
+        logger.info("Watch WS disconnected: uid=%s", user.uid)
+    except Exception as exc:
+        logger.exception("Realtime session error: uid=%s", user.uid)
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "message": str(exc)}))
+        except Exception:
+            pass

@@ -99,21 +99,6 @@
 			path = "BudgetWatch Watch AppUITests";
 			sourceTree = "<group>";
 		};
-		AF4D16A22F53654600CA1F85 /* Budget Chat Watch Watch App */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Budget Chat Watch Watch App";
-			sourceTree = "<group>";
-		};
-		AF4D16B02F53654900CA1F85 /* Budget Chat Watch Watch AppTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Budget Chat Watch Watch AppTests";
-			sourceTree = "<group>";
-		};
-		AF4D16BA2F53654900CA1F85 /* Budget Chat Watch Watch AppUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Budget Chat Watch Watch AppUITests";
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -161,9 +146,6 @@
 			isa = PBXGroup;
 			children = (
 				AA000000000000000005 /* Budget Chat */,
-				AF4D16A22F53654600CA1F85 /* Budget Chat Watch Watch App */,
-				AF4D16B02F53654900CA1F85 /* Budget Chat Watch Watch AppTests */,
-				AF4D16BA2F53654900CA1F85 /* Budget Chat Watch Watch AppUITests */,
 				AF181F9E2F5365CC00913089 /* BudgetWatch Watch App */,
 				AF181FAC2F5365D000913089 /* BudgetWatch Watch AppTests */,
 				AF181FB62F5365D000913089 /* BudgetWatch Watch AppUITests */,
@@ -638,7 +620,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
 		};
@@ -671,7 +653,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};
