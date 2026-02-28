@@ -13,12 +13,6 @@ from backend.firebase_client import FirebaseClient
 from backend.output_schemas import ExpenseType
 
 
-def seed_categories(client: FirebaseClient):
-    """Seed the categories collection from ExpenseType enum."""
-    print("🌱 Seeding categories collection...")
-    client.seed_categories()
-
-
 def seed_budget_caps(client: FirebaseClient):
     """
     Seed default budget caps.
@@ -109,11 +103,7 @@ def main():
 
     # Seed collections
     try:
-        # 1. Seed categories
-        seed_categories(client)
-        print()
-
-        # 2. Seed budget caps
+        # 1. Seed budget caps
         seed_budget_caps(client)
         print()
 

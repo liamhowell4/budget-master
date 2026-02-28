@@ -97,7 +97,7 @@ struct ChipConveyorView: View {
                     .fontWeight(.bold)
                     .foregroundStyle(.primary)
 
-                Text("Log expenses, track budgets, and query your spending\n— all in plain English.")
+                Text("Log expenses, track budgets, and query your spending, all in plain English.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -128,11 +128,15 @@ struct ChipConveyorView: View {
     // MARK: Conveyor Section
 
     private var conveyorSection: some View {
-        VStack(spacing: 10) {
-            conveyorRow(chips: row1Chips, measuredWidth: $row1ContentWidth, direction: .left)
-            conveyorRow(chips: row2Chips, measuredWidth: $row2ContentWidth, direction: .right)
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            VStack(spacing: 10) {
+                conveyorRow(chips: row1Chips, measuredWidth: $row1ContentWidth, direction: .left,  containerWidth: w)
+                conveyorRow(chips: row2Chips, measuredWidth: $row2ContentWidth, direction: .right, containerWidth: w)
+            }
         }
-        // Clip so chips slide cleanly behind the gradient edge masks.
+        // 2 rows × 36 + 10 spacing
+        .frame(height: 82)
         .clipped()
         .onAppear {
             // Create and store the timer cancellable once.
@@ -153,7 +157,8 @@ struct ChipConveyorView: View {
     private func conveyorRow(
         chips: [String],
         measuredWidth: Binding<CGFloat>,
-        direction: ScrollDirection
+        direction: ScrollDirection,
+        containerWidth: CGFloat
     ) -> some View {
         let halfWidth = measuredWidth.wrappedValue
         let cyclePhase = halfWidth > 0
@@ -165,10 +170,9 @@ struct ChipConveyorView: View {
 
         chipStrip(chips: chips, measuredWidth: measuredWidth)
             .offset(x: rawOffset)
-            .mask(edgeFadeMask)
-            .frame(maxWidth: .infinity)
-            .frame(height: 36)
+            .frame(width: containerWidth, height: 36, alignment: .leading)
             .clipped()
+            .mask(edgeFadeMask)
     }
 
     // MARK: Chip Strip

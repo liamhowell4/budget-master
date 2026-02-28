@@ -40,9 +40,6 @@ class FirebaseClient:
         "categories",  # Now user-scoped for custom categories
     }
 
-    # Collections that remain global (shared across all users)
-    GLOBAL_COLLECTIONS = {"global_categories"}  # Legacy, not used for custom categories
-
     def __init__(self, user_id: Optional[str] = None):
         """
         Initialize Firebase Admin SDK.
@@ -97,9 +94,6 @@ class FirebaseClient:
         Returns:
             Full collection path (e.g., "users/{userId}/expenses" or "expenses")
         """
-        if collection in self.GLOBAL_COLLECTIONS:
-            return collection
-
         if self.user_id and collection in self.USER_SCOPED_COLLECTIONS:
             return f"users/{self.user_id}/{collection}"
 
@@ -649,56 +643,6 @@ class FirebaseClient:
             })
 
     # ==================== Category Operations ====================
-
-    def get_category_data(self) -> List[Dict]:
-        """
-        Get all expense categories from Firestore (legacy method for global categories).
-
-        Returns:
-            List of category dictionaries with id, display_value, and optional emoji
-        """
-        docs = self.db.collection("global_categories").stream()
-
-        categories = []
-        for doc in docs:
-            category_data = doc.to_dict()
-            category_data["id"] = doc.id
-            categories.append(category_data)
-
-        return categories
-
-    def seed_categories(self) -> None:
-        """
-        Seed the categories collection from ExpenseType enum.
-        This should be run once during initial setup.
-        """
-        # Category emoji mapping
-        emoji_map = {
-            "FOOD_OUT": "🍽️",
-            "RENT": "🏠",
-            "UTILITIES": "💡",
-            "MEDICAL": "🏥",
-            "GAS": "⛽",
-            "GROCERIES": "🛒",
-            "RIDE_SHARE": "🚕",
-            "COFFEE": "☕",
-            "HOTEL": "🏨",
-            "TECH": "💻",
-            "TRAVEL": "✈️",
-            "OTHER": "📦"
-        }
-
-        for expense_type in ExpenseType:
-            category_data = {
-                "category_id": expense_type.name,
-                "display_value": expense_type.value,
-                "emoji": emoji_map.get(expense_type.name, "📦")
-            }
-
-            # Use category_id as document ID
-            self.db.collection("global_categories").document(expense_type.name).set(category_data)
-
-        logger.info("Seeded %d categories to Firestore", len(ExpenseType))
 
     # ==================== User Custom Category Operations ====================
 

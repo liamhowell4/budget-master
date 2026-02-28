@@ -120,8 +120,6 @@ struct ChatView: View {
     @State private var selectedImageData: Data?
     @State private var showImagePreview = false
 
-    private let quickSuggestions = ["Coffee $5", "Lunch $15", "Groceries $80"]
-
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -207,38 +205,16 @@ struct ChatView: View {
     // MARK: Empty State
 
     private var emptyStateView: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "dollarsign.circle.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(appAccent)
-            VStack(spacing: 8) {
-                Text("Track your expenses").font(.title2).fontWeight(.bold)
-                Text("Start a conversation to log and manage your spending")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center).padding(.horizontal, 32)
-            }
-            HStack(spacing: 8) {
-                ForEach(quickSuggestions, id: \.self) { s in
-                    Button {
-                        viewModel.inputText = s
-                        Task { await viewModel.sendMessage() }
-                    } label: {
-                        Text(s).font(.subheadline).fontWeight(.medium)
-                            .padding(.horizontal, 14).padding(.vertical, 10)
-                            .background(backgroundTint.opacity(0.5))
-                            .clipShape(Capsule())
-                    }.foregroundStyle(.primary)
-                }
-            }
+        ChipConveyorView { text in
+            viewModel.inputText = text
+            Task { await viewModel.sendMessage() }
         }
-        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onTapGesture { isInputFocused = false }
         .gesture(
             DragGesture(minimumDistance: 20, coordinateSpace: .local)
                 .onEnded { value in
-                    if value.translation.height > 0 {
-                        isInputFocused = false
-                    }
+                    if value.translation.height > 0 { isInputFocused = false }
                 }
         )
     }
