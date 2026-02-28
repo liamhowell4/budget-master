@@ -7,7 +7,7 @@ struct ContentView: View {
 
     /// nil = not checked yet, true = needs onboarding, false = skip
     @State private var needsOnboarding: Bool?
-    @State private var selectedTab: Int = 2
+    @State private var selectedTab: Int = 1
 
     private let api = APIService()
 
@@ -81,21 +81,13 @@ struct ContentView: View {
                     .tabItem { Label("Dashboard", systemImage: "chart.pie") }
                     .tag(0)
 
-                ExpensesView()
-                    .tabItem { Label("Expenses", systemImage: "dollarsign.circle") }
+                ChatView()
+                    .tabItem { Label("Chat", systemImage: "message.fill") }
                     .tag(1)
 
-                ChatView()
-                    .tabItem { Label("Chat", systemImage: "message") }
+                ExpensesView()
+                    .tabItem { Label("Expenses", systemImage: "dollarsign.circle") }
                     .tag(2)
-
-                FeedbackView()
-                    .tabItem { Label("Feedback", systemImage: "bubble.left.and.text.bubble.right") }
-                    .tag(3)
-
-                SettingsView()
-                    .tabItem { Label("Settings", systemImage: "gearshape") }
-                    .tag(4)
             }
         }
         // Propagate all resolved theme tokens through the environment so every

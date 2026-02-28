@@ -51,6 +51,8 @@ struct BudgetMasterApp: App {
             await APIClient.shared.setBaseURL(apiURL)
             await APIClient.shared.setTokenProvider(FirebaseTokenProvider())
         }
+        // Activate WCSession early so the Watch receives its token as soon as possible.
+        _ = WatchSessionManager.shared
         NSLog("🚀 BudgetMasterApp: init() complete")
     }
 
@@ -64,6 +66,12 @@ struct BudgetMasterApp: App {
                 // Without this, returning from Safari/ASWebAuthenticationSession won't complete sign-in.
                 .onOpenURL { url in
                     GIDSignIn.sharedInstance.handle(url)
+                }
+                // Re-send the token whenever the user signs in or out.
+                .onChange(of: authManager.isAuthenticated) { _, isAuthenticated in
+                    if isAuthenticated {
+                        WatchSessionManager.shared.sendTokenToWatch()
+                    }
                 }
         }
     }

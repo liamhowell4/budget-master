@@ -20,6 +20,7 @@ struct ProfileTab: View {
     @State private var passwordSuccess = false
 
     @State private var errorMessage: String?
+    @State private var showFeedback = false
 
     private var email: String {
         authManager.currentUser?.email ?? "Not available"
@@ -66,10 +67,16 @@ struct ProfileTab: View {
                     passwordSection
                 }
 
+                // Feedback
+                feedbackSection
+
                 // Sign out
                 signOutSection
             }
             .padding()
+        }
+        .sheet(isPresented: $showFeedback) {
+            FeedbackView()
         }
         .onAppear {
             displayName = authManager.currentUser?.displayName ?? ""
@@ -350,6 +357,26 @@ struct ProfileTab: View {
         newPassword = ""
         confirmPassword = ""
         passwordError = nil
+    }
+
+    // MARK: - Feedback
+
+    private var feedbackSection: some View {
+        Button { showFeedback = true } label: {
+            HStack {
+                Image(systemName: "bubble.left.and.text.bubble.right")
+                Text("Send Feedback")
+                    .fontWeight(.medium)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .padding(.horizontal)
+        }
+        .glassCard()
     }
 
     // MARK: - Sign Out
