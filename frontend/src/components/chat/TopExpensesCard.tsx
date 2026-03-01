@@ -62,22 +62,22 @@ export function TopExpensesCard({ result }: TopExpensesCardProps) {
       <div
         className={cn(
           'rounded-xl p-4 max-w-sm',
-          'border border-neutral-200/50 dark:border-neutral-700/50',
-          'bg-neutral-50 dark:bg-neutral-800/60'
+          'border border-[var(--border-primary)]/50',
+          'bg-[var(--surface-secondary)]'
         )}
       >
         <div className="mb-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+            <h3 className="text-sm font-medium text-[var(--text-primary)]">
               Top Expenses
             </h3>
             {categoryFilter && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-200/60 dark:bg-neutral-700/60 text-neutral-600 dark:text-neutral-300">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--surface-active)] text-[var(--text-secondary)]">
                 {categoryFilter}
               </span>
             )}
           </div>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          <p className="text-xs text-[var(--text-muted)]">
             {formatDateRange(result.start_date, result.end_date)}
           </p>
         </div>
@@ -97,7 +97,7 @@ export function TopExpensesCard({ result }: TopExpensesCardProps) {
                   'hover:opacity-80 transition-opacity cursor-pointer',
                   isTop
                     ? 'bg-amber-50/80 dark:bg-amber-950/20'
-                    : 'bg-white/40 dark:bg-neutral-900/30'
+                    : 'bg-[var(--surface-primary)]'
                 )}
               >
                 <span
@@ -105,13 +105,13 @@ export function TopExpensesCard({ result }: TopExpensesCardProps) {
                     'flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold',
                     isTop
                       ? 'bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200'
-                      : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400'
+                      : 'bg-[var(--surface-active)] text-[var(--text-muted)]'
                   )}
                 >
                   {index + 1}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">
                     {expense.name}
                   </p>
                   <div className="flex items-center gap-1.5">
@@ -128,20 +128,20 @@ export function TopExpensesCard({ result }: TopExpensesCardProps) {
                                 : undefined,
                       }}
                     />
-                    <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                    <span className="text-xs text-[var(--text-muted)]">
                       {CATEGORY_LABELS[category] ?? expense.category}
                     </span>
                     {expense.date && (
                       <>
-                        <span className="text-neutral-300 dark:text-neutral-600">·</span>
-                        <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                        <span className="text-[var(--border-secondary)]">·</span>
+                        <span className="text-xs text-[var(--text-muted)]">
                           {formatToolDate(expense.date)}
                         </span>
                       </>
                     )}
                   </div>
                 </div>
-                <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 tabular-nums flex-shrink-0">
+                <span className="text-sm font-semibold text-[var(--text-primary)] tabular-nums flex-shrink-0">
                   {formatCurrency(expense.amount)}
                 </span>
               </button>

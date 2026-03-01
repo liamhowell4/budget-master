@@ -131,7 +131,7 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
 
   if (isDeleted) {
     return (
-      <div className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400 py-2">
+      <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] py-2">
         <Trash2 className="h-3.5 w-3.5" />
         <span className="line-through">{result.expense_name}</span>
         <span>deleted</span>
@@ -143,7 +143,7 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
     <div
       className={cn(
         'rounded-xl p-4 max-w-sm',
-        'border border-neutral-200/50 dark:border-neutral-700/50',
+        'border border-[var(--border-primary)]/50',
         'transition-all duration-200',
         colors.bg
       )}
@@ -154,7 +154,7 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
           <CategoryIcon category={category} className="h-4 w-4" />
           <span className="text-xs font-medium">{label}</span>
         </div>
-        <span className="text-xs text-neutral-500 dark:text-neutral-400">
+        <span className="text-xs text-[var(--text-muted)]">
           {formatDate()}
         </span>
       </div>
@@ -168,14 +168,14 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
             onChange={(e) => setEditName(e.target.value)}
             className={cn(
               'w-full px-2 py-1 text-sm rounded-md',
-              'bg-white/80 dark:bg-neutral-900/50',
-              'border border-neutral-300 dark:border-neutral-600',
-              'focus:outline-none focus:ring-1 focus:ring-neutral-400',
-              'text-neutral-900 dark:text-neutral-100'
+              'bg-[var(--bg-elevated)]',
+              'border border-[var(--border-secondary)]',
+              'focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)]',
+              'text-[var(--text-primary)]'
             )}
           />
           <div className="flex items-center gap-2">
-            <span className="text-neutral-500 dark:text-neutral-400">$</span>
+            <span className="text-[var(--text-muted)]">$</span>
             <input
               type="number"
               step="0.01"
@@ -183,10 +183,10 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
               onChange={(e) => setEditAmount(e.target.value)}
               className={cn(
                 'w-24 px-2 py-1 text-sm rounded-md',
-                'bg-white/80 dark:bg-neutral-900/50',
-                'border border-neutral-300 dark:border-neutral-600',
-                'focus:outline-none focus:ring-1 focus:ring-neutral-400',
-                'text-neutral-900 dark:text-neutral-100'
+                'bg-[var(--bg-elevated)]',
+                'border border-[var(--border-secondary)]',
+                'focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)]',
+                'text-[var(--text-primary)]'
               )}
             />
           </div>
@@ -197,10 +197,10 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
               onClick={() => setIsCategoryOpen(!isCategoryOpen)}
               className={cn(
                 'w-full flex items-center justify-between px-2 py-1.5 rounded-md text-sm',
-                'bg-white/80 dark:bg-neutral-900/50',
-                'border border-neutral-300 dark:border-neutral-600',
-                'focus:outline-none focus:ring-1 focus:ring-neutral-400',
-                'text-neutral-900 dark:text-neutral-100'
+                'bg-[var(--bg-elevated)]',
+                'border border-[var(--border-secondary)]',
+                'focus:outline-none focus:ring-1 focus:ring-[var(--border-focus)]',
+                'text-[var(--text-primary)]'
               )}
             >
               <div className="flex items-center gap-2">
@@ -214,7 +214,7 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
               </div>
               <ChevronDown
                 className={cn(
-                  'h-3.5 w-3.5 text-neutral-400 transition-transform',
+                  'h-3.5 w-3.5 text-[var(--text-muted)] transition-transform',
                   isCategoryOpen && 'rotate-180'
                 )}
               />
@@ -223,8 +223,8 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
               <div
                 className={cn(
                   'absolute z-10 mt-1 w-full max-h-40 overflow-y-auto rounded-md',
-                  'bg-white dark:bg-neutral-800',
-                  'border border-neutral-200 dark:border-neutral-600',
+                  'bg-[var(--surface-primary)]',
+                  'border border-[var(--border-primary)]',
                   'shadow-lg'
                 )}
               >
@@ -238,9 +238,9 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
                     }}
                     className={cn(
                       'w-full flex items-center gap-2 px-2 py-1.5 text-sm text-left',
-                      'hover:bg-neutral-100 dark:hover:bg-neutral-700',
-                      'text-neutral-900 dark:text-neutral-100',
-                      editCategory === cat.category_id && 'bg-neutral-100 dark:bg-neutral-700'
+                      'hover:bg-[var(--surface-hover)]',
+                      'text-[var(--text-primary)]',
+                      editCategory === cat.category_id && 'bg-[var(--surface-active)]'
                     )}
                   >
                     <span
@@ -281,29 +281,29 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
       ) : (
         <>
           <div className="flex items-baseline justify-between mb-1">
-            <h3 className="text-base font-medium text-neutral-900 dark:text-neutral-100 truncate pr-2">
+            <h3 className="text-base font-medium text-[var(--text-primary)] truncate pr-2">
               {result.expense_name}
             </h3>
-            <span className="text-lg font-semibold text-neutral-900 dark:text-neutral-100 tabular-nums">
+            <span className="text-lg font-semibold text-[var(--text-primary)] tabular-nums">
               ${result.amount.toFixed(2)}
             </span>
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2 mt-3 pt-3 border-t border-neutral-200/50 dark:border-neutral-700/50">
+          <div className="flex gap-2 mt-3 pt-3 border-t border-[var(--border-primary)]/50">
             {isConfirmingDelete ? (
               <>
-                <span className="text-xs text-neutral-500 dark:text-neutral-400 self-center mr-1">
+                <span className="text-xs text-[var(--text-muted)] self-center mr-1">
                   Delete?
                 </span>
                 <button
                   onClick={handleCancelDelete}
                   className={cn(
                     'flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium',
-                    'bg-white/60 dark:bg-neutral-800/60',
-                    'text-neutral-600 dark:text-neutral-400',
-                    'hover:bg-white dark:hover:bg-neutral-800',
-                    'border border-neutral-200/50 dark:border-neutral-700/50',
+                    'bg-[var(--surface-secondary)]',
+                    'text-[var(--text-secondary)]',
+                    'hover:bg-[var(--surface-hover)]',
+                    'border border-[var(--border-primary)]/50',
                     'transition-colors'
                   )}
                 >
@@ -329,10 +329,10 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
                   onClick={() => setIsEditing(true)}
                   className={cn(
                     'flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium',
-                    'bg-white/60 dark:bg-neutral-800/60',
-                    'text-neutral-600 dark:text-neutral-400',
-                    'hover:bg-white dark:hover:bg-neutral-800',
-                    'border border-neutral-200/50 dark:border-neutral-700/50',
+                    'bg-[var(--surface-secondary)]',
+                    'text-[var(--text-secondary)]',
+                    'hover:bg-[var(--surface-hover)]',
+                    'border border-[var(--border-primary)]/50',
                     'transition-colors'
                   )}
                 >
@@ -343,10 +343,10 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
                   onClick={handleDeleteClick}
                   className={cn(
                     'flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium',
-                    'bg-white/60 dark:bg-neutral-800/60',
+                    'bg-[var(--surface-secondary)]',
                     'text-red-600 dark:text-red-400',
                     'hover:bg-red-50 dark:hover:bg-red-950/30',
-                    'border border-neutral-200/50 dark:border-neutral-700/50',
+                    'border border-[var(--border-primary)]/50',
                     'transition-colors'
                   )}
                 >

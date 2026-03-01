@@ -50,41 +50,41 @@ export function PeriodComparisonCard({ result }: PeriodComparisonCardProps) {
     <div
       className={cn(
         'rounded-xl p-4 max-w-sm',
-        'border border-neutral-200/50 dark:border-neutral-700/50',
-        'bg-neutral-50 dark:bg-neutral-800/60'
+        'border border-[var(--border-primary)]/50',
+        'bg-[var(--surface-secondary)]'
       )}
     >
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+        <h3 className="text-sm font-medium text-[var(--text-primary)]">
           Period Comparison
         </h3>
         {categoryLabel && (
-          <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-200/60 dark:bg-neutral-700/60 text-neutral-600 dark:text-neutral-300">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--surface-active)] text-[var(--text-secondary)]">
             {categoryLabel}
           </span>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="rounded-lg bg-white/60 dark:bg-neutral-900/40 p-2.5">
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+        <div className="rounded-lg bg-[var(--surface-primary)] p-2.5">
+          <p className="text-xs text-[var(--text-muted)] mb-1">
             {formatDateRange(period1.start, period1.end)}
           </p>
-          <p className="text-base font-semibold text-neutral-900 dark:text-neutral-100 tabular-nums">
+          <p className="text-base font-semibold text-[var(--text-primary)] tabular-nums">
             {formatCurrency(period1.total)}
           </p>
-          <p className="text-xs text-neutral-400 dark:text-neutral-500 tabular-nums">
+          <p className="text-xs text-[var(--text-muted)] tabular-nums">
             {period1.count} expenses
           </p>
         </div>
-        <div className="rounded-lg bg-white/60 dark:bg-neutral-900/40 p-2.5">
-          <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+        <div className="rounded-lg bg-[var(--surface-primary)] p-2.5">
+          <p className="text-xs text-[var(--text-muted)] mb-1">
             {formatDateRange(period2.start, period2.end)}
           </p>
-          <p className="text-base font-semibold text-neutral-900 dark:text-neutral-100 tabular-nums">
+          <p className="text-base font-semibold text-[var(--text-primary)] tabular-nums">
             {formatCurrency(period2.total)}
           </p>
-          <p className="text-xs text-neutral-400 dark:text-neutral-500 tabular-nums">
+          <p className="text-xs text-[var(--text-muted)] tabular-nums">
             {period2.count} expenses
           </p>
         </div>
@@ -94,7 +94,7 @@ export function PeriodComparisonCard({ result }: PeriodComparisonCardProps) {
       <div
         className={cn(
           'flex items-center gap-2 rounded-lg px-3 py-2',
-          noChange && 'bg-neutral-100 dark:bg-neutral-800',
+          noChange && 'bg-[var(--surface-secondary)]',
           increased && 'bg-red-50 dark:bg-red-950/30',
           !increased && !noChange && 'bg-emerald-50 dark:bg-emerald-950/30'
         )}
@@ -108,7 +108,7 @@ export function PeriodComparisonCard({ result }: PeriodComparisonCardProps) {
         <span
           className={cn(
             'text-sm font-medium tabular-nums',
-            noChange && 'text-neutral-600 dark:text-neutral-400',
+            noChange && 'text-[var(--text-secondary)]',
             increased && 'text-red-600 dark:text-red-400',
             !increased && !noChange && 'text-emerald-600 dark:text-emerald-400'
           )}
