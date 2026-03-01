@@ -10,6 +10,9 @@ __pycache__/
 *.cache
 hosting/.cache
 
+# Node modules (all locations)
+node_modules/
+
 # Firebase Functions
 /functions/node_modules/
 /functions/.env
@@ -40,3 +43,4 @@ backups/
 .build/
 .swiftpm/
 *.xcodeproj/xcuserdata/
+**/*.xcworkspace/xcuserdata/

@@ -18,6 +18,7 @@ struct ExpensesView: View {
     @State private var sortOrder: ExpenseSort = .newest
     @State private var recurringToDelete: RecurringExpenseAPI?
     @State private var showSettings = false
+    @State private var showErrorAlert = false
 
     var body: some View {
         NavigationStack {
@@ -134,10 +135,13 @@ struct ExpensesView: View {
                     ProgressView()
                 }
             }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            .onChange(of: viewModel.errorMessage) { _, newValue in
+                showErrorAlert = newValue != nil
+            }
+            .alert("Error", isPresented: $showErrorAlert) {
                 Button("OK") { viewModel.errorMessage = nil }
             } message: {
-                if let msg = viewModel.errorMessage { Text(msg) }
+                Text(viewModel.errorMessage ?? "")
             }
             .alert("Delete Recurring Expense", isPresented: .constant(recurringToDelete != nil)) {
                 Button("Cancel", role: .cancel) { recurringToDelete = nil }
@@ -592,7 +596,7 @@ class ExpensesViewModel: ObservableObject {
 
     // Filters
     @Published var filterStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
-    @Published var filterEndDate = Date()
+    @Published var filterEndDate = Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date()
     @Published var selectedCategories: Set<String> = []
     @Published var minAmount: Double?
     @Published var maxAmount: Double?
@@ -762,7 +766,7 @@ class ExpensesViewModel: ObservableObject {
 
     func resetFilters() {
         filterStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
-        filterEndDate = Date()
+        filterEndDate = Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date()
         selectedCategories = []
         minAmount = nil
         maxAmount = nil

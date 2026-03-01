@@ -339,17 +339,17 @@
   --scrollbar-thumb-hover: #525252;
 }
 
-/* Dark Midnight - Deep purple accents, true black */
+/* Dark Midnight - Deep purple accents, deep indigo-black */
 .theme-dark-midnight {
-  --bg-primary: #000000;
-  --bg-secondary: #050510;
-  --bg-tertiary: #0c0c1d;
-  --bg-elevated: #0a0a18;
+  --bg-primary: #07071f;
+  --bg-secondary: #0b0b2c;
+  --bg-tertiary: #111138;
+  --bg-elevated: #0d0d28;
 
-  --surface-primary: #0a0a18;
-  --surface-secondary: #12122a;
-  --surface-hover: #1a1a3a;
-  --surface-active: #22224a;
+  --surface-primary: #0d0d28;
+  --surface-secondary: #151548;
+  --surface-hover: #1e1e5a;
+  --surface-active: #26266c;
 
   --text-primary: #f0f0ff;
   --text-secondary: #a0a0c0;
@@ -375,7 +375,7 @@
   --glow-mid: #8b5cf6;
   --glow-end: #c084fc;
 
-  --glass-bg: rgba(10, 10, 24, 0.85);
+  --glass-bg: rgba(13, 13, 40, 0.85);
   --glass-border: rgba(139, 92, 246, 0.15);
   --glass-blur: 0px;
 
@@ -387,17 +387,17 @@
   --scrollbar-thumb-hover: #3a3a70;
 }
 
-/* Dark Sunset - Warm orange/coral accents */
+/* Dark Sunset - Warm orange/coral accents, deep amber-black */
 .theme-dark-sunset {
-  --bg-primary: #000000;
-  --bg-secondary: #0a0705;
-  --bg-tertiary: #150f0a;
-  --bg-elevated: #0d0906;
+  --bg-primary: #100805;
+  --bg-secondary: #180c06;
+  --bg-tertiary: #221109;
+  --bg-elevated: #1a0e07;
 
-  --surface-primary: #0d0906;
-  --surface-secondary: #1a120c;
-  --surface-hover: #261a12;
-  --surface-active: #332218;
+  --surface-primary: #1a0e07;
+  --surface-secondary: #251508;
+  --surface-hover: #321e0d;
+  --surface-active: #3f2812;
 
   --text-primary: #fff8f0;
   --text-secondary: #c4a890;
@@ -423,7 +423,7 @@
   --glow-mid: #fb923c;
   --glow-end: #fbbf24;
 
-  --glass-bg: rgba(13, 9, 6, 0.85);
+  --glass-bg: rgba(26, 14, 7, 0.85);
   --glass-border: rgba(249, 115, 22, 0.15);
   --glass-blur: 0px;
 
