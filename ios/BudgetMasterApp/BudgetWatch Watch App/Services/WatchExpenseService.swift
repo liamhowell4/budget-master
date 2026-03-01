@@ -5,6 +5,16 @@ import BudgetMaster
 /// All network calls go through `APIClient.shared` (from the BudgetMaster package).
 enum WatchExpenseService {
 
+    // MARK: - Submit Text
+
+    /// POST /mcp/process_expense with plain text (from dictation).
+    static func submitText(_ text: String) async throws -> ExpenseProcessResponse {
+        var multipart = MultipartFormData()
+        multipart.addTextField(name: "text", value: text)
+        let endpoint = APIEndpoint(method: .post, path: "/mcp/process_expense")
+        return try await APIClient.shared.upload(endpoint, multipart: multipart)
+    }
+
     // MARK: - Upload Audio
 
     /// POST /mcp/process_expense with m4a audio data.
