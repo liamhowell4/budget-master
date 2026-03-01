@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from mcp.server.models import InitializationOptions
 from mcp.server import NotificationOptions, Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, ToolAnnotations
+from mcp.types import Tool, TextContent
 
 # Import backend modules
 from backend.firebase_client import FirebaseClient
@@ -46,10 +46,17 @@ _global_firebase = FirebaseClient()
 server = Server("expense-tracker-mcp")
 
 
-# Common schema property for auth_token
-AUTH_TOKEN_PROPERTY = {
-    "type": "string",
-    "description": "Firebase Auth ID token for authentication (required)"
+# Common schema properties
+AUTH_TOKEN_PROPERTY = {"type": "string"}
+
+DATE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "day": {"type": "integer"},
+        "month": {"type": "integer"},
+        "year": {"type": "integer"}
+    },
+    "required": ["day", "month", "year"]
 }
 
 
@@ -163,7 +170,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Call this after extracting expense information from user input. "
                 "Returns the saved expense ID."
             ),
-            annotations=ToolAnnotations(title="Save Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -176,16 +182,7 @@ async def handle_list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "Dollar amount of the expense - positive for spending, negative for refunds/reimbursements (e.g., 5.50, 15.00, -20.00)"
                     },
-                    "date": {
-                        "type": "object",
-                        "description": "Date of the expense",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
+                    "date": {**DATE_SCHEMA, "description": "Date of the expense"},
                     "category": {
                         "type": "string",
                         "description": "Expense category key (e.g., 'FOOD_OUT', 'COFFEE', 'GROCERIES'). Use get_categories to see all valid options.",
@@ -202,7 +199,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Returns budget warnings if user is approaching or over budget limits. "
                 "Call this after save_expense to inform the user about their budget status."
             ),
-            annotations=ToolAnnotations(title="Get Budget Status"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -236,7 +232,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Get all valid expense categories for the user. "
                 "Use this to understand which category to assign to an expense."
             ),
-            annotations=ToolAnnotations(title="Get Categories"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -252,7 +247,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Use this when the user wants to correct or modify a previous expense. "
                 "You can update name, amount, date, and/or category."
             ),
-            annotations=ToolAnnotations(title="Update Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -269,16 +263,7 @@ async def handle_list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "New amount - positive for spending, negative for refunds (optional)"
                     },
-                    "date": {
-                        "type": "object",
-                        "description": "New date (optional)",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
+                    "date": {**DATE_SCHEMA, "description": "New date (optional)"},
                     "category": {
                         "type": "string",
                         "description": "New category (optional)",
@@ -295,7 +280,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Use this when the user confirms they want to remove an expense. "
                 "Always confirm with the user before calling this tool."
             ),
-            annotations=ToolAnnotations(title="Delete Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -315,7 +299,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Use this when the user asks to see their recent purchases or recent activity. "
                 "Returns expenses sorted by most recent first."
             ),
-            annotations=ToolAnnotations(title="Get Recent Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -342,7 +325,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Searches current month by default, or specify a date range. "
                 "Also supports filtering by category."
             ),
-            annotations=ToolAnnotations(title="Search Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -368,7 +350,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Supports monthly (on specific day), weekly (on specific weekday), biweekly, and yearly frequencies. "
                 "NOTE: Recurring expenses must have positive amounts only (no negative/refund recurring expenses)."
             ),
-            annotations=ToolAnnotations(title="Create Recurring Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -425,7 +406,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Get all active recurring expense templates. "
                 "Use this when the user asks to see their subscriptions, recurring bills, etc."
             ),
-            annotations=ToolAnnotations(title="List Recurring Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -446,7 +426,6 @@ async def handle_list_tools() -> list[Tool]:
                 "This will stop future pending expenses from being created. "
                 "Always confirm with the user before calling this tool."
             ),
-            annotations=ToolAnnotations(title="Delete Recurring Expense"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -466,31 +445,12 @@ async def handle_list_tools() -> list[Tool]:
                 "Returns detailed expense list with totals. "
                 "Date range can span up to 12 months (warns if >3 months)."
             ),
-            annotations=ToolAnnotations(title="Query Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "auth_token": AUTH_TOKEN_PROPERTY,
-                    "start_date": {
-                        "type": "object",
-                        "description": "Start date for query (inclusive)",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
-                    "end_date": {
-                        "type": "object",
-                        "description": "End date for query (inclusive)",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
+                    "start_date": {**DATE_SCHEMA, "description": "Start date (inclusive)"},
+                    "end_date": {**DATE_SCHEMA, "description": "End date (inclusive)"},
                     "category": {
                         "type": "string",
                         "description": "Filter by specific category (optional)",
@@ -511,31 +471,12 @@ async def handle_list_tools() -> list[Tool]:
                 "Shows how much was spent in each category with transaction counts. "
                 "Useful for 'How much did I spend on food last week?' type questions."
             ),
-            annotations=ToolAnnotations(title="Get Spending By Category"),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "auth_token": AUTH_TOKEN_PROPERTY,
-                    "start_date": {
-                        "type": "object",
-                        "description": "Start date (inclusive)",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
-                    "end_date": {
-                        "type": "object",
-                        "description": "End date (inclusive)",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    }
+                    "start_date": {**DATE_SCHEMA, "description": "Start date (inclusive)"},
+                    "end_date": {**DATE_SCHEMA, "description": "End date (inclusive)"}
                 },
                 "required": ["auth_token", "start_date", "end_date"]
             }
@@ -547,31 +488,12 @@ async def handle_list_tools() -> list[Tool]:
                 "Returns total spending, transaction count, and average per transaction. "
                 "Good for general spending questions."
             ),
-            annotations=ToolAnnotations(title="Get Spending Summary"),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "auth_token": AUTH_TOKEN_PROPERTY,
-                    "start_date": {
-                        "type": "object",
-                        "description": "Start date (inclusive)",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
-                    "end_date": {
-                        "type": "object",
-                        "description": "End date (inclusive)",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    }
+                    "start_date": {**DATE_SCHEMA, "description": "Start date (inclusive)"},
+                    "end_date": {**DATE_SCHEMA, "description": "End date (inclusive)"}
                 },
                 "required": ["auth_token", "start_date", "end_date"]
             }
@@ -583,7 +505,6 @@ async def handle_list_tools() -> list[Tool]:
                 "Shows current spending, cap, percentage used, and amount remaining. "
                 "Formatted like the 'status' command."
             ),
-            annotations=ToolAnnotations(title="Get Budget Remaining"),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -604,51 +525,14 @@ async def handle_list_tools() -> list[Tool]:
                 "Shows difference in spending (both absolute dollar amount and percentage change). "
                 "Useful for 'compare this month to last month' type questions."
             ),
-            annotations=ToolAnnotations(title="Compare Periods"),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "auth_token": AUTH_TOKEN_PROPERTY,
-                    "period1_start": {
-                        "type": "object",
-                        "description": "Period 1 start date",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
-                    "period1_end": {
-                        "type": "object",
-                        "description": "Period 1 end date",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
-                    "period2_start": {
-                        "type": "object",
-                        "description": "Period 2 start date",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
-                    "period2_end": {
-                        "type": "object",
-                        "description": "Period 2 end date",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
+                    "period1_start": {**DATE_SCHEMA, "description": "Period 1 start date"},
+                    "period1_end": {**DATE_SCHEMA, "description": "Period 1 end date"},
+                    "period2_start": {**DATE_SCHEMA, "description": "Period 2 start date"},
+                    "period2_end": {**DATE_SCHEMA, "description": "Period 2 end date"},
                     "category": {
                         "type": "string",
                         "description": "Optional category to compare (if omitted, compares total spending)",
@@ -665,31 +549,12 @@ async def handle_list_tools() -> list[Tool]:
                 "Returns top 3 expenses by amount with details. "
                 "Useful for 'what was my biggest expense' type questions."
             ),
-            annotations=ToolAnnotations(title="Get Largest Expenses"),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "auth_token": AUTH_TOKEN_PROPERTY,
-                    "start_date": {
-                        "type": "object",
-                        "description": "Start date (inclusive)",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
-                    "end_date": {
-                        "type": "object",
-                        "description": "End date (inclusive)",
-                        "properties": {
-                            "day": {"type": "integer", "minimum": 1, "maximum": 31},
-                            "month": {"type": "integer", "minimum": 1, "maximum": 12},
-                            "year": {"type": "integer", "minimum": 2000}
-                        },
-                        "required": ["day", "month", "year"]
-                    },
+                    "start_date": {**DATE_SCHEMA, "description": "Start date (inclusive)"},
+                    "end_date": {**DATE_SCHEMA, "description": "End date (inclusive)"},
                     "category": {
                         "type": "string",
                         "description": "Optional category filter",
