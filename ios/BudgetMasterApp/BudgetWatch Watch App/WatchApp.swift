@@ -7,7 +7,6 @@ struct BudgetMasterWatchApp: App {
     @StateObject private var tokenProvider = WatchTokenProvider.shared
 
     init() {
-        // Point APIClient at the production backend and inject the Watch token provider.
         let url = URL(string: "https://expense-tracker-nsz3hblwea-uc.a.run.app")!
         Task(priority: .userInitiated) {
             await APIClient.shared.setBaseURL(url)
@@ -19,19 +18,43 @@ struct BudgetMasterWatchApp: App {
         WindowGroup {
             Group {
                 if tokenProvider.hasToken {
-                    NavigationStack {
-                        RecordView()
-                    }
+                    MainTabView()
                 } else {
                     NoTokenView()
                 }
             }
             .onOpenURL { _ in
                 // Complication deep-link (budgetmaster://record).
-                // The app is already showing RecordView when token is present;
+                // The app is already showing the mic page when token is present;
                 // nothing extra is needed beyond bringing the app to foreground.
             }
         }
+    }
+}
+
+// MARK: - Main Tab View
+
+/// Three-page horizontal swipe layout.
+/// Page 0 (left): Budget overview ring + category bars.
+/// Page 1 (center, default): Mic recording view.
+/// Page 2 (right): Recent expenses list.
+struct MainTabView: View {
+    @State private var selectedPage: Int = 1
+
+    var body: some View {
+        TabView(selection: $selectedPage) {
+            BudgetPageView()
+                .tag(0)
+
+            NavigationStack {
+                RecordView()
+            }
+            .tag(1)
+
+            RecentExpensesPageView()
+                .tag(2)
+        }
+        .tabViewStyle(.page)
     }
 }
 
@@ -55,9 +78,8 @@ struct NoTokenView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        // Automatically transition once the token arrives via WCSession
+        // SwiftUI re-evaluates body and swaps to MainTabView when hasToken becomes true.
         .onChange(of: tokenProvider.hasToken) { _, hasToken in
-            // SwiftUI will re-evaluate body and swap to RecordView when hasToken becomes true
             _ = hasToken
         }
     }

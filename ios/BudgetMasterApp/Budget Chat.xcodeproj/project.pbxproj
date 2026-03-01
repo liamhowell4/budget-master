@@ -553,7 +553,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.01.2;
+				MARKETING_VERSION = 1.01.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.budgetmaster.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -582,7 +582,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.01.2;
+				MARKETING_VERSION = 1.01.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.budgetmaster.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -608,7 +608,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.01.2;
+				MARKETING_VERSION = 1.01.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.budgetmaster.app.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -641,7 +641,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.01.2;
+				MARKETING_VERSION = 1.01.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.budgetmaster.app.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
