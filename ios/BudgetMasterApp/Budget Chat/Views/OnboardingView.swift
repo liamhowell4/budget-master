@@ -17,12 +17,16 @@ struct OnboardingView: View {
     @State private var categoryCaps: [String: Double] = [:]
     @State private var categoryCapTexts: [String: String] = [:]
     @State private var customCategories: [CustomCategoryInput] = []
+    @State private var excludedCategoryIds: Set<String> = []
     @State private var isLoadingDefaults = true
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var showAddCustomSheet = false
 
-    private let stepCount = 5
+    // Step indices:
+    // 0 = welcome, 1 = income planner, 2 = budget, 3 = categories,
+    // 4 = allocation, 5 = exclusions, 6 = review
+    private let stepCount = 7
 
     var body: some View {
         ZStack {
@@ -36,10 +40,12 @@ struct OnboardingView: View {
 
                 TabView(selection: $currentStep) {
                     welcomeStep.tag(0)
-                    budgetStep.tag(1)
-                    categoriesStep.tag(2)
-                    allocationStep.tag(3)
-                    reviewStep.tag(4)
+                    incomePlannerStep.tag(1)
+                    budgetStep.tag(2)
+                    categoriesStep.tag(3)
+                    allocationStep.tag(4)
+                    exclusionsStep.tag(5)
+                    reviewStep.tag(6)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: currentStep)
@@ -93,6 +99,11 @@ struct OnboardingView: View {
 
     // MARK: - Navigation Buttons
 
+    /// Steps that manage their own navigation via internal buttons (no outer Next button shown).
+    private var stepManagesOwnNavigation: Bool {
+        currentStep == 1 || currentStep == 5
+    }
+
     private var navigationButtons: some View {
         HStack {
             if currentStep > 0 {
@@ -115,7 +126,10 @@ struct OnboardingView: View {
 
             Spacer()
 
-            if currentStep < stepCount - 1 {
+            if stepManagesOwnNavigation {
+                // No outer Next button — the step's own UI handles advancement.
+                EmptyView()
+            } else if currentStep < stepCount - 1 {
                 Button {
                     withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                         currentStep += 1
@@ -165,11 +179,13 @@ struct OnboardingView: View {
 
     private var canAdvance: Bool {
         switch currentStep {
-        case 0: return true
-        case 1: return totalBudget > 0
-        case 2: return !selectedCategoryIds.isEmpty
-        case 3: return true
-        case 4: return true
+        case 0: return true           // welcome
+        case 1: return true           // income planner (handled by its own buttons)
+        case 2: return totalBudget > 0 // budget
+        case 3: return !selectedCategoryIds.isEmpty // categories
+        case 4: return true           // allocation
+        case 5: return true           // exclusions (handled by its own buttons)
+        case 6: return true           // review
         default: return true
         }
     }
@@ -236,6 +252,26 @@ struct OnboardingView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    // MARK: - Step 1b: Income Planner (optional)
+
+    private var incomePlannerStep: some View {
+        IncomePlannerStepView(
+            onApply: { recommendedAmount in
+                // Apply the calculated budget to the budget field and advance
+                totalBudget = recommendedAmount
+                budgetText = "\(Int(recommendedAmount))"
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    currentStep = 2
+                }
+            },
+            onSkip: {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    currentStep = 2
+                }
+            }
+        )
     }
 
     // MARK: - Step 2: Total Budget
@@ -378,8 +414,9 @@ struct OnboardingView: View {
             if !isOther {
                 if selectedCategoryIds.contains(category.categoryId) {
                     selectedCategoryIds.remove(category.categoryId)
-                    categoryCaps.removeValue(forKey: category.categoryId)
-                    categoryCapTexts.removeValue(forKey: category.categoryId)
+                    // Intentionally keep categoryCaps and categoryCapTexts values
+                    // so the user's input is preserved if they re-select this category.
+                    // The submission logic already filters by selectedCategoryIds.
                 } else {
                     selectedCategoryIds.insert(category.categoryId)
                 }
@@ -652,7 +689,41 @@ struct OnboardingView: View {
         .opacity(0.7)
     }
 
-    // MARK: - Step 5: Review
+    // MARK: - Step 5b: Exclusions
+
+    private var exclusionsStep: some View {
+        ExclusionsStepView(
+            selectedCategories: defaultCategories.filter {
+                selectedCategoryIds.contains($0.categoryId)
+            },
+            excludedCategoryIds: $excludedCategoryIds,
+            onContinue: {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    currentStep = 6
+                }
+            },
+            onSkipExclusions: {
+                excludedCategoryIds = []
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                    currentStep = 6
+                }
+            }
+        )
+        .onAppear {
+            // Pre-populate RENT and UTILITIES if they're selected
+            let rentId = defaultCategories.first(where: { $0.categoryId.uppercased() == "RENT" })?.categoryId
+            let utilitiesId = defaultCategories.first(where: { $0.categoryId.uppercased() == "UTILITIES" })?.categoryId
+
+            if let id = rentId, selectedCategoryIds.contains(id) {
+                excludedCategoryIds.insert(id)
+            }
+            if let id = utilitiesId, selectedCategoryIds.contains(id) {
+                excludedCategoryIds.insert(id)
+            }
+        }
+    }
+
+    // MARK: - Step 6: Review (was Step 5)
 
     private var reviewStep: some View {
         ScrollView {
@@ -896,7 +967,8 @@ struct OnboardingView: View {
             totalBudget: totalBudget,
             selectedCategoryIds: Array(selectedCategoryIds),
             categoryCaps: caps,
-            customCategories: customInputs.isEmpty ? nil : customInputs
+            customCategories: customInputs.isEmpty ? nil : customInputs,
+            excludedCategoryIds: excludedCategoryIds.isEmpty ? nil : Array(excludedCategoryIds)
         )
 
         do {

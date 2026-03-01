@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { Card, ProgressBar, Spinner, CategoryIcon, DynamicIcon, CategoryExpensesModal, getCategoryDisplayName } from '@/components/ui'
-import { useBudget } from '@/hooks/useBudget'
+import { useBudget, invalidateBudgetCache } from '@/hooks/useBudget'
 import { useCategories } from '@/hooks/useCategories'
 import { cn } from '@/utils/cn'
 import { formatCurrency } from '@/utils/formatters'
-import { Settings, EyeOff, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Settings, EyeOff, ChevronLeft, ChevronRight, Calculator } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { BudgetCategory } from '@/types/budget'
 import type { Category } from '@/types/category'
+import { BudgetCalculatorModal } from '@/components/modals/BudgetCalculatorModal'
+import { TipsWidget } from '@/components/dashboard/TipsWidget'
+import { updateBudgetCaps } from '@/services/budgetService'
 
 // Check if a given year/month is the current month
 function isCurrentMonth(year: number, month: number): boolean {
@@ -83,6 +86,7 @@ export function DashboardPage() {
   const { budget, loading, error, refetch } = useBudget(selectedYear, selectedMonth)
   const { categories, loading: categoriesLoading } = useCategories()
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null)
+  const [calculatorOpen, setCalculatorOpen] = useState(false)
   const navigate = useNavigate()
 
   const isCurrentMonthSelected = isCurrentMonth(selectedYear, selectedMonth)
@@ -97,7 +101,6 @@ export function DashboardPage() {
   }
 
   const goToNextMonth = () => {
-    // Don't allow going beyond current month
     if (isCurrentMonthSelected) return
 
     if (selectedMonth === 12) {
@@ -111,6 +114,21 @@ export function DashboardPage() {
   const goToCurrentMonth = () => {
     setSelectedYear(now.getFullYear())
     setSelectedMonth(now.getMonth() + 1)
+  }
+
+  const handleCalculatorApply = async (monthlyBudget: number) => {
+    try {
+      // Build current category budgets to preserve allocations
+      const categoryBudgets: Record<string, number> = {}
+      for (const cat of categories) {
+        categoryBudgets[cat.category_id] = cat.monthly_cap
+      }
+      await updateBudgetCaps(monthlyBudget, categoryBudgets)
+      invalidateBudgetCache()
+      await refetch()
+    } catch (err) {
+      console.error('Failed to apply budget from calculator:', err)
+    }
   }
 
   if (loading || categoriesLoading) {
@@ -254,19 +272,31 @@ export function DashboardPage() {
               </div>
             )}
             {budget.excluded_categories && budget.excluded_categories.length > 0 && (
-              <div
-                className="flex items-center gap-1.5 text-xs text-[var(--warning)] pt-1 border-t border-[var(--border-primary)] cursor-help relative group"
-                title={budget.excluded_categories.map(catId => getCategoryDisplayName(catId, categories)).join(', ')}
-              >
-                <EyeOff className="h-3 w-3" />
+              <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] pt-1 border-t border-[var(--border-primary)]">
+                <EyeOff className="h-3 w-3 flex-shrink-0" />
                 <span>
-                  {budget.excluded_categories.length} {budget.excluded_categories.length === 1 ? 'category' : 'categories'} excluded from total
+                  Total excludes:{' '}
+                  <span className="text-[var(--warning)]">
+                    {budget.excluded_categories.map(catId => getCategoryDisplayName(catId, categories)).join(', ')}
+                  </span>
                 </span>
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-[var(--text-primary)] text-[var(--text-inverted)] text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                  {budget.excluded_categories.map(catId => getCategoryDisplayName(catId, categories)).join(', ')}
-                </div>
               </div>
             )}
+            <div className="pt-1 border-t border-[var(--border-primary)]">
+              <button
+                onClick={() => setCalculatorOpen(true)}
+                className={cn(
+                  'flex items-center gap-1.5 text-xs',
+                  'text-[var(--text-muted)]',
+                  'hover:text-[var(--accent-primary)]',
+                  'transition-colors'
+                )}
+                aria-label="Open budget calculator"
+              >
+                <Calculator className="h-3 w-3" />
+                Help me set this
+              </button>
+            </div>
           </div>
         </Card>
 
@@ -312,14 +342,17 @@ export function DashboardPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1.5">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-sm font-medium text-[var(--text-primary)]">
                                 {displayName}
                               </span>
                               {isExcluded && (
-                                <span title="Not included in total">
-                                  <EyeOff className="h-3.5 w-3.5 text-[var(--warning)]" />
-                                </span>
+                                <>
+                                  <EyeOff className="h-3.5 w-3.5 text-[var(--warning)]" aria-hidden="true" />
+                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium">
+                                    Excluded
+                                  </span>
+                                </>
                               )}
                             </div>
                             <span className="text-xs text-[var(--text-muted)]">
@@ -353,6 +386,16 @@ export function DashboardPage() {
           categories={categories}
           year={selectedYear}
           month={selectedMonth}
+        />
+
+        {/* Tips Widget */}
+        <TipsWidget />
+
+        {/* Budget Calculator Modal */}
+        <BudgetCalculatorModal
+          open={calculatorOpen}
+          onClose={() => setCalculatorOpen(false)}
+          onApply={handleCalculatorApply}
         />
     </div>
   )

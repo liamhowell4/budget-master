@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { ChatInput, ChatMessage } from '@/components/chat'
 import { useChat } from '@/hooks/useChat'
 import { useBudget, invalidateBudgetCache } from '@/hooks/useBudget'
@@ -22,6 +22,9 @@ import {
   Plus,
   MessageSquare,
   Trash2,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
 } from 'lucide-react'
 import type { Expense } from '@/types/expense'
 import type { BudgetCategory } from '@/types/budget'
@@ -238,8 +241,33 @@ function CategoryExpensesModal({
   )
 }
 
+const COMPACT_TIPS: { category: string; tips: string[] }[] = [
+  {
+    category: 'Logging',
+    tips: ['Chipotle $14.50 for lunch', 'Groceries $67 at Whole Foods'],
+  },
+  {
+    category: 'Editing',
+    tips: ['Delete that last one', 'Change that to $15'],
+  },
+  {
+    category: 'Analytics',
+    tips: ['How much on food this month?', 'Show my top 5 expenses'],
+  },
+  {
+    category: 'Recurring',
+    tips: ['Add rent $1,400 every month', 'List my recurring expenses'],
+  },
+  {
+    category: 'Budget',
+    tips: ["What's left in my dining budget?", "How's my total budget looking?"],
+  },
+]
+
 export function ChatPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [tipsExpanded, setTipsExpanded] = useState(false)
   const {
     messages,
     isLoading,
@@ -276,6 +304,18 @@ export function ChatPage() {
   useEffect(() => {
     loadConversations()
   }, [loadConversations])
+
+  // Prefill from navigation state (e.g. from TipsWidget)
+  useEffect(() => {
+    const state = location.state as { prefillPrompt?: string } | null
+    if (state?.prefillPrompt) {
+      sendMessage(state.prefillPrompt)
+      // Clear state so navigating back and forward doesn't re-trigger
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  // Only run on mount — sendMessage and navigate are stable refs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -482,6 +522,61 @@ export function ChatPage() {
                         ))}
                       </div>
                     </div>
+                  </div>
+
+                  {/* What else can I do — compact expandable section */}
+                  <div className="w-full mt-6 max-w-sm mx-auto">
+                    <button
+                      onClick={() => setTipsExpanded(!tipsExpanded)}
+                      className="w-full flex items-center justify-between text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors py-2"
+                      aria-expanded={tipsExpanded}
+                    >
+                      <span>What else can I do?</span>
+                      {tipsExpanded
+                        ? <ChevronUp className="h-3.5 w-3.5" />
+                        : <ChevronDown className="h-3.5 w-3.5" />
+                      }
+                    </button>
+
+                    {tipsExpanded && (
+                      <div className="space-y-3 pb-2">
+                        {COMPACT_TIPS.map((section) => (
+                          <div key={section.category}>
+                            <p className="text-xs font-medium text-[var(--text-muted)] mb-1.5">
+                              {section.category}
+                            </p>
+                            <div className="space-y-1">
+                              {section.tips.map((tip) => (
+                                <button
+                                  key={tip}
+                                  onClick={() => sendMessage(tip)}
+                                  className={cn(
+                                    'w-full flex items-center justify-between px-3 py-2 rounded-lg text-left',
+                                    'bg-[var(--surface-secondary)]',
+                                    'border border-[var(--border-primary)]',
+                                    'hover:bg-[var(--surface-hover)]',
+                                    'transition-colors'
+                                  )}
+                                >
+                                  <span className="text-xs text-[var(--text-secondary)] truncate">
+                                    "{tip}"
+                                  </span>
+                                  <ArrowRight className="h-3 w-3 text-[var(--text-muted)] flex-shrink-0 ml-2" />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        <div className="text-center pt-1">
+                          <button
+                            onClick={() => navigate('/dashboard#tips')}
+                            className="text-xs text-[var(--accent-primary)] hover:underline transition-colors"
+                          >
+                            See more on dashboard
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                 </div>

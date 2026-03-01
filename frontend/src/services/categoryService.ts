@@ -95,6 +95,7 @@ export const categoryService = {
       color: string
       monthly_cap: number
     }>
+    excluded_category_ids?: string[]
   }): Promise<{
     success: boolean
     total_budget: number

@@ -144,17 +144,20 @@ public struct OnboardingCompleteRequest: Codable, Sendable {
     public let selectedCategoryIds: [String]
     public let categoryCaps: [String: Double]
     public let customCategories: [CustomCategoryInput]?
+    public let excludedCategoryIds: [String]?
 
     public init(
         totalBudget: Double,
         selectedCategoryIds: [String],
         categoryCaps: [String: Double],
-        customCategories: [CustomCategoryInput]?
+        customCategories: [CustomCategoryInput]?,
+        excludedCategoryIds: [String]? = nil
     ) {
         self.totalBudget = totalBudget
         self.selectedCategoryIds = selectedCategoryIds
         self.categoryCaps = categoryCaps
         self.customCategories = customCategories
+        self.excludedCategoryIds = excludedCategoryIds
     }
 }
 

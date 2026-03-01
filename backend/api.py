@@ -1174,6 +1174,7 @@ class OnboardingCompleteRequest(BaseModel):
     selected_category_ids: List[str]
     category_caps: dict  # Dict[str, float] - category_id -> cap
     custom_categories: Optional[List[CustomCategoryInput]] = None
+    excluded_category_ids: List[str] = []
 
 
 @app.post("/onboarding/complete")
@@ -1237,6 +1238,13 @@ async def complete_onboarding(
                     "monthly_cap": custom.monthly_cap
                 })
                 custom_created += 1
+
+        # Set exclude_from_total for any categories the user opted out of total tracking
+        for cat_id in request.excluded_category_ids:
+            try:
+                user_firebase.update_category(cat_id, {"exclude_from_total": True})
+            except Exception as e:
+                logger.warning("Could not set exclude_from_total for %s: %s", cat_id, e)
 
         # Recalculate OTHER cap (gets the unallocated budget)
         other_cap = user_firebase.recalculate_other_cap()

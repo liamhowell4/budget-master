@@ -106,6 +106,10 @@ func toolDisplayName(_ tool: String) -> String {
 // MARK: - ChatView
 
 struct ChatView: View {
+    /// Optional prefill text injected from outside (e.g. TipsWidgetView via ContentView).
+    /// Consumed on first appearance and cleared so it doesn't fire again.
+    @Binding var pendingPrefill: String?
+
     @StateObject private var viewModel = ChatViewModel()
     @StateObject private var voiceRecorder = VoiceRecorder()
     @Environment(\.appAccent) private var appAccent
@@ -199,6 +203,12 @@ struct ChatView: View {
                 if let e = viewModel.errorMessage { Text(e) }
             }
             .task { await viewModel.loadInitialData() }
+            .onChange(of: pendingPrefill) { _, newValue in
+                guard let text = newValue, !text.isEmpty else { return }
+                viewModel.inputText = text
+                pendingPrefill = nil
+                isInputFocused = true
+            }
         }
     }
 

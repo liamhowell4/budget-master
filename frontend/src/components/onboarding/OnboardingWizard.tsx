@@ -6,16 +6,18 @@ import { GlowButton } from '@/components/ui/GlowButton'
 import { Spinner } from '@/components/ui/Spinner'
 import { StepIndicator } from './StepIndicator'
 import { WelcomeStep } from './WelcomeStep'
+import { IncomePlannerStep } from './IncomePlannerStep'
 import { TotalBudgetStep } from './TotalBudgetStep'
 import { CategoriesStep, type CustomCategory } from './CategoriesStep'
 import { CapsStep } from './CapsStep'
+import { ExclusionsStep } from './ExclusionsStep'
 import { ReviewStep } from './ReviewStep'
 import { categoryService } from '@/services/categoryService'
 import { ArrowLeft, X } from 'lucide-react'
 
-type Step = 'welcome' | 'totalBudget' | 'categories' | 'caps' | 'review'
+type Step = 'welcome' | 'incomePlanner' | 'totalBudget' | 'categories' | 'caps' | 'exclusions' | 'review'
 
-const STEPS: Step[] = ['welcome', 'totalBudget', 'categories', 'caps', 'review']
+const STEPS: Step[] = ['welcome', 'incomePlanner', 'totalBudget', 'categories', 'caps', 'exclusions', 'review']
 
 const contentVariants = {
   enter: (direction: number) => ({
@@ -49,6 +51,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([])
   const [categoryCaps, setCategoryCaps] = useState<Record<string, number>>({})
+  const [excludedCategoryIds, setExcludedCategoryIds] = useState<string[]>([])
 
   // Lock body scroll
   useEffect(() => {
@@ -76,7 +79,6 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   }
 
   const goNext = () => {
-    // Validation
     if (currentStep === 'totalBudget') {
       if (totalBudget <= 0) {
         setBudgetError('Please enter a budget greater than $0')
@@ -98,23 +100,42 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     }
   }
 
+  // IncomePlannerStep handlers
+  const handleIncomePlannerApply = (amount: number) => {
+    setTotalBudget(amount)
+    setBudgetError(null)
+    goToStep('totalBudget')
+  }
+
+  const handleIncomePlannerSkip = () => {
+    goToStep('totalBudget')
+  }
+
+  // ExclusionsStep skip handler
+  const handleExclusionsSkip = () => {
+    goToStep('review')
+  }
+
   const handleComplete = async () => {
     setIsSubmitting(true)
     setSubmitError(null)
 
     try {
-      // Combine default and custom category IDs (excluding OTHER which is always added)
       const allCategoryIds = [
         ...selectedCategoryIds.filter((id) => id !== 'OTHER'),
         ...customCategories.map((c) => c.id),
       ]
 
-      // Prepare caps - only include categories that have allocations
+      // Only include caps for categories that are currently selected
       const finalCaps: Record<string, number> = {}
-      for (const [catId, cap] of Object.entries(categoryCaps)) {
-        if (cap > 0) {
-          finalCaps[catId] = cap
-        }
+      for (const catId of selectedCategoryIds) {
+        const cap = categoryCaps[catId]
+        if (cap && cap > 0) finalCaps[catId] = cap
+      }
+      // Also include custom category caps
+      for (const custom of customCategories) {
+        const cap = categoryCaps[custom.id]
+        if (cap && cap > 0) finalCaps[custom.id] = cap
       }
 
       await categoryService.completeOnboarding({
@@ -127,20 +148,22 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
           color: c.color,
           monthly_cap: categoryCaps[c.id] || 0,
         })),
+        excluded_category_ids: excludedCategoryIds,
       })
 
       onComplete()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error completing onboarding:', err)
-      setSubmitError(
-        err.response?.data?.detail || err.message || 'Failed to save. Please try again.'
-      )
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to save. Please try again.'
+      setSubmitError(message)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // Calculate if caps exceed budget
   const allocatedTotal = Object.values(categoryCaps).reduce((sum, cap) => sum + cap, 0)
   const isOverBudget = allocatedTotal > totalBudget
 
@@ -148,12 +171,16 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
     switch (currentStep) {
       case 'welcome':
         return true
+      case 'incomePlanner':
+        return true
       case 'totalBudget':
         return totalBudget > 0
       case 'categories':
         return selectedCategoryIds.length > 0 || customCategories.length > 0
       case 'caps':
         return !isOverBudget
+      case 'exclusions':
+        return true
       case 'review':
         return true
       default:
@@ -166,6 +193,8 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
       case 'welcome':
         return 'Get Started'
       case 'caps':
+        return 'Continue'
+      case 'exclusions':
         return 'Review'
       case 'review':
         return isSubmitting ? 'Setting Up...' : 'Complete Setup'
@@ -173,6 +202,10 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
         return 'Continue'
     }
   }
+
+  // Steps that manage their own navigation (no footer Next button)
+  const selfNavigatingSteps: Step[] = ['incomePlanner']
+  const isSelfNavigating = selfNavigatingSteps.includes(currentStep)
 
   return createPortal(
     <div className="fixed inset-0 z-50">
@@ -236,6 +269,12 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                 transition={{ duration: 0.25, ease: 'easeInOut' }}
               >
                 {currentStep === 'welcome' && <WelcomeStep />}
+                {currentStep === 'incomePlanner' && (
+                  <IncomePlannerStep
+                    onApply={handleIncomePlannerApply}
+                    onSkip={handleIncomePlannerSkip}
+                  />
+                )}
                 {currentStep === 'totalBudget' && (
                   <TotalBudgetStep
                     value={totalBudget}
@@ -260,6 +299,15 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                     onChange={setCategoryCaps}
                   />
                 )}
+                {currentStep === 'exclusions' && (
+                  <ExclusionsStep
+                    selectedCategoryIds={selectedCategoryIds}
+                    customCategories={customCategories}
+                    excludedCategoryIds={excludedCategoryIds}
+                    onChange={setExcludedCategoryIds}
+                    onSkip={handleExclusionsSkip}
+                  />
+                )}
                 {currentStep === 'review' && (
                   <ReviewStep
                     totalBudget={totalBudget}
@@ -281,51 +329,51 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
             </div>
           )}
 
-          {/* Footer */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50">
-            {/* Back button */}
-            <div>
-              {currentStepIndex > 0 && (
-                <button
-                  onClick={goBack}
-                  disabled={isSubmitting}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 text-sm',
-                    'text-neutral-600 dark:text-neutral-400',
-                    'hover:text-neutral-900 dark:hover:text-neutral-100',
-                    'disabled:opacity-50',
-                    'transition-colors'
-                  )}
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Back
-                </button>
-              )}
-            </div>
+          {/* Footer — hidden for self-navigating steps */}
+          {!isSelfNavigating && (
+            <div className="flex items-center justify-between px-6 py-4 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50">
+              <div>
+                {currentStepIndex > 0 && (
+                  <button
+                    onClick={goBack}
+                    disabled={isSubmitting}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-2 text-sm',
+                      'text-neutral-600 dark:text-neutral-400',
+                      'hover:text-neutral-900 dark:hover:text-neutral-100',
+                      'disabled:opacity-50',
+                      'transition-colors'
+                    )}
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back
+                  </button>
+                )}
+              </div>
 
-            {/* Continue/Complete button */}
-            <div>
-              {currentStep === 'review' ? (
-                <GlowButton
-                  onClick={handleComplete}
-                  disabled={!canProceed() || isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <span className="flex items-center gap-2">
-                      <Spinner size="sm" />
-                      Setting Up...
-                    </span>
-                  ) : (
-                    'Complete Setup'
-                  )}
-                </GlowButton>
-              ) : (
-                <GlowButton onClick={goNext} disabled={!canProceed()}>
-                  {getButtonText()}
-                </GlowButton>
-              )}
+              <div>
+                {currentStep === 'review' ? (
+                  <GlowButton
+                    onClick={handleComplete}
+                    disabled={!canProceed() || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <span className="flex items-center gap-2">
+                        <Spinner size="sm" />
+                        Setting Up...
+                      </span>
+                    ) : (
+                      'Complete Setup'
+                    )}
+                  </GlowButton>
+                ) : (
+                  <GlowButton onClick={goNext} disabled={!canProceed()}>
+                    {getButtonText()}
+                  </GlowButton>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </motion.div>
       </div>
     </div>,

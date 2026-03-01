@@ -9,6 +9,9 @@ struct ContentView: View {
     @State private var needsOnboarding: Bool?
     @State private var selectedTab: Int = 1
 
+    /// Pending prompt to prefill in the chat input on the next chat tab appearance.
+    @State private var pendingChatPrefill: String?
+
     private let api = APIService()
 
     /// The full scheme resolved from system appearance (or manual override).
@@ -81,13 +84,18 @@ struct ContentView: View {
                     .tabItem { Label("Dashboard", systemImage: "chart.pie") }
                     .tag(0)
 
-                ChatView()
+                ChatView(pendingPrefill: $pendingChatPrefill)
                     .tabItem { Label("Chat", systemImage: "message.fill") }
                     .tag(1)
 
                 ExpensesView()
                     .tabItem { Label("Expenses", systemImage: "dollarsign.circle") }
                     .tag(2)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .prefillChatPrompt)) { notification in
+                guard let prompt = notification.object as? String else { return }
+                pendingChatPrefill = prompt
+                withAnimation { selectedTab = 1 }
             }
         }
         // Propagate all resolved theme tokens through the environment so every

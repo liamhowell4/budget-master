@@ -48,6 +48,8 @@ struct DashboardView: View {
                     if !viewModel.recentExpenses.isEmpty {
                         recentExpensesSection
                     }
+
+                    TipsWidgetView()
                 }
                 .padding()
             }
@@ -301,11 +303,18 @@ struct DashboardView: View {
     // MARK: - Excluded Categories Note
 
     private func excludedCategoriesNote(_ excluded: [String]) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "info.circle")
+        // Map raw category IDs to user-facing display names via the loaded categories
+        let displayNames = excluded.map { rawId -> String in
+            viewModel.categories.first(where: {
+                $0.categoryId.caseInsensitiveCompare(rawId) == .orderedSame
+            })?.name ?? rawId
+        }
+
+        return HStack(spacing: 6) {
+            Image(systemName: "eye.slash")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text("Excludes: \(excluded.joined(separator: ", "))")
+            Text("Total excludes: \(displayNames.joined(separator: ", "))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
