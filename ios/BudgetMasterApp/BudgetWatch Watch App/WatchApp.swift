@@ -7,10 +7,12 @@ struct BudgetMasterWatchApp: App {
     @StateObject private var tokenProvider = WatchTokenProvider.shared
 
     init() {
+        // Set the base URL at launch. Token provider wiring is deferred to
+        // WatchDataStore.load() so it is guaranteed to complete before any
+        // network request fires (eliminating the previous race condition).
         let url = URL(string: "https://expense-tracker-nsz3hblwea-uc.a.run.app")!
         Task(priority: .userInitiated) {
             await APIClient.shared.setBaseURL(url)
-            await APIClient.shared.setTokenProvider(WatchTokenProvider.shared)
         }
     }
 
@@ -38,12 +40,18 @@ struct BudgetMasterWatchApp: App {
 /// Page 0 (left): Budget overview ring + category bars.
 /// Page 1 (center, default): Mic recording view.
 /// Page 2 (right): Recent expenses list.
+///
+/// `dataStore` is a `@StateObject` here so its lifetime matches the tab view —
+/// data is fetched once and shared across all pages, preventing duplicate
+/// in-flight requests and cancellation when the user swipes between tabs.
 struct MainTabView: View {
+    @StateObject private var dataStore = WatchDataStore()
     @State private var selectedPage: Int = 1
 
     var body: some View {
         TabView(selection: $selectedPage) {
             BudgetPageView()
+                .environmentObject(dataStore)
                 .tag(0)
 
             NavigationStack {
@@ -52,9 +60,14 @@ struct MainTabView: View {
             .tag(1)
 
             RecentExpensesPageView()
+                .environmentObject(dataStore)
                 .tag(2)
         }
         .tabViewStyle(.page)
+        // Single task at the container level: sets auth then fetches both
+        // datasets in parallel. SwiftUI cancels this task when MainTabView
+        // leaves the hierarchy, which is the correct lifecycle scope.
+        .task { await dataStore.load() }
     }
 }
 
