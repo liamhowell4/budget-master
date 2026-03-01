@@ -137,6 +137,94 @@ class BudgetManager:
         # Delegate to string-based method
         return self.get_budget_warning_for_category(category.name, amount, year, month)
 
+    def get_budget_status_data(
+        self,
+        category_id: str,
+        amount: float,
+        year: int,
+        month: int
+    ) -> dict:
+        """
+        Compute budget status after adding an expense.
+
+        Returns structured data including the warning string and remaining
+        amounts so callers can surface accurate budget info without a
+        second round-trip.
+
+        Args:
+            category_id: The expense category ID string (e.g., "FOOD_OUT")
+            amount: The new expense amount to add
+            year: Year (e.g., 2025)
+            month: Month (1-12)
+
+        Returns:
+            {
+                "warning": str,               # formatted warning string (empty if none)
+                "category_remaining": float | None,  # None if no cap set
+                "total_remaining": float | None,     # None if no cap set
+            }
+        """
+        warnings = []
+        category_remaining = None
+        total_remaining = None
+
+        # ==================== Category Budget Check ====================
+        category_cap = None
+        if self.firebase.user_id and self.firebase.has_categories_setup():
+            category_cap = self.firebase.get_category_cap(category_id)
+        else:
+            category_cap = self.firebase.get_budget_cap(category_id)
+
+        if category_cap and category_cap > 0:
+            current_category_spending = self.calculate_monthly_spending_for_category_id(category_id, year, month)
+            projected_category_spending = current_category_spending + amount
+            category_percentage = (projected_category_spending / category_cap) * 100
+            category_remaining = category_cap - projected_category_spending
+
+            category_warning = self._format_warning(
+                percentage=category_percentage,
+                remaining=category_remaining,
+                budget_type=f"{category_id} budget",
+                cap=category_cap
+            )
+            if category_warning:
+                warnings.append(category_warning)
+
+        # ==================== Total Monthly Budget Check ====================
+        if self.firebase.user_id and self.firebase.has_categories_setup():
+            total_cap = self.firebase.get_total_monthly_budget()
+        else:
+            total_cap = self.firebase.get_budget_cap("TOTAL")
+
+        if total_cap and total_cap > 0:
+            current_total_spending = self.calculate_total_monthly_spending(year, month)
+            projected_total_spending = current_total_spending + amount
+            total_percentage = (projected_total_spending / total_cap) * 100
+            total_remaining = total_cap - projected_total_spending
+
+            current_threshold = self._get_threshold_level(total_percentage)
+            if current_threshold is not None:
+                warned_thresholds = self.firebase.get_warned_thresholds(year, month)
+                should_warn = current_threshold >= 100 or current_threshold not in warned_thresholds
+
+                if should_warn:
+                    total_warning = self._format_warning(
+                        percentage=total_percentage,
+                        remaining=total_remaining,
+                        budget_type="monthly total budget",
+                        cap=total_cap
+                    )
+                    if total_warning:
+                        warnings.append(total_warning)
+                        if current_threshold < 100 and current_threshold not in warned_thresholds:
+                            self.firebase.add_warned_threshold(year, month, current_threshold)
+
+        return {
+            "warning": "\n".join(warnings),
+            "category_remaining": category_remaining,
+            "total_remaining": total_remaining,
+        }
+
     def get_budget_warning_for_category(
         self,
         category_id: str,
@@ -147,8 +235,6 @@ class BudgetManager:
         """
         Generate budget warning message for a new expense using string category ID.
 
-        Supports custom user-defined categories.
-
         Args:
             category_id: The expense category ID string (e.g., "FOOD_OUT", "PET_SUPPLIES")
             amount: The new expense amount to add
@@ -158,84 +244,7 @@ class BudgetManager:
         Returns:
             Warning message string (empty if no warnings)
         """
-        warnings = []
-
-        # ==================== Category Budget Check ====================
-        # Try to get cap from custom categories first, then fall back to budget_caps
-        category_cap = None
-
-        # Check custom categories (for users with custom categories set up)
-        if self.firebase.user_id and self.firebase.has_categories_setup():
-            category_cap = self.firebase.get_category_cap(category_id)
-        else:
-            # Fallback to legacy budget_caps
-            category_cap = self.firebase.get_budget_cap(category_id)
-
-        if category_cap and category_cap > 0:
-            current_category_spending = self.calculate_monthly_spending_for_category_id(category_id, year, month)
-            projected_category_spending = current_category_spending + amount
-
-            category_percentage = (projected_category_spending / category_cap) * 100
-            category_remaining = category_cap - projected_category_spending
-
-            category_warning = self._format_warning(
-                percentage=category_percentage,
-                remaining=category_remaining,
-                budget_type=f"{category_id} budget",
-                cap=category_cap
-            )
-
-            if category_warning:
-                warnings.append(category_warning)
-
-        # ==================== Total Monthly Budget Check ====================
-        # Get total cap from user doc or legacy budget_caps
-        if self.firebase.user_id and self.firebase.has_categories_setup():
-            total_cap = self.firebase.get_total_monthly_budget()
-        else:
-            total_cap = self.firebase.get_budget_cap("TOTAL")
-
-        if total_cap and total_cap > 0:
-            current_total_spending = self.calculate_total_monthly_spending(year, month)
-            projected_total_spending = current_total_spending + amount
-
-            total_percentage = (projected_total_spending / total_cap) * 100
-            total_remaining = total_cap - projected_total_spending
-
-            # Determine which threshold we're at
-            current_threshold = self._get_threshold_level(total_percentage)
-
-            if current_threshold is not None:
-                # Get list of thresholds already warned about this month
-                warned_thresholds = self.firebase.get_warned_thresholds(year, month)
-
-                # Decide whether to warn
-                should_warn = False
-                if current_threshold >= 100:
-                    # Over budget: ALWAYS warn (every time)
-                    should_warn = True
-                elif current_threshold not in warned_thresholds:
-                    # New threshold reached: warn and track it
-                    should_warn = True
-
-                if should_warn:
-                    total_warning = self._format_warning(
-                        percentage=total_percentage,
-                        remaining=total_remaining,
-                        budget_type="monthly total budget",
-                        cap=total_cap
-                    )
-
-                    if total_warning:
-                        warnings.append(total_warning)
-
-                        # Track this threshold (unless already tracked or over 100%)
-                        # Over 100% doesn't need tracking since we always warn
-                        if current_threshold < 100 and current_threshold not in warned_thresholds:
-                            self.firebase.add_warned_threshold(year, month, current_threshold)
-
-        # Combine warnings with line breaks
-        return "\n".join(warnings)
+        return self.get_budget_status_data(category_id, amount, year, month)["warning"]
 
     def _get_threshold_level(self, percentage: float) -> Optional[int]:
         """

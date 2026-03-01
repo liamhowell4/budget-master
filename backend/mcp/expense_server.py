@@ -46,6 +46,22 @@ _global_firebase = FirebaseClient()
 server = Server("expense-tracker-mcp")
 
 
+# Friendly display names for default categories
+CATEGORY_DISPLAY_NAMES = {
+    "FOOD_OUT": "Restaurants",
+    "COFFEE": "Coffee",
+    "GROCERIES": "Groceries",
+    "RENT": "Rent",
+    "UTILITIES": "Utilities",
+    "MEDICAL": "Medical",
+    "GAS": "Gas",
+    "RIDE_SHARE": "Rideshare",
+    "HOTEL": "Hotels",
+    "TECH": "Tech & Subscriptions",
+    "TRAVEL": "Travel",
+    "OTHER": "Other",
+}
+
 # Common schema properties
 AUTH_TOKEN_PROPERTY = {"type": "string"}
 
@@ -682,16 +698,37 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
     # Save expense - override category in save to use string
     expense_id = firebase.save_expense(expense, input_type="mcp", category_str=category_str)
 
-    # Return success response
+    # Get friendly display name for category
+    if firebase.has_categories_setup():
+        user_cats = firebase.get_user_categories()
+        category_display_name = next(
+            (c.get("display_name", category_str) for c in user_cats if c.get("category_id") == category_str),
+            category_str
+        )
+    else:
+        category_display_name = CATEGORY_DISPLAY_NAMES.get(category_str, category_str)
+
+    # Get budget status (warning + remaining amounts) in the same call
+    user_budget_manager = get_user_budget_manager(arguments)
+    budget_data = user_budget_manager.get_budget_status_data(
+        category_id=category_str,
+        amount=amount,
+        year=expense_date.year,
+        month=expense_date.month,
+    )
+
+    import json
     result = {
         "success": True,
         "expense_id": expense_id,
         "expense_name": expense_name,
         "amount": amount,
-        "category": category_str
+        "category": category_str,
+        "category_display_name": category_display_name,
+        "budget_warning": budget_data["warning"],
+        "category_remaining": budget_data["category_remaining"],
+        "total_remaining": budget_data["total_remaining"],
     }
-
-    import json
     return [TextContent(type="text", text=json.dumps(result))]
 
 
@@ -729,18 +766,19 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
             text=f"Error: Invalid category '{category_str}'"
         )]
 
-    # Get user-scoped budget manager and get warning
+    # Get user-scoped budget manager and get structured budget status
     user_budget_manager = get_user_budget_manager(arguments)
-    warning = user_budget_manager.get_budget_warning_for_category(
+    budget_data = user_budget_manager.get_budget_status_data(
         category_id=category_str,
         amount=amount,
         year=year,
-        month=month
+        month=month,
     )
 
-    # Return warning (empty string if no warnings)
     result = {
-        "budget_warning": warning if warning else ""
+        "budget_warning": budget_data["warning"],
+        "category_remaining": budget_data["category_remaining"],
+        "total_remaining": budget_data["total_remaining"],
     }
 
     return [TextContent(type="text", text=json.dumps(result))]
