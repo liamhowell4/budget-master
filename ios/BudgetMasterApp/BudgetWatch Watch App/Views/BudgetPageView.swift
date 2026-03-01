@@ -93,7 +93,7 @@ struct BudgetPageView: View {
 
         return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                Text(category.emoji)
+                Text(categoryEmoji(category.category))
                     .font(.system(size: 12))
                 Text(displayName(category.category))
                     .font(.caption2)
@@ -126,6 +126,24 @@ struct BudgetPageView: View {
         case 0.5..<0.9:   return .yellow
         case 0.9..<1.0:   return .orange
         default:           return .red
+        }
+    }
+
+    private func categoryEmoji(_ category: String) -> String {
+        switch category.uppercased() {
+        case "FOOD_OUT":      return "🍽️"
+        case "COFFEE":        return "☕️"
+        case "GROCERIES":     return "🛒"
+        case "GAS":           return "⛽️"
+        case "RENT":          return "🏠"
+        case "UTILITIES":     return "⚡️"
+        case "MEDICAL":       return "💊"
+        case "RIDE_SHARE":    return "🚗"
+        case "HOTEL":         return "🛏️"
+        case "TECH":          return "💻"
+        case "TRAVEL":        return "✈️"
+        case "TRANSPORTATION": return "🚌"
+        default:              return "💰"
         }
     }
 

@@ -33,7 +33,7 @@ struct ExpensesView: View {
 
                 ZStack {
                     if selectedTab == 0 {
-                        if sortedFilteredExpenses.isEmpty && !viewModel.isLoading {
+                        if sortedFilteredExpenses.isEmpty && viewModel.pendingExpenses.isEmpty && !viewModel.isLoading {
                             emptyStateView
                         } else {
                             expensesList
@@ -595,7 +595,7 @@ class ExpensesViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     // Filters
-    @Published var filterStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+    @Published var filterStartDate = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
     @Published var filterEndDate = Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date()
     @Published var selectedCategories: Set<String> = []
     @Published var minAmount: Double?
@@ -629,6 +629,9 @@ class ExpensesViewModel: ObservableObject {
         let year = cal.component(.year, from: now)
         let month = cal.component(.month, from: now)
 
+        // Fetch pending concurrently; failures are silently ignored
+        let pendingTask = Task { try? await api.fetchPending() }
+
         do {
             async let categoriesFetch = api.fetchCategories()
             async let expensesFetch = api.fetchExpenses(year: year, month: month)
@@ -660,8 +663,8 @@ class ExpensesViewModel: ObservableObject {
             errorMessage = error.localizedDescription
         }
 
+        pendingExpenses = (await pendingTask.value) ?? pendingExpenses
         isLoading = false
-        await fetchPendingExpenses()
     }
 
     func fetchPendingExpenses() async {
@@ -765,7 +768,7 @@ class ExpensesViewModel: ObservableObject {
     }
 
     func resetFilters() {
-        filterStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
+        filterStartDate = Calendar.current.date(from: Calendar.current.dateComponents([.year, .month], from: Date())) ?? Date()
         filterEndDate = Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date()
         selectedCategories = []
         minAmount = nil
