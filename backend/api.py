@@ -1333,25 +1333,19 @@ async def confirm_pending_expense(
         doc_id = user_firebase.save_expense(expense, input_type="recurring")
 
         # Update recurring template's last_user_action
-        today = date.today()
-        today_date = Date(day=today.day, month=today.month, year=today.year)
-
-        pending_dict = user_firebase.get_all_pending_expenses(awaiting_only=False)
-        template_id = None
-        for p in pending_dict:
-            if p.get("pending_id") == pending_id:
-                template_id = p.get("template_id")
-                break
-
-        if template_id:
-            user_firebase.update_recurring_expense(
-                template_id,
-                {"last_user_action": {
-                    "day": today_date.day,
-                    "month": today_date.month,
-                    "year": today_date.year
-                }}
-            )
+        if pending.template_id:
+            today = date.today()
+            try:
+                user_firebase.update_recurring_expense(
+                    pending.template_id,
+                    {"last_user_action": {
+                        "day": today.day,
+                        "month": today.month,
+                        "year": today.year
+                    }}
+                )
+            except Exception as e:
+                logger.warning("Could not update recurring template %s: %s", pending.template_id, e)
 
         # Delete pending expense
         user_firebase.delete_pending_expense(pending_id)

@@ -544,6 +544,7 @@
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = "Budget Chat/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Budget Chat";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -573,6 +574,7 @@
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = "Budget Chat/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Budget Chat";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -601,7 +603,7 @@
 				DEVELOPMENT_TEAM = 25322SNQ6U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = BudgetWatch;
+				INFOPLIST_KEY_CFBundleDisplayName = "Budget Watch";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.budgetmaster.app;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -634,7 +636,7 @@
 				DEVELOPMENT_TEAM = 25322SNQ6U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = BudgetWatch;
+				INFOPLIST_KEY_CFBundleDisplayName = "Budget Watch";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.budgetmaster.app;
 				LD_RUNPATH_SEARCH_PATHS = (
