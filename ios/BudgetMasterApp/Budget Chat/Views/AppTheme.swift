@@ -79,7 +79,7 @@ struct GlassCapsuleModifier: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26, *) {
             content
-                .glassEffect(.regular.interactive(), in: Capsule())
+                .glassEffect(.regular, in: Capsule())
         } else {
             content
                 .background(.ultraThinMaterial, in: Capsule())

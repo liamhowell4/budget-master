@@ -328,9 +328,9 @@ struct OnboardingView: View {
                                         .background(
                                             totalBudget == Double(amount)
                                                 ? AnyShapeStyle(appAccent)
-                                                : AnyShapeStyle(.clear)
+                                                : AnyShapeStyle(Color(uiColor: .tertiarySystemFill)),
+                                            in: Capsule()
                                         )
-                                        .glassCapsule()
                                 }
                             }
                         }
