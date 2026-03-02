@@ -944,14 +944,24 @@ struct ExpenseCardView: View {
     @State private var showDeleteConfirm = false
     @State private var isDeleted = false
     @State private var isDeleting = false
+    @State private var showEditSheet = false
+    @State private var currentCategory: String
+
+    init(result: SaveExpenseResult, budgetWarning: String? = nil, viewModel: ChatViewModel, onSelectExpense: ((APIExpense) -> Void)? = nil) {
+        self.result = result
+        self.budgetWarning = budgetWarning
+        self.viewModel = viewModel
+        self.onSelectExpense = onSelectExpense
+        _currentCategory = State(initialValue: result.category ?? "")
+    }
 
     var body: some View {
-        let color = AppTheme.categoryColor(result.category ?? "")
+        let color = AppTheme.categoryColor(currentCategory)
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Image(systemName: AppTheme.sfSymbol(for: result.category ?? ""))
+                Image(systemName: AppTheme.sfSymbol(for: currentCategory))
                     .foregroundStyle(color)
-                Text(result.category?.replacingOccurrences(of: "_", with: " ").capitalized ?? "Expense")
+                Text(currentCategory.replacingOccurrences(of: "_", with: " ").capitalized)
                     .font(.caption).fontWeight(.semibold).foregroundStyle(color)
                 Spacer()
                 Text("Today").font(.caption).foregroundStyle(.secondary)
@@ -972,15 +982,9 @@ struct ExpenseCardView: View {
                     if isDeleting {
                         ProgressView().scaleEffect(0.8)
                     } else {
-                        if let expenseId = result.expense_id {
+                        if result.expense_id != nil {
                             Button {
-                                let apiDate = APIDate(day: Calendar.current.component(.day, from: Date()),
-                                                     month: Calendar.current.component(.month, from: Date()),
-                                                     year: Calendar.current.component(.year, from: Date()))
-                                let expense = APIExpense(id: expenseId, expense_name: result.expense_name,
-                                                       amount: result.amount, date: apiDate,
-                                                       category: result.category ?? "OTHER")
-                                onSelectExpense?(expense)
+                                showEditSheet = true
                             } label: {
                                 Label("Edit", systemImage: "pencil").font(.caption)
                             }
@@ -1013,6 +1017,36 @@ struct ExpenseCardView: View {
                     isDeleted = true
                     isDeleting = false
                 }
+            }
+        }
+        .sheet(isPresented: $showEditSheet) {
+            let cat = viewModel.availableCategories.first { $0.category_id == currentCategory }
+            let expense = Expense(
+                backendId: result.expense_id,
+                description: result.expense_name,
+                amount: result.amount,
+                category: currentCategory,
+                categoryDisplayName: cat?.display_name ?? currentCategory,
+                categoryEmoji: cat?.icon ?? "📦",
+                categoryHexColor: cat?.color ?? "#6B7280",
+                date: Date()
+            )
+            EditExpenseView(expense: expense, availableCategories: viewModel.availableCategories) { updated in
+                guard let backendId = updated.backendId else { return }
+                let cal = Calendar.current
+                let dateDict: [String: Int] = [
+                    "day": cal.component(.day, from: updated.date),
+                    "month": cal.component(.month, from: updated.date),
+                    "year": cal.component(.year, from: updated.date)
+                ]
+                try? await viewModel.api.updateExpense(
+                    id: backendId,
+                    name: updated.description,
+                    amount: updated.amount,
+                    category: updated.category,
+                    date: dateDict
+                )
+                currentCategory = updated.category
             }
         }
     }

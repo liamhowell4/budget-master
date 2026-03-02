@@ -167,7 +167,7 @@ actor APIService {
     private let tokenProvider = FirebaseTokenProvider()
 
     private var baseURL: String {
-        AppConfiguration.shared.apiBaseURL
+        AppConfiguration.shared.resolvedBaseURL
     }
 
     // MARK: Auth

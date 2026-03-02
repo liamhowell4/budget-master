@@ -45,9 +45,12 @@ struct BudgetMasterApp: App {
         NSLog("🚀 BudgetMasterApp: Firebase configured, creating AuthenticationManager")
         _authManager = StateObject(wrappedValue: AuthenticationManager())
 
-        // Configure BudgetMaster package's APIClient with the correct URL and Firebase auth
-        let apiURL = URL(string: AppConfiguration.shared.apiBaseURL)!
+        // Configure BudgetMaster package's APIClient with the correct URL and Firebase auth.
+        // On simulator (DEBUG), probes localhost:8000 first and falls back to production.
+        // resolvedBaseURL starts as prod so early API calls succeed during the probe.
         Task(priority: .userInitiated) {
+            let apiURL = await AppConfiguration.resolveBaseURL()
+            AppConfiguration.shared.updateResolvedBaseURL(apiURL.absoluteString)
             await APIClient.shared.setBaseURL(apiURL)
             await APIClient.shared.setTokenProvider(FirebaseTokenProvider())
         }

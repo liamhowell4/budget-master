@@ -69,10 +69,11 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
   const [editName, setEditName] = useState(result.expense_name)
   const [editAmount, setEditAmount] = useState(result.amount.toString())
   const [editCategory, setEditCategory] = useState(result.category)
+  const [savedCategory, setSavedCategory] = useState(result.category)
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
   const [isDeleted, setIsDeleted] = useState(initialDeleted ?? false)
 
-  const category = (isEditing ? editCategory : result.category) as ExpenseType
+  const category = (isEditing ? editCategory : savedCategory) as ExpenseType
   const colors = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.OTHER
   const label = CATEGORY_LABELS[category] ?? 'Other'
   const budgetAlerts = parseBudgetWarning(budgetWarning)
@@ -115,8 +116,9 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
     onEdit?.(result.expense_id, {
       name: editName !== result.expense_name ? editName : undefined,
       amount: newAmount !== result.amount ? newAmount : undefined,
-      category: editCategory !== result.category ? editCategory : undefined,
+      category: editCategory !== savedCategory ? editCategory : undefined,
     })
+    setSavedCategory(editCategory)
     setIsEditing(false)
     setIsCategoryOpen(false)
   }
