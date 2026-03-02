@@ -2091,7 +2091,8 @@ async def chat_stream(
 
             # Step 3: Tool loop
             from .system_prompts import get_expense_parsing_system_prompt
-            system_prompt = get_expense_parsing_system_prompt()
+            user_categories = user_firebase.get_user_categories() if user_firebase else None
+            system_prompt = get_expense_parsing_system_prompt(user_categories)
 
             result = ToolLoopResult()
             async for sse_event in run_claude_tool_loop(
