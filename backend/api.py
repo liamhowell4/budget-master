@@ -2102,6 +2102,7 @@ async def chat_stream(
                 model=selected_model,
                 user_id=current_user.uid,
                 firebase_client_instance=user_firebase,
+                user_categories=user_categories,
             ):
                 yield sse_event
 

@@ -201,7 +201,7 @@ async def handle_list_tools() -> list[Tool]:
                     "date": {**DATE_SCHEMA, "description": "Date of the expense"},
                     "category": {
                         "type": "string",
-                        "description": "Expense category key (e.g., 'FOOD_OUT', 'COFFEE', 'GROCERIES'). Use get_categories to see all valid options.",
+                        "description": "Expense category key. Must be one of the allowed enum values. Use get_categories if unsure.",
                         "enum": [e.name for e in ExpenseType]
                     }
                 },

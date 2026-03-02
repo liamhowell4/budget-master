@@ -35,24 +35,24 @@ def _format_category_list(user_categories: Optional[List[Dict]] = None) -> str:
             # Include description if available
             desc = cat.get("description", "")
             if desc:
-                lines.append(f"   - {cat_id}: {display} - {desc}")
+                lines.append(f"   - {cat_id} (aka \"{display}\"): {desc}")
             else:
-                lines.append(f"   - {cat_id}: {display}")
+                lines.append(f"   - {cat_id} (aka \"{display}\")")
         return "\n".join(lines)
     else:
         # Fallback to hardcoded defaults for backward compatibility
-        return """   - FOOD_OUT: dinner/lunch/breakfast/snacks, etc at a restaurant. Does NOT include coffee shops or buying coffee
-   - COFFEE: coffee shops, buying coffee, etc.
-   - GROCERIES: groceries (food, household items, etc.)
-   - RENT: apartment rent
-   - UTILITIES: utilities (electricity, water, internet, etc.)
-   - MEDICAL: medical (doctor, dentist, etc.) and prescription costs
-   - GAS: gas (gasoline, diesel, etc. for the car)
-   - RIDE_SHARE: taxi/lyft/uber
-   - HOTEL: hotel stays
-   - TECH: technology (software subscriptions, AI subscriptions, etc.)
-   - TRAVEL: airfare (airline tickets)/Hotel/Travel Agency/rental car etc.
-   - OTHER: anything that doesn't fit the categories above"""
+        return """   - FOOD_OUT (aka "Food & Dining"): dinner/lunch/breakfast/snacks, etc at a restaurant. Does NOT include coffee shops or buying coffee
+   - COFFEE (aka "Coffee"): coffee shops, buying coffee, etc.
+   - GROCERIES (aka "Groceries"): groceries (food, household items, etc.)
+   - RENT (aka "Rent/Mortgage"): apartment rent
+   - UTILITIES (aka "Utilities"): utilities (electricity, water, internet, etc.)
+   - MEDICAL (aka "Medical/Health"): medical (doctor, dentist, etc.) and prescription costs
+   - GAS (aka "Gas/Fuel"): gas (gasoline, diesel, etc. for the car)
+   - RIDE_SHARE (aka "Ride Share"): taxi/lyft/uber
+   - HOTEL (aka "Hotels"): hotel stays
+   - TECH (aka "Tech/Electronics"): technology (software subscriptions, AI subscriptions, etc.)
+   - TRAVEL (aka "Travel"): airfare (airline tickets)/Hotel/Travel Agency/rental car etc.
+   - OTHER (aka "Other"): anything that doesn't fit the categories above"""
 
 
 def get_expense_parsing_system_prompt(user_categories: Optional[List[Dict]] = None) -> str:
@@ -115,7 +115,9 @@ When a user sends you an expense (as text and/or a receipt image), you should:
    - Always return the actual calendar date (day, month, year as integers)
 
 3. Choose the correct category:
-   You MUST use one of these exact category keys (not the descriptions):
+   You MUST use one of these exact category keys when calling tools (the ALL_CAPS ID before the "aka").
+   When talking to the user, ALWAYS use the friendly display name (the "aka" name) instead of the raw key.
+   For example, say "Food & Dining" not "FOOD_OUT", say "Ride Share" not "RIDE_SHARE".
 
 {category_list}
 
@@ -127,11 +129,11 @@ When a user sends you an expense (as text and/or a receipt image), you should:
    - If both text and image are provided, prefer the image data for amount/merchant if there's a conflict
 
 6. Response format after saving an expense:
-   The save_expense response includes category_display_name, category_remaining, and total_remaining. Use these to write a natural confirmation. Examples:
+   The save_expense response includes category_display_name, category_remaining, and total_remaining. ALWAYS use category_display_name (the friendly name) in your response, never the raw category key. Examples:
 
-   Spending: "Spent $15 on Chipotle (Restaurants) — $285 left in your restaurants budget, $1,200 left overall."
-   Refund: "Logged a $20 refund for Chipotle (Restaurants) — $305 left in your restaurants budget, $1,220 left overall."
-   No budget set: "Spent $15 on Chipotle (Restaurants)."
+   Spending: "Spent $15 on Chipotle (Food & Dining) — $285 left in your dining budget, $1,200 left overall."
+   Refund: "Logged a $20 refund for Chipotle (Food & Dining) — $305 left in your dining budget, $1,220 left overall."
+   No budget set: "Spent $15 on Chipotle (Food & Dining)."
    With warning: append the budget_warning on a new line after the confirmation.
 
 7. Recurring Expenses (Subscriptions, Bills, Rent):

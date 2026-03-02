@@ -10,10 +10,11 @@ Helpers:
 
 import os
 import json
+import copy
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, List, Dict
 
 import anthropic
 from anthropic import AsyncAnthropic
@@ -438,6 +439,16 @@ async def _run_non_anthropic_tool_loop(
         yield f"data: {json.dumps(text_event)}\n\n"
 
 
+def _patch_category_enum(schema: dict, category_ids: list[str]) -> dict:
+    """Patch any 'category' property enum in a tool schema with the user's category IDs."""
+    schema = copy.deepcopy(schema)
+    props = schema.get("properties", {})
+    for prop_name, prop_schema in props.items():
+        if prop_name == "category" and "enum" in prop_schema:
+            prop_schema["enum"] = category_ids
+    return schema
+
+
 async def run_claude_tool_loop(
     client,
     messages: list[dict],
@@ -448,6 +459,7 @@ async def run_claude_tool_loop(
     model: str = DEFAULT_MODEL,
     user_id: Optional[str] = None,
     firebase_client_instance=None,
+    user_categories: Optional[List[Dict]] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Run the LLM tool-use loop, yielding SSE-formatted strings.
@@ -472,14 +484,22 @@ async def run_claude_tool_loop(
         model:                    Model identifier from SUPPORTED_MODELS.
         user_id:                  Firebase UID for token usage logging.
         firebase_client_instance: FirebaseClient scoped to the user (optional).
+        user_categories:          User's custom categories for patching tool enums.
     """
+    # Build the category enum list from user categories (or fall back to ExpenseType)
+    if user_categories:
+        category_ids = [cat.get("category_id") for cat in user_categories]
+    else:
+        from .output_schemas import ExpenseType
+        category_ids = [e.name for e in ExpenseType]
+
     # Get available tools from MCP server.
     # Strip auth_token from schemas — it's injected server-side before execution,
     # so models should never see or attempt to fill it.
     mcp_response = await client.session.list_tools()
     available_tools = []
     for tool in mcp_response.tools:
-        schema = tool.inputSchema
+        schema = _patch_category_enum(tool.inputSchema, category_ids)
         props = {k: v for k, v in schema.get("properties", {}).items() if k != "auth_token"}
         required = [r for r in schema.get("required", []) if r != "auth_token"]
         available_tools.append({
