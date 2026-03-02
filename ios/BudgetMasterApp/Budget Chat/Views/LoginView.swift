@@ -240,7 +240,7 @@ private struct SocialSignInSection: View {
                 SocialButton(
                     label: "Continue with Apple",
                     systemImage: "applelogo",
-                    foreground: .white,
+                    foreground: Color(uiColor: .systemBackground),
                     background: Color(uiColor: .label),
                     border: nil
                 ) {
