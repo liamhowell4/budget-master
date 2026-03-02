@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/utils/cn'
 import { CategoriesTab } from '@/components/settings/CategoriesTab'
@@ -23,7 +24,9 @@ const contentVariants = {
 }
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('profile')
+  const location = useLocation()
+  const initialTab = (location.state as { tab?: TabId } | null)?.tab
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'profile')
   const [direction, setDirection] = useState(0)
 
   const handleTabChange = (newTab: TabId) => {

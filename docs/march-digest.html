@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Budget Chat — Welcome to the beta</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background-color:#f5f5f5;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;">
+
+  <span style="display:none;font-size:1px;color:#f5f5f5;max-height:0;max-width:0;opacity:0;overflow:hidden;">March is the perfect month to start tracking your spending. Here's everything you need to get going.</span>
+
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f5f5;padding:48px 24px;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
+
+          <!-- HEADER -->
+          <tr>
+            <td style="padding-bottom:28px;">
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td valign="middle" style="padding-right:14px;">
+                    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAABMaUlEQVR42i381+/323Xfia21+6d9268+/Tnt4elsOqRIihJJSXQRxrFsYZDJYCaBgQHmLheBgczMRS5zF+Q2mSDIzZTAtjKBJrblsS3JkmxSFCk2nUMe8rSn/+q3fcqua+XiaGP/BQvYa7/xfq/1wpfe/r35yRv7YT9tPy55AsaqPR6Hx43rSpY+XvppQ3GPII1xufg0DTl7YzopgLikkqTSzja5COYCUFBYZJSIOfWADEIRJSpZSqWNq6yLfkDUo58YSjO/HeOY/EbZJudAuSjphFQgAIGMqVJMiAqV0wYJHQGV7EuJaeqFVsx8evTq9dVD7zfaOq1bQk2lLylwTCilMJZLpFyUqTEDIOcyEGPtTgr5oX8sQDWzG+1s9ezRjwUwIuacEdDYzk/XREma2T1TH2ldUY5Nd5LShIJT2DXNHIQBlDkMJQUCpBxRaKKCpUBJiAJQCqGk0EpW2lqmDKUgKBQKhLR1S7kASgREEFYZ4GJtJ0QDIBlAaocouSQhjVQGpJkt78wPX/LjTmsHqla61bZTbm7dXLhFETbnCEJKUUvXKVUpPW+aZSyFUaDQtrlRVQspyNg2pyylVaYTQoEQxs2sbWMYlVvYepHSpI1lZgABqBgkCt3OllJrZVdUktKNUFoILQ9vfmEcLqFQt7i/OLwV4uD7MyaKMTCUMO1z8t3qxBqZMwoQTEUgokChrBBaECiJUsjoe+QsEAmgapa2mcfhOsURAEsO1piSEgMum7lPMeUsEIVyTFlKa5RBNMp0xs0USYMipSAE5uKVqkyzkkIicsqRU1LSlBykNAjg3Pz68hMhUJpaCNm0hxpKv70sTExZm6akkKedVApBAEIpSUgJKEqOyIlAADBTznnkkgqq4D0iEmVglqZmyrJe3LNGGV2HqZ+mHQpW0pZS6vmpUWbYn0k7q7sZCqxmtwAox14pxcBcilBaKkclARdlK2CmHIVyq9V9UaIfrhkVUwRgAEZgAegzMXPbHbjmQEgZ/aCUk1IySludSOTVwXFOWUidczBuJk0ttDGiUCrR993skAsfru6m2Oc0OW2FQsEAKITSYdqNwUsBJYeSg5QamIxtMljKqaSRmWfzOTFGvyMmECKFnkoUKIQyJQetjJBCmcrWs+j3KXvZzF+8d+++kHbYbqxrw7QFFCkO7ezO6uRz6/UHRnc+ZD9c+2mfczC2amqXS1HaAWWlndFOSEOFrLZS2rpaFD+ltNOmZqGkYG07JmpsbW2HqBGEUpqIiKidHwppUvIAopqdaGe3u0uJMsWxMDXzW8SYxp6BiIABlbJSt0w55ShlHXwvpGQqQMyllFKEQuSUKUvjEAQlz8K99eZvI+bLiw8FYC6laevJR2mcbed+dw6UUGplKqBCnFAYlJazT3EClPKFt/7287NzreZHx69GP0mlKF2jqqEMfrwqxDduvfrKgy9dXT4tcQuccpisdUpYrYSyjVI6pWCkW7XVW3fuPVuvKSXBJedAnIWSUmiBiqk0VdfNThiVUI6lynFEKaWyXHLJqW1djPtxt86ldPUsxQhKuWphq6USNpNQ2gATsajb0xQGQLz/4q821cyHEYBKGksJXEIJQ6bCyQORQEE5xTgq5H5/4X2vlBRSjMMg0UiptucflhxQKKEMoGImQIEAUugwbREFMEnb3S7Zu9lxVZ+mEIUAYkh5DGm73z9vmyMAkfPeT5tuVsdY7hy+GHOeQg8ICIpyyTl23W2l1KafYk4SBEqZ81g1Vb+/lkIr5aSyIXpWNQiByhBla+pSMgAwSiqJWQNgyVlKyGlCQEAsLJybuWpe186HvRBYkgcgABSIIYxXVx8Z1+SSqKQces6BqEhlkbOSholyisZYH6YUB+YCIIiIS9L1SgvhJEcqUlulG2kbKIlKVrpBhJIDIjBneXL/HUbhZjdm89vKuJPT2wjx7Pl7zEVpJ7TKJU/TVOI65hS9f/P+a1f9NWNMMRHRanUHEE+OHqRCuRRrO4lKCM1CjNOacjK6BmYhrbYNl4yAKaUYtnHcKGNi9Epka+rF7M5u+0wIrZTIyeccTdXm5CWIlEarKYZ9SpGIGDMRaVP58VoIDHGPkOO44VKkcQAghSqlUIqUY+HCJdft0lXVOOwQgZmAgZJXEpg5xaBMZd2MUhDKAkoAyDmgFFQyAsj56WdjHMNwpo2ext3k99vtc4JsjAXgob9iQNe0WuJut+biH599nPPQ1lWOOZcyDFdtu6rbw35/4WwHRFIpEMq2c+97JU1VL1AZBpRKSSGReLW4GcMOAJQSRMK5WkgXYkLwzIyAKXoUApmBc05BcPGTH8NQqCCXEPZIWVtnXZ2jL2XKYStQoFCAEgApByDmEoSSQgCwYKb9/gqgMJBSKo1ba2pjF6Mfdd0wESVfNUsqhShqJVFwmnrizFxkc/Sa0CLH3TButG79dFaAUGrmhMJo43IJJQ0hBKGM1AY5l5KpADAxgJQqpzj0l1LXUttxuFZGh2k79hdSWW1cM7tdSKJEgZSmLUDJeWIGFAgs67qehqkQBX/FJRlnGYSVIucCnK1pnVsqpXIaQAqlTPQ7JYXWLecImbkk5iKFKAxKVXUzJy45DkKA0k5IlVPWthYoUxyASaCMYUBUR0f3Z7Pj3bhFSsRFIOWSqQShNJVMKTGTkEYpI2+9+q00XFNKnRarxdF2HJLvjWvGYa2UatrFFHzJUQCjgBD2QkrIGdBo1xUmzqmua1fpvt+EaeuqTklV27ZpDgQKFiITEuRSJsi5ZA9M8tOjDAKVwsyEnJiylBKFLCUvmlkqjCCsrXMYou9zDkIoQVEb7czycHFrCh4haRWrZsVlH2NBIq1xGnelpNmsSZlyISpJKcNUiIpWrpkdSgG2Xo3Tfrd52s6PUuyZiBiEQABgKsifqv+CUkihJNhlJaUx1enh7WUz32e0rolhLCWbqiuMyjRDf3F4fCf5Xcle6bpzLQsJQhKTQMWAhQC5FKKYva4qIMmMPuyHaevDAFJlPwlgW7kci7HGaPRhpMIMxFxy9kKIUnLMkRkIlTMmxURMKewKJQGQ/I4pMzFlTjnFaRP9miHFhDFGJUWO035zhihuODn55GPgkpR2UiguRQpVcqCSFotbBFio1O1R055OU69sy5SYE1ExWlqtY07GOgBGkPLOy7/h6u7Oyc19pIfnm8qZujvOOTXtoTQLK2U3n3Pp+6FPmZx1SkrKAZByyUzEVBAwcy6lCFQ5T0BYqCDi4NfC1KgbAK31Ukicph0gIUoApaQVUuUSSokoJQAJhJQCMCAzZcocSp600jH1lL2Uiqnk6IWAEncCUopTLvLg+AZJ66cAFLjkpjuklApq5oJClJKNqtvZjTCtGQiEnPxAxCgVSsMocglaWxaCSxRCEEMMXiAiYs6JQcjPf/73mHCKtrZzVc1jySVHP65dtTLuSGRu2gYFj8O0WJ1Ow66wSSWWNEqBILCUxEzKOMqemJQQzhhhF0JVpcTF0S1T3xmH/LUv/dZ688xPe2udlIIBUdkYekRUqkIAKY0ABkYhhJYKEGLsuWSptXU1lUxEAKi0y2mgEoRUpSShq9Xhsa3nN28fPn34CVCg7AOllAMDSOWElELZAgAMUioENG6mXVMYAJghgcBCCYWQoBC1co22TS6JmYXUDCAfvP7tG6efL7BqmoPFye1puhIFdbU4PHylrjqjDsKUhmGXwrUAoVTt2qVGAJY5TyV5BhZSNHVTEqUwoFBFVMyJgViYfhhe++xv/8rX/qOHHz0et0+NMcDEDC/e/3zJebd7DiAQUALm7HNOSmqtVV3NtTZCaKE0AHHOADCN25yj0QiUtXTONBIVAV1dXeVcUkzj7opSj0hQEhFrUwGAFJIhC6EqWxcmVPp4eQNQaTdL0SNFYyxRIQJREggALsQkpBFCKSEZUJrZK0dHb77y4gNl5860H//8u4uD0373EEEaWb3ymc+18wM/9opzW81D6KUQh03lUyLiQhlBMBUgoFIAUAqllck5+jAgogSq7OruvbuPH/089pfWqhw9Mo7T1Pe7pkIAKDkh5MppouJs4+zCmsZZLVRdSgjjVjJSLqkEJmbg45NjLMpWi5SjlLKkgVK/uXrCcW+UUFKgAARZ2xkKiaiZMgADIwCg1FBiJjCus7YueRLKWjsrYaAcAJioUPLApLQTSlIp8rOf/c/u3371/gtHCs31Tp4c3a+rxWJ1z3uyUplqtdkPUmkt2Npmv792tg6FcvTGSmNMykUIdLo2UpUcj1f3ESGlQSFSybO2GfaXH/70r0P/zMgCFEoOTFSA7hy/IFGN09Yqp4QiyswALJxrAXEKPqaRkne2lULPujpGH+JAlDlFBgVClJyy33XNAikhRWCQQpUccyIptRRKSKW0Q2ClnDIVIHGJsWQn8aBZ9NOQote2aqr5uLsEKIhCScnATJlLopIAQL7+9j80epVT7QCambh5Z9n72WffeOXN12+/9+4jW4kxTnVtkVmnS621UG1VNamwEtDUi3FYa9NIlEDEVCRizMkq1IKn4ClnEIDoETJnz4UBOecoBWpZKamIg5Q6hbEzJrOobF03XUp+ubwthMJCy9mpQBtCL6UQUiFizlBV2g8bpU3briRqa3U3b7eba6aMUtvKKVEXysCsjSPKwAVAEsVPDayqbfpp6PeXVLzEkqIvJeTsqfiYwmJ+IKQCXQltiLw8uvXFjGW/v5hX+nIXN72ezcztG9JHI+vl0Y1lINVvLkoY9puHIJHUXEqVcvB+H3Nm5k8fl7WNRDlOOxaqEI3T3lqnbVVSRigCEblUzlJBoyQDgwRgHsNoXXW4uL3pd4hWm8Vmv+3apq5m+921kbKxqxQGpiKFSDkKoZtmkWNCLtrWtjqOcSDIMYZp6oWUzCyEZiZASGksJRktExehZAi9kIQCmWBKkbFBKAwlp1A4CyGZMjEJW2WmlCbixMyyXb0Y/frq4pfvfvidruHlfLlYNBnk0VLIzp0N5ezpM8asMG93G0KtjUljj5idrRhFKUUZi4jL+WmKwZhK6IoBrKlKyUSFKRhplLTGGCGlEHDYHE7RN25eGFLm3S6gcLH0lcWDZdJyu97WKZGRiShM/Q44AgKyAGCjOy211kYrDYzz+T1E9tNoXaUVUS4g/0bwIbB1beHs41hK0VoSEbDMKZYUxgD/zf/hv94N0yePPlCSo++ZitSauRAqqRRwhFyYUP7aV37vk4fvNs2i5PjRxz/KvpwcvvT8KoYMV9uMTo6b5+PuQpCstEpxLHEc/ZqoQKEQBm2sVbWS0pkmpwkQUKvl4tDomktyyhjddV2LJacYU0pGN0OOuURrOwLVus1//Duzb37V/M436t/5hv3218Rvf8UcLf3T8zxFnZMHLFTI6Kays647bppFiH2hVLtWCcvAKY3IQkpdSkrJS6mkVJ9+6lWziCnEOEmlJQpEjDEyRaG0rZuHTy+enT32/jJFz5ylFCXnmIPSVinJKQlU3fymvPfSb2x3lwLY6soa8nHz7PoahE3ZxTRcPnrcb66szIb77eYJE603nxCkGH2MI0kpWb5w+/V+ey1BEYXR73IYlt0JcEnRHx3ed9Z531shBEoCRjQCgJlTmnIR92/4//S3npwe6tPj1qgcQxh3u+P66tWjZ+cbfnRhtGCjK2u75epu250INBJhHLYphuPVUYp9iBMxlByGYZ0pCyGJiagoXfkwftp3gQqVfHJ4ezk7mFIAVlrp681ZziPlQIVM3SFKAIHKpjj5cUuFtJ11sxMp6xtWqThtBDMXzGkAyf32ybB7Mm13fve83zzJadj3z5hjojz5bd3MnGtS8iAAgRMlAs5xQkgh9lobLjmHMG9WPnniUHJa1EfO1hloOT+mVJqqlQBaurbuX711/fzR0/0+SNdtz5+UpDIfrJbts4vtux+7SqPT9lPnSICo61qgVQJn85OLqyfOGKX0MF4l8oASBYMUXEBpSYDaNMA8s+7Owenl6A/nN5yr1rtLYqYShMilEBEJIaVrTT1vu6OqPWYgKrlQyiUN41rNKpdDBJRW6QySY5m7g4vrh1fn7y2XD9ruNKe11tWw39659fJivvi3f/7efH6y6BZhfzWNo1S69FtERIESsLJtKZRLTCU9WL5yMQ7Xm2fzeoEgtFKNbbXAxthQQuYsABUqYBBS5lRuvfatm/c+cs2sWR7H3ZN/9q/+p9pYpxGAYuhzjiHsgI8TUVW5tr2x310hAlMBwJQSIBpjiEQ9X+zHNQAySyHNWNK0vmrb2ZOrp2FaL5Ynu36TchCggAUzS2OZAUAwYF0vM03GVvvrZ4SstFF5mqR09eLYj9cJJKK+efq6B0lUjo/ujOMomTeXn6Q0PHmCz85sU7UpTbvrUQJrMBIkpYjMDNQnXzWLGHyh0Lj6g+szolIbs2wOJMoQh65ufZgQc6FsjfZTQayJqGRCSVLry4vLrrCyi+SJU1HY5JiqRnZtB6hjDjFshLLOtCWF2ewohAEFtS1zfymVmYKvbYOMQijtOmOqfr/JhRgA/SCVNq7dj33OE3E2sko5S10jgLN1KiVwCPkxU5ZC2noBAmKK8o1Xv26bJoRJK4rR++ifnf+SYGrc4ubxiykM2+0ToOSqigWmkhAwhzFymcahrhfK1oyUclDSaFtpPa/rgwzJuAaUZSarpGRSghhjCFEIbbQIKY9RNg7fvD/cXF2mUFDY26+9E3Zn7eKwWx2tz9cwPP3Wb79WSwxT0w9gDAKWGIJCqKwtWKb4Ny2GMhWOxtar7pBziZRCju18aetqnCbgwiWHGKQ0iEhQEAAAiBm1lUoZCaUQCpliL5BLToUSAQIFI4QKMcR+38wOtpvBhyCMDtMF5ak9WF5dXuw2u+Xq1n79GMAsVyc50dXuzDY6erS1/DQFKiUyMmjdzU6KTy/cfeXdD3eVcYEhp7yYL6ZxzZElaoCUSpoyzuf8xePnr9w4a2p/vdeKEUkIqaUy2jbG1sTSCv+F1+MbL+qzZ+nf/Yf4L//95XpfDleLkMb1mgqIKfcx+aY+rNuDSMFV0kidS0WsMpTd/jqtCRmUhFLEjZMVs7rYXAMwAipZkQAEKCUBIkuBzEKZlFNOEYCFUkq3gkm+/OJXjetioilOhMRAztV3br1q5I357Pg3fv2rZ5s++l2zuuHsvBBNY88FKKe2XiBmAI4xSlVpY4S2deXOr57sh7W2DqSrrLBSr8cRAISSQwzrfnzjxvlvPHj3/tGZFIVZMXNKUaly+5VXOafu4ETZxtb64PTItUezwzt3X33wzW9/7pvfeDNE/MFffmRU8/ZnPj/5oe/XIfar1e3XX/3ik6dPFnWzm0afY93JEFMmJqBcAuUspLZW+zhMPiohm261Whz4mBEkC0TtBGopNQhkZqJMzNZUtmoyobz74juFCgueL5c+Tn6cmmYmeHa0vOEqtx3h0eNPjMklTft+LwU6U5WSnDHOVABh9FFbY7R1at413bBbTzkkKiBUgWJ0s/djAsqUt0Mvtfr7v3L+xTvvlxRjlKVQCl4LvP/gMw8+907yISU4vvuiEFobV82OCov9dnN1/nyz3t57+ebbX/j8YnXTaPtXP3yvarQUmpiBVSE/+L6x1RTGXOIwTVMphUlp13WzXFAKGHwYpiCFbJrWmVnbLBkMCpaSiEjZlqX5GwNIWSkNMQtllHby5t3P7ae9n7ZTDJkkU0LG5exEwHi93b39+mvz+fKjx5eTH+u25lKqpiucJaCSLkQQyG23jCEdzG/Utkqcd0MvtSJm7VwBSgxSGZ/JWv1f/s749r1dIEeFKafl4fHN+y995p2v3H/ji1V77JrV6f2Xja21qZSplDaubtr5qu4WQOnRL969evSTv/u7X/i7v/flD3/+8Mc/+kTKopRpqtV+tyWOu2HLQmVIPiViRgCJqmqWtqpLYakkAFb1SuuucnVI2bpOWg2cGVSmIqTKTCBAKm2sAyEJjatn8gtv/WaI4zD2UgAgpBSX7UElbb9fpzxqubj74h3rDl6+f/jk7KzSwEVY3WhpnTm6fePBfFalYgqzFErKdLnbKGsPVnenNCUmZer5rHFV1Xv4x/+JeudVGKJVAoxzb/3aN156+3PVfN7Mls38oJ4v28VKm0oZh4glhRx8ClOME+WojelWB8bIv/7zP3K1/p3fffMH3310fp6qSnXtEWGZ4iCVBI3bcZ+ZELh2NQhZCIwzKKSfAkrlqg6E1KZtqsX17qm1bYoZlBHKIIBSAoSVtilA1i1MvaiaTr7zma9lKlAIEYgysKiUzmFadEuitBv9epPvnp589Vcf/MX33l3NOyHN7TuvHRzcurG6/Zk7d374/i8+/9l3tv3gyzRMwYdeGZsYQQkwWkuDAkea/29/p/6H39B91Fqhtvatr/92d7C4fP7s4OTO6sYdZWptK9vMUOgw9r7fhLFP0ZcUS/SUUwpT8D0izg5Xv/zL7y2PT166b/7tHz8jyj6Mm2Ftq4oRxxRCoQJgdd01S+WkFCKEkFJCoVDKWKbCqE0npYppykwgFRGDlMI41JZNxcqAdsatdLXInOVr9784ee+czoVHHwRHQcSUmRJRGsN63F1crq+++4Ofz+e1T+BsQwWGzX7Wue24vdxtLjf7QPuYs9CaEVTVsuC6njOoStuQ5YO79h//b2wmKbWUUrzyK99kDk8++Pndz7zVLg4BZD1bMuHl08frpx8P62dhvMpxq42t2rkQatheMeWSYo6BidtF9/SDRyc3qu//5U9+8QykJm1NKuXu6cuBaTftZ7NDIaxUOueQMgkgYlbaVfUCkSQaELlQZNDWWEbBKFBVZCo9OwTXdse3Zyc3EhrjrKpqBSi7yo3Z5zhWBiXZypqYMnOqqzkmr6WXcD5MU929UB3d3Tz5APjMSPXLh5dFiZA3GtIQQqKilRSuFlLNu3nXtArrEMIHjz75vd9qDg7s5fWkuRy/9m2pp49++pP7b3xJG4dCNbPF+cPH6+ePoFxfnj+/PNuNfZTS3bl/fOP+C/Pj2+3y6PzhL7SxiLKkmGII006I22+9GL77czFGkkSp8JAmYtTKSBBVZUPyxBIgSSMhC2RRpp3RBpWLFIjJ6KpyJvkhFdRaHB1022ySmc/e/oKRtPmr9+tadauFEkq2bu6vPVM6PT0NY2m0U6Qmv2+VcUop2xDI4+Plufc69kS7/X6rjRUSrGtizLN2JawIXHz2XMSyO6hcO47+1nErdfXmq+W3fu04YbYVieZBe/D6+9/9v9x88XO26hBFNVs8+tnPN+cf7te//Is/v/zgYRfSicb5cnbjFz/97vHiv10c33/z6781Wx5ePflIag2AREpWs3/+z/6XTz7eN82SyaBQldPr8Upp1dWznGPKEFOIVJREY2zgxCERhczFtVWZCgh52C598gkQEEY/hp1zrXNHpxdyziHKl14FDUNB+eaDrymhY/aUC2eYNU1F8rBacc5W2oP58TRNbTW/eXx3028NEBTRzpdCVda0yObW6Uvd/GDn+wJaG4vKNItTqVzhvE/j2Sb8rV8//tavz3NEgTQ7+sL1kz+jMh3efIAoXDu/ePz44vHPh6sP/vD/W3/vvbtK323d6nRxvHIucyPoL3M4e/z+x7cefK5d1SXTk4/Pv/enP/03/+LDP/k+X5TPGTfvw762jVQ2E3nvtXIJSUugDLaxq1Wz3QzTOBQuzFxQKFvfO74PqEOJRYpMKXPJiFTNu7rDdjE0R4VZHc1nx20iLb/w6m/knICxbergJyylNk4S1lXXVu1qcVyZKjKPqSzamdNWoVksTxfN3Ps469oHL7720dmjCOVgtSxCzA9v/IO/9avSVU+vopQGVfMPvt2+fM9yQW1bpaqzj//k6PYb2tZC6Zzi2Ufvx+GD/+l/pGn61UUnfexvL44aI4wpWtX7fNNUY+0uzj95ur0O/+r3v/vd74SL/Rtg3yp6MeawCSMIfTA7tFYLoQlQohZSajG7c3qHpH/85EwAdZUMqRSubbNwVVMKTCWRhFByLglsQ9YJ4159+fP56HZvjKggBk4MQaH80hvf7GY1sPBpssrUsmmqFhUXpTQrREo5A8raOa2NEapxCxQSiSrnhhQ+fP5sSL5uu1s3lkmIeTvLwVoze/vBvZODUxD5t76Ep0caMmmzGHaP43S9uvkZKhmYdlfnJZz91Xc/+u4PbhNcC2mN1vNmOa+aq811KEnp48dX9ydc7tb7P/yT8FH/mcXx51NRY5qExH30QlltnNRyiLFwruuqruvdmL759W+/+uCN7/z4r1IcKYVpHELGX//631a62Wy329hnJtSOAEBK3a5Imii7X/nal3Fx+Kj3aFTyBBpyJwSaOhWJDBLt8fLWrFs2VZsLSZWbVj169uF2vKqlrpUlH7WQy2WH7LVgJgIBthbdzE3T+IvH54I0Z/newyeTT4dz93e/corc1M4wayE0COn7s6o7ZKIcpxxD9KPA8PgJKKUKx6vt2Vw3lMuT60thdRH2YlhLzA5+bY//sHRvKec2u8tFPZsyRYYbq+P7J7dvn57WnfI5Z5BSVCgq7aqPnz/+sx99zzgGiSQVCywsP//W23du3Hnh6J6zVRACrBKudrMDkFpUq8MXX/vOFf/wyU5kkUcSEtNURCjKmspPeya8f/OFMHoPvJwfTmmKvW/nDUiRoy+pr6vD7KcOtI7h+uwjWy3PfY/KvPTgzuV1udlVn5w9jugXs0Mn6Gzb10/akxZZwOFqgVgKs4Cc02Bsm8KYY2AGyl5KwRR2A50uu95vzteXiy5nylK7CZSQ5njZ5LKtIN5eNudbHFLY0hjS2LUza+tAZTfuxxBAiiFFmMamlkXwD9/7PnI+OKxYaWe7ccDj1fL//ft/EFJsZl1BNM6ZqssFjk6PL7Yhmw6b1RQJQWjgLAVKACFKIfnO67+ZS6qcvXt0ez/2McbKOq0tkCiZUvGNdUx5it4queja7f76+fZcWwsSb52ccATK6sHtFyc/SatYSJIVocgp//l7z/phvb3Kr700r1sF5PdXnwjpEGWKE+UUpq3S1fbpz1547YUvffUL0uzbGaYcCtDTze7ZZpjVM63qi/UlUyiFS84oeCoeQTdNPcYw+nix33kqIG2fAihAhliyFqSkOF/vK1cxCqOdE66r3WrVunbJ0innCjqPVcjuxo3jXneTtFC3KheTE0cWKEAKEKiUllLUjdLX19eSI6Sw7zcpZOdc8N6irI0jBi4pxunDRx9IW1tTX6+fL+ZHhsvFZu/qkxjS0cHpw/WGAxwt5yC19MP26rmVunXyv/unu5dexG99TRNBCpMQ6lN9LKXdb55/8Vvf1lreeqX63K8c+2G/3/Trq+3Z2X5zmeN0sR9apZshtlPJqEQjLYFYc9Z11RiDvpgwFMostFAuI+/TWGISVApzU2sGECjbej5z3RS8kcoYY0CD0mOU3/rS22/fWv7f/vjHxQrSFU+JYyo5H8xyQLzekuiE/MYX/x6W1LZd4Zz8CEIE741EIyWitFrWbTOru0bXwujIdOv0zuinDOWoWz65uuwWy32Mu2lYzZdDopODkxePj2etevLsgpgb4b75Zfpbvyn+6E9pPmsW5tH2emOrKoWxpFgo5xT9sF7eeDDsxg9/8sP9eq206Gbmxs3uzv3u5EZezp915peqPHy+GZ5sJYGUCnY+b6YYU7FOu3a2mSal1OFyuR56YMRP42wEITGkrIxrq5YZE/I+ZrQdSOnmizv3X/r8y6f37sz+4IdnQgoSRiJjylAikpgCgTHglOKcKScqZdfvnGsbYCWHkqIysqnasPOVrAvF2jpMaRDw4cMPxxIQgKCYqhWiUhB3u8sUwtHJ3QPTrKwMlOd1tayb6/X0J3+x/fzrZ//Ff3JTGttf3kzhaY4+x1BKLClJaYxpHv70z1C5erFAkFKicq5uZ1W3tPVC6gbAxvHy6vknf/XXmz/4o/W77+9NZZSBRKXfZyEUoIwlrsd+WXcApY8ZBSBQH5OrO2vq2WK22w1EWNcVQSksvc/znP7HP/rpdUqmclkaiANTTSGyH+RCITEWMAbkr3zmNwAYhQAB88WhU9pZqUDGEp2tTo/vzuet4pLCxKXEkn30xkpCHVnrWffg3ms8kYACJW/3vSyCIjxbbwefV6rrsHp0hqdH7zu9AbDd/Ah48MO25FBSYmYuBVG4ZiYEUppyHOPUx2lIfrh++vDRz3708U/+4tHPvr9fX9bd7Ivv3P/2b71QVfzTD/bPthNKUsaiVCknkHZiUaTUVRNTbtvKEypXS+MQtfcTIypj0DgjdUChTM0I2gJJRQAaisiex0FGL4EnP0kh1az91lek/Mav/B0hTSiTEGCUms9aJVRbu8rJcfRtPROAShahUElJAtDaMfjDw+OXX3rlwydXr92/32/95npTaW2EUFSlHWhsjvTsWHf3mraB2fl2eOH+T6YxizAIo9dnj4QUXAiYmYmZqGQEobU1xllXKa0AQFvXzBftYlm1bU5h/fzhk1++N6yfvPP27J1X5U8/9I+uCgomgYE4gEBbE3MpMRAHVEmYuqsz8RhTU7dGW0bMxEbpZDtRtyylkKpyNiTUIjtIoR8MFgQpjJPG6LZ6+xUhv/Lmt1L2yKlpXMkJkTlnYt73feUsMgBIBCIiH6Zd9IEpEMfMF/2UCWTBm4uj59srELTU3YsHdz63uvP28fLv/O/mb3xO11KefTJ+cm724aPbtz66fvJUSxl8LmGQUjETMzMzMDAxEVHJn0ZgUmqpzaf7QXXXLY6Pj2/fW924K5TcrrcHM/X2nfEHv1RXA/QpRMaC5Inqxk2ZspSoFGs3JiwsSIrTg1NiLMwCFUhJzVLMD11lGmfHUAqnlIukknNhpTNI3c1R25jFBxdCvvPGNya/LsUrJZAh+hAmj4yAQgotlNTOKq3rymXKzprtsB+oSKMz4Mb3/eTHFDKXnPNB13WmXXH31hfd7E0uSfzh7w8/ef6LnX/6/OoVKcfDo08e/eTfH9/9gpDCj3siYmIAAAZmYCYGFlIqZaTSn14hpRASQTCAUKqZHc1WJ6q5XcvBxGf/4eOFMha1IUYBkEhE0Kbt0HTCzggBTKOM2/gehFx289rNAmWpXdUdoDKJIAIysMyZc0mFEaWQgoRWRnPOw5Dkl9/+egj7MUyUU1tXAKhQVk1dt51UspQMKIQSfhzqyqacn63PCcQYE0iKwENOEaiyVhrZx7jeD+f7cRrF5c/0n/xJ/7Pr80v/lEVadcv3P7mzHm4JfPbuv/6np/dfO713X1vHxDnFnGLJkagIIaXUUhnxNwVSSmmpjNRKaq2UQSFRSFc3dn5HbX/486fiMh8hFGVqVa+gPYR6zq6V7Y3jRe2s9d4r53IBJjLavfXSS7988uzG6fGiraacUSqlRMhIMYaUUGrBTIgZhFHInImLfOPFz6YUlUJgQGKlFUq3OlwpbZy1WmvKedr3YRyNkhe77ZjCatYSIisRUIAys/nB6vAAAbfRg+SRt89jusj5rx9/4vl60VijVU6FcNqsFx+dvbqP8+//q9+/ev5xN2tXJzdmh7faxY1qdlJ1K1u1ylghlZRKKa20VcYKpYRQUtm/qZo2iMU1C0HTo5//9KP4mVlbsZmb+2/izReq1altj0BXlREpcZgmQGRVGxQhhOdXV0qJpmkBVQIx+dhJASCmyWuBQipESMFrAQ3gyhpkki/deqCkqowthZSVUlkUVWEEgSlkrYUEkgAl5UQUclTaIGpp1DYk1q5kqLRpmmq331VG9cFXzhaFu2l7sAIiH6YgICgJTdcdrypK0yRe3OsvfvIofe+P/+zd7/zZo3e/f/3wveHyUZr2wNk4a5wFxFI4p5RzUtpV7RwRpdJSa6W1UFoqZar20Y//9GH5rLvxIFaHzWo1X+okJVUmIIBPx/PmcsoCpTCuTHvF8dWTm4Xy5W6PyuwSBSp5mk67rjHKAofoJz+dtg2VfKDl737pgZFCIRMCpJida4RwUrqmMsZI7ydkoCKxRA1Yd+p8uwchZvXseh8CkXO1sXXtpBKiksXO3Uw5tZy/f7bx40Yb0riCKTLns826cq6TUVJXVzyuN11Xx+53Rv/rz8OT58/O5cMnMj3T+INWT12b7txtTm60B8cz0x2a9mR78djU8zuf+RwKlFIJqYRUAORmBzeOW7XlTWkFjWm7YVyS1VJAUSosDtxxp7KOF+dt2ZNIJaaL9fluHIJQz6/OoO5KkYLpr68utdRNZcapj1PqUSiFvzg7+7/+z1uhrfyV13+1di1K08xWVbMohSUCQdqur4xSSkgtUWi5G8Z9DGiNkBVWbQFVhAZbH3XtQdtYyV1l/M5rba6HwVkwwDzQ3ePlOO034xowhXHvp904jcM0IkIM4/FqNUTyaparl/f6tcG+k5e//t7u/gfb+++fnf7Vx0r1vzxo9IMv/f1hd3397OPTew8AUCgDyCmMUtvN0589ohdE/WIcRooxI5rGIXNiDJkfUxJ1hVPGsZc5hThspmkiIBSp8KrT/W4/jEPfX49hP0w9Ui45+RKnKSohYxhtY+RvfOnvWNNU84PZ8gAlKqGs0ykngTifzVrnhBCgdWLl2k5VFm1tZ7O6qX3m2XLRtF01m9UIeaLj+UykRMkfzWYp8OGyrq3b7DbrcaOwyJKa2qJyta2JUmOtAJHyULK3imat2g9bI6l2VSQ38OIXF4cNlvTwTy4vwlf+3j969svv2WbWLg9LDjmG6Hupm+Hil3/6wWxvXwUrPAk0VeVMnsCUggIyI00EuTQYKewnP+L8aLZY5Vgap4OPyU8MgJANFE4hpyS5AJecQ86pq/U4RdW0i32IoPRu8vN24WzZ95uuq/yAm/2AjdKaCeHg9MisZlcXu6kUu5ixrtl5tVhGpXTlqjg8uAEqA09jI3NGPrl1GAQ/v9qSLKt5lYbeqgrRzlq16cvki9MxDAFzbJ3Z7XfRGyMwTIWQWy2347qWBU13ev+Fj378R+995+27r7+zfv7R8uRGnPpScpz6qpVEGDxet4aVE4ZqY29acb6f+nEYiYVrqbGaqmnHyHK+POn1CpgOuzL1O87RgIhlElgoE2cySigUjFCYMqcUQVFRqRRr9NCvT05P79w9evjLh4RYGysL47w9WCzT6FXnIshQlDs8zn7qM8rOuWZR0KBStpYqlkfnV8scFq1xRl2tN81cnp/tr3IQSprYSpsPu+sHL3x8PPv4fGN/+NFbMT1wMlVGjDG1sjCmrm2mhEPw86aJaRpSOT0al8erKYqrxz+//8aLVIIf9ymMpaQUBoYy7MYgl2W4tpilEh3F7WWatjumUEvgdumFVDkXYqONQHn3aM79jrZJlkI55pwVohS4rGcA+HxzjZVKKddGVV19dn5NKSpd1Z9G2jGFzXY9hN5Kse0HAao1OjOb1SwL1Tk1sbKu0k5vL4KRZnHkhgFuLcS9Rl885mG/6RrlfQIsjGW/3R6tFnGYgM4+d//qxtHDRXuBPOVEy66/s/oXf/3Je3/5wec0KxAQ06SlzB6VqZpaxzzNmmXbDl9+PbX18UGWVdsJ2SJS9H0KY8kxxwglPn5yzThTu8umUZXWJaoaMUl8nqRCrEBTpnstnK9xHFAYxdPeQSloZG2nMTqBkRgYJGcCbCvrS0ASIvF4tZE5co6KicYQdd3E4B9//IkoMQk0zbybN1SKkmgrZ1FGKj6mtqpqBYet3AqJERa1WlbYauTOzu8dyGmcdiMrIXVt5/LOnd0r/O7h0drgLqWSSxO8nMarYddro9688/MPLm4+PF/OLEqEmHxjK6dFZhDN4UEtTu0f0zhFfdotmtMXX8lxYMo5TCmMKY4oXdxdvP/hcI1aO0iJaRqP5u5qO171Y0lRVBWurzWqYXjO4ySU0bYah1Ri//Lx6Xp3nX0KaVhUdSS63G1PDpcHVfv47JmS9qhbPj9/LpNvjZO/8sZv6sogF2SSQlRGtI0rOVPK80UTfZAKD7p2YknAtVGUSlcJYRwakwlUgUqiEoJY0BCvr/coxHwx211P3/p79cnpur++JtBhimcPH18+eZoj2fpA1veWB/Pz5z7LL2nLmZkIGNvD5Z2jg2XxP71n/pmKfz158GNvXPPG137n2S+/LyQicIqTH7bzo3vPf/aj//mPdti8Na/0ehxiTkglxykkP4XRCIY02X7N0wQxMLOUUmbPOQAwA9cOu9ohiZizkDyOgx89QulsDSUgJSOwNlb+n/6r//P6fB3CugiRM0sFw27T77aVEnGahn5k5px5IpRaLxbVOMTrzaS1llo7QFMKFp4C68ZVjQm7gXNEApXLwcntO299tjtY/ew7f/bud34oVdUsTkx7o17ctq4SyJoecr4pld77i8aFeb1bVr+s0z/v8r8s4aKwiWGMfnznb//HQPn5hz/qDg/DuE9xopKWJ/f/8L/7J3/5/E0npCO6HvtYeBw8lUiUjJBGCEiTTOFo5gAwEygulAcBUKjkQqUkixqJpxja1lHM88ZR9MgZS3FCVlpLAGWdzjlRptogQ0khCSkEwHq3bqr5YnWUo5/SNDtagjKDz8Lo2hKlELZ9a2Vby9hjVRkkiiGcHNeQlJMYevX+9x4Wrm6//Pb9t77aLdoYRT07XB4fdsuFNvbn3//unRfv+91/G6N45Z6k7FMY/H4KRQrVSWVy32NJv/p3/6HW1fvf+9eHd276YVdSmPrrkxfe/uAv/vS7P9VeHqr+KufkhC4ys1A+kRXgtN5NowBGpUNIphQHRSGQUEKKkrMWPAxhovEbL97/97/YTEMQWKZxVACQIxdQrgKAGLycta9oKyQqpZWRuqnqtp43rplCODi6OT84FhptNye0rnYpZSp0uLLTbodMTuGwGWsrmtZsd6kMQ96uKy0Wh93ssEs7qqvvKYh+qIf9z5quvffam9qaT8Veuzi4fn51cvdFv9+UkFan947uvn7z5c/fuP+g7eriScnu7V/7zYPj2+efvHtw66SUnOMYxp2pOq3cP/m///4n9B9pFClO87ZDUNtpkkIwFQCQiIqhsdBZywSAoIUsGW6s5o21fkzDOBghGPliv9lPfowTMmChmXWGwSopGIBJSaHqma6sM4sFA5OftJQorVtVg25HoWHnlUELMPk0+b2rMJe0yYKTd0gi0unCBd/HPeYiLs/XK/LzRlMmNHzn9bvrp1fPn//39196c9yNAOry2ZOTOy8SMaLoDo5f+cJXHr3/1y+8/WspxHZ5cvPFN2ZHx353cfH4w+3VloE5TyleH907TcHnOMUwUimL2eG/+R/+h/e2v4a6c9IblCmGu0fLYc2jACXUclZBKX2fRSJOHoRUShAI0zrFKpe0aKrjZfPhoydKSGiUKVh84RRFYSOltvXV9rqpaig5EcsvffG3UUhVzVBaqQwop11HqGRVh5ytAq3ElHE3pqZSdS3DOAIVhVBXShCBT5jTNMV+v6cU5pUQhUphZBSCTm6/8uzR7kc/+AMKninNDk6qdqmskcogYjWbndx/2VadtnUK49Xzj59+8O7F449iCNpAVWOzqEzt4thHvw/jruQ0X934wb/5V3/241e39LIoWwbQCFrqCx+VdUMhkBpiTjFIKMBAhVtraqUYRKXVOAafomDEkoZxrHVDQigtpv0+Tr6WslUi+pEyyE9hI0qpZGeiqVmqXKCZzySKzqhp8BJFpmqzuT5otZSydUpp9D4JYA6hIGmhgZECaatu3WrDB9eu1gxp33vOcOv+AsikNLzx5j/Yb/v33v3va3z/4Mb9u6/NERElKqUAEBAPb99d3byVwpjCVJIvOZbsc/AxTClMOQ7RD0K5dnmT0vhX/+47f/TD10vzhfn4ZDflEnMEuLG6WRKBlNsQJFrKRSKgwl0ftZAu5hBTO59TKhUV1zRaqsfPHrVKU+HkJWevWaZCTdPcv3H85NEzRM8AJRdttPy1b/6vRcxKyNYpJQClCD6Pk885QwHIkYiEMsbqyqiDrvIhKilKSRKwrauTu8eo5OntObOsJLSNXh20VnFBsTxdcuZpsz9evubU7cvN83f/w79YHC5eePPzJUcQ0roWAOLU+2EXpz6GPk5DnPowDSlOKY5+2KRIyxuvrY5v9NfP/vp7mz/83ssX4XTmyHs/TMMUo66rbOt9H5SWkHOnAAtlJhYqZeoaiywKCy0QAWdK9lPIKcoUnRZVPT++eSv1fpp2QKlRlQEEoDFHHyZmEszy9/5X/2hum5OjI0qeiQqyNThOvmmrblYrIlc7kCrluGrNvK5DyFXnBKIWsnKVco5Q5EBGYdeoupZ+M027vt+OXd1opblwoenWS6+/cO+b9ez29//1P7189KPF6XEOg+/XlFOKviSf45ST55I+LU2/PtteXlFRJ3deVDK9+4Nf/P/+ZfjRB29vvchl52MugMpooW0BkCBsM8soF/NZDhNBLixQqNo6oIKClVUUsi35pVWduYQUNLMPYV670vep9CFNkuHG6a3atdth7aeJuIQQcs7ym7/xe63Sy659/NFHBIlKySEpgTnnFJNBSIUQKObkp2CVYQTlXNM1VVUfnK7ilHIhLdAi9Zv+8pPzeVPZSmnLB6eL2fGs5DKth5yC0ny0eOXm8VfP3vvo0Qf/juUaFUmljets1emqM251/uQRpY02dTU7Pr59p12cfPCL3b/+F7s//97RB09aEClQ1kYDcFVZRMuquXlwY2Ip6xZAAJfa2pAiCxF9aI3WyLkgMLS2ojRNUyw5c0rMBUqi5I8MbcfNNI4p565uppimYeesyymknIyQ8otvfDnut9v1OsZNSYGocE5YOIdAOWYfmMhqwYgll8paVIismqZ2tSNCZI4+WCdTSH67pbGnXHyMOeXLJxtnrZKYS0r7selMSeP0bHfn3pePDr6YdnTxwYfnj35c4rUEoY0Vynzwk+9pFavu0Pfb7/zby5/94it//L+sr841S0lKd6efUdXBen1NZRqm0TMTaiWUF7iPaVHXHLMfJ0ZQWs0VakH9GIXEMUyCSTOsmlmKmSlrIebdIqUQY2RgAmrbehijq1vOQJRjCkJjN+vk177ym3HYc/bICZjrqlYISmFdmzCFFEOi0nX1Yj6zUocpOOOOjw8FokSJAMbK5IMG0IKsksyYSrzabjZXW46laaxQVGJpl7W1ytW2aoyqUIFqxE21ftn7+OjsD3/yZ997/MGjB+/86pNf/FipZOtuv778N39wtfefMTqEOG33IeX6+M7dpmueP7ssmEjrBBCT9ykhcwYO0Vslx36vIFPKtdDMMOTc1ZUSwqFaVK5rOmeqWs+eXF8cHR4MIY7TJJEHPy67uhShTZ382M0cCxiGwTqnUojzZWMQ/X5QApVgY8w0eal05Uwfxkrrsfclce20sXq+6ADEp0tqWgkqRJl8yG2npFQx5P2mN9Y1slot2tinp9ebZtE1bU2pxBBjPy1fPBUS8nrTnd7hD949uy79diA4Lzn7YS/YV92h9+XWS4v7XzwRYhFj8SFvt77f5fc/OrMV1V13vc8asTClXCiFzlbbaYRShBKucQaYCwtR3Tk6KjQqAsPQWfPJ2fOj49P/9O//xv/rnwyXV89Foc+/8sYvH/8sbsLZ+sqXsh3XnVG7TSo5A8DV1UaFYU+N6X2McWpAp7EvXmXmxumj1ewX1xeQRVVZgWXcB6dMHGNJoeksSt5vJiHZtdYZFYZxXI9PH19ow60wr3/pree/+EgayGMUWlJhUVntNKWgaqO1lIWwXcn9KV4BQlDGusotjxZp2g/r/umHH8v6pVuvztO4q+qqrqu6djnz/+P/uX74o2yVAQ5NPd/H3gpRCiIVQDTWJu+F0kYBEcRAsZSLi/XKOYU8+J1T8Pj5sx/97GPj9LNPrleV/eTRL8931wmBcpz8KBAbOYcS0xTunNzejIP88ltfopJLSgoxxUlKnK9mlMhKMBqvrtZMpdJWCpnDxFSYcXV8oLT040Qla4MpxGnwlJPrTNVoqcTiYD5eb/vtZQ4jEzXztlm0VWtKjtN+IIBY6Wugi7j3sxtYP9iefawgKq2+/8d//slHu5+/9/zDj/e33vi1w1svSYFA8mrtf/iDJ//8//OX7374jARdr/dKiGEcUy4SkZD241QoGamd088uNyHFWpur/T754c17JxWaktN+mnzwIPNPP3hYiHMaBz9OOYwpAqNSUiBLEDFMPoxaSGOMsRX+H//RP/YhConW6Dj62WyxOjimRBI5xRByksZKtM7ZFCYttevm9157HUDs1tdd1wJzSUkIopSRSypTHMLJ6eFwvZn2m26xgFykMUf3TjDlsBugcdUbt0KMOecUQowJhCkl+bMf786fZm66xUk7O2qb1XC9v74aPn6yeXI1XfZT9NEggpNXm6ttP2jTAgoSUAoTpZvHt2MZhikVYqtMBZJS2PvxpJofNq1SVeCQcxnG/SZ5T0yllOiRCRCkU5JLKXLyW++H48Ws3++VkCWXSIT/9X/+v0ehck4xx8a5umpAuNo1AhmghOCtW6DQPmyUFkaamOH2y293s+7i8cPDkwOUWiBzmZSyEuV+f0UxSQSEbJ2q6yVQzlMRgrQBLJJB+tTbWqMA282UYj9NNIW2nTdW65S2j56ur/352f79Tx4/D5TaxWRdERCE8DEzZyq095OzFqTeh1AZoxAECKnV1WZvrXLSuMTzrtZoF8pRJtO5pxdPxykkiEpIUvJis/HBM3JVV0bhOE5S6jBuKXutpSCKORvrYvLyb3/payUVLRGBlRBaaQCSKBmKtUYAae2cc9v1uRQi5KSrppvNnFP91WWcgtRSSdht1korV7sYYrfo+vU1CpqG8fLjx0qbqllxKfXMAFq/C89/9kG63l/97AM+n1yMsB+e/+gX2A9mv22WjQROu3F7NQwckjJgG90uSLucS8w5Fc4MRqr5bFGYUsl+DE1dlRL7vrdKc0Gi3FqVY1q4bvT7qYT9OF5eX0aKs7Z+4zN3rq82u3EsANrY/ThkLiGn/bjPKSIwEeWUMhEKUajIz7/8OpVMJTKVpm5STHVXR++ZM8UMCNOw7/u1tUpKWTWzqqoFYL/plSpSipwLcRr7/f56k6koBZyzH/vQD5QTlTBupqZZzI8PLz4+G/ejFsI12jZ13S6WJ4vucEGFN7txsw6zxaK2Jg5jmWhK1E+xXdyIsh4LpFyUkMwMgEpAjGHXDyFlrRSVLApPMX9K/RLEtdZN24YQrq+ufBou9pcKwFhzPfWJyAceQhpjyCUh4uSHYRq1UQIVMQiEnGPTzRmkj14pKb/ymbcEAiIzFcGSgVNKKUeiYqwepj5Er5QQKOazpak6ZU30URkJKAowEFetlkqZ2grA4WIb9jtlxDQMkMvhagVEVeOO75z4fq+EWBzMgLxrqpsvvzyte6Fl2OdxO3QzG8ZJBU8xIbKx1TBBuzpFVw++GOtyjikF60y/H1OMLKipDRAkohDzbDWnzP3YKyCr9RRSicFqFSgNYWLkKUxKGk8sXLebpvgp7kUiAaFCqwQRCcUMJSVeLo4LwuR7iSC/8fY7wAWYiUplNQCHOAJQTAG5ILDUKEAKROcqIeQ4BQZo2o5zKSULqRGkAHDOGG1rV+fJh2HXdJUAUbUNUCEq43aQgk/u30ABl4+fUoppP7HA/ZPd9dVuO/VVbfab7S+eXF/2qbPiww+frZNkXFBBWzmU0A/bEPwY/BACAaecUilWaQZEgdEHKElqrK3zPlRW7IeJpZy3jZC463tm1loLKZmDkWq5bIZhH3zMlIxUKQYGKVDshh6FmrXLadgPw8YZLb/+2ptGawSgkiRSSoGoWC2b2iBSZWROKSeSSuYQlJTMgCikQCHAVrV1VqAUSHGc8picctZVYdhXleHMPvrzs7M0hX67DT5aa3aX1/1upxRIieN6P79xfLXfPT07e3q9P9+M+6xTjJWEh+st1vOjey/l4EuMQwzbfltEGaYACKkUFEhMINFVtfeecpACAMAIGUuaQpBGCSspFYU4Bu+MY4RaGSOt0eZ8ezXFlCkBADALoZTSCLqtFtO4D/0GS8k5GiXkl158yTnLlCmmnAoi1JUDEFxyjmEYxhSjBJAESiIyGmNQCi6ZCbvVElLuGuenKQXPMVRNnWOe+t3V+fnycLnfb2MMWtviMcUybNdhGmfLGWLeX10XHx999OT5fr8e9sx4ODu4eXrzcvN8ve9t5WrjLs+vd/1+M60vtmthbRJlO4xt7Wqrp5xBipxKCFEpWVkZYog5x5ykFDkFRLTabjbXYwhN1RnnQCCXcvf0hZTS+dUzoVAbnXNRQs27WUxx1i600ON4bWWplCIiySy/+uA1ShGBpDCHyxspTMBslAEqxftZsyAmBeyUlqxTAGnUrZdv+WGSQiqppt3eSB73+/36GiVRyvvrq8kPhTIyhxhYyqaavf3lr60vLy/XjzOVFFLyY04plQSu60MMcbx1sDia10aWHD1a3dZ2jMM+FayaTMEL2We67rcgIedS1yZRzikyQFNVxGWcRgEFBCKyQCgp5VL6YRtzUEp29VwKMQ37VILUNbDf9etExaeQSwIijQg5jrtrn1JhNkit0gzgtJW/+7VvhmEviObzxXx5PGwuJUrnHFMEQusaJuJcmMpLL7/x2a99/f0f/dWwXUNhSnHYbpSU03aTcsglRT/kFDNFYaQ1pt/tUItCtNvsT2/fSuNuu7/+5OxcKjEMg3HmfLPdei+NdpIOF23XGWuhmc+Z4eHl2d57Y7uB8dGwR9sMMUQsoZQphhRjKUkZEVNG5JRDil4gAkDKPqagpERgjrlpKoEYx6nkmGNg4JjHod/sx5EAfYpGYiVAUoAcKUfilHPmUiqtofCNm7flZ0+PrdFKqZxivz1vXCUYGRgUUilSCKEUMgNx66o8hcurJ4wFGZiyNkoKEcOAf0OwYwQqXFCIHHKMoVvOhZB7v9ucPdltrzNQ5lIAUspD8IXhYrdPJXaN65omUx72Q2Lsp/FquxXGsmnO+12ysmi9HfshTe18JQXmHFGy0poKxxhjDAiMArWAEKNVDgtpaZZNO7O1n8KN1apS1ayZ55z6cZty8smDFKvFQRh6xcUiIqVUSEmUSnDObXtweHwXIMkv3LmfU5ZSIAKVDMS37r1ecl5vz2MKTMxciAGk3u+vd1dnjBxLYqYChAjWVcEPKJCIANhYo7Qshe6+8JJSchr7/fV21jVTmoZhuxmny10vQbVNhUiMYJUQCHH6lL7KodDmenO120upEnMWasz5+Xa782SUA5EARaEYc4wxSYGFKOVEJdXaVaaJYRIokLlWziKP/SSFYSolhWHoU4ovHp1ers8TIgL3/T6FYJ2I05RiSCUzoI8xxuSUEcrcuPeZp598JH/9tTfbpik5CURnrVAiBJ8og2ApRExRSmGdlVrn4hEBQTISSgFIOWcqTJ8CMktGBK20VFIapaSmQn6a2lm3221C8FTKNsRIdOv0GGIgJsXAYQIWSLydQlvNYgyuMbW1PlEq3E9h7cchlhfufuZbX/vK93/8k36/RiYQUHKJOUEh4Nza5rA9fOHOqzmy99tKqDdf+nzs9yGmxcHpNO6uNhfGGgn47PLZkEIoMcQgpEAiV+mccsqpMCttQaJA1EIEolk7K3GSv/7KA6mtU1IAf0oHHaZdkiQRu3rWzhf7ftfOZjlG4FLXjVI6l2ytMVahRCjFGF1KkUbbpjHWxRCjDzn6EIKUSioJOQgppbZcSiKqjF52TZgmRaUw9T7Mu6apWiKI0c8qw4ViBlUAgPd+0spsdv2jpxfb8UoBSZCU/maiej5fOimPl6ff+tLX//P/7Nv7vfjxu3/lAEoInPKs64Zd5pIyBlFIoNiNa2VtCF4A1E1nlNhtt4iYqaSUtDOIaAQyiMJwff08+EF+4823BReUMkYPDCQAtcxhqupWodrtrgGBMhljENDVNYAsOTtnC0MJSRtVYhIolHMgBABgptGPOXqtlTU2TANTUii00tl7I0Vd1a4yDkTJKaaUIQ1TnKagmdrGWYVhmNDUwJyT/3RUOOSURfbTvqlcKUUwSBR1VdXVksNU0sRJJW79NH388P1Z3VgQq+Xq4uz6G9/4tnTulx/+WEsZ4kRIBIzEAoBzTN4brVzjmDiXlFLyMQpgUzUlx1pjP3n5m2+8FaNHygwMQABAhUrJKcdESQo8WB61s1UJE0odQzSmBkopZqJStw0KJUWllI1xBCIKPqVIDDl4ySAVIJAfR2Q+Pr4RfD+fd0LIOE6QC0tVOZVzDKlEKkAkiawGYD6/3iXKApkJtqPvU5jCxCUrFF09Q8Zc/NHyxKqGw7Vi/PDR++/9/JfPnj0seSdK4ZKt1lwKIZ9dnQ3DOsSJgHKOSgglhACOMbSurit7tb1mImAoxNro0fsiRCEi4swsv3zvjpBCwKdrEyWXSFxQAFHRUlqt7917eX19lUrRVgsU3Wzpx31MkzHKKGPcwrhZu6r31xfMeew3AlgiIZZm3sWU/TRJKZumSlMvleKSFWJOkYFLTkZhjKEfRyPFoqoUwG7fb4ehUPTTFErKhUHrmIsQpTLOT752lRAipTAO+1vLZYu8n0aB5Go99BfTsKtMA1z8fouYzq+fXF0+qZtZM5vH4nMOIYxCCkaU1gLy5HsfJ1O1KAERxmnoFvOQSkgRGI2x8uuvvEhAn/I8GVgIAQhUSEkplETgaRh98sQ5hUkpHPstKklcjIIUk7RNjj6H3o/bftz3w15IAi4lF6UkIBDRNA05RRSSELZX6xi8Rm7bVkncba63+9EoNJKByCjtM+6iXzT6cDVzRgPCOAaGIpGMNPN2sV6fFypTDEyp+LHEMPh+vlwSU7+71koeHd70cQBIAJRyZE7K1VVdra/PMuUCVKCkGADlFKcQvVTaWjdOQwijq1updUqxpNDNZkoq+Vuvv8alADAi11Y3tQNmRCkEAwIIyMkLwdqaQjnnLCQLJZCppJSpgBFcfBw2hHy12woiKDlmX9W1FiLFJIwhJCFlokIlIlCIoaSUkwfOiPQpwk8rVTmtWM2XJ1fby9ZpbdVuGCVCLiQEZiqCUSMPOXpKVsBpW4WUThdzLen5+moad62rKqX6YYsl5hittlKKEIbo+3F/HShba6epZ2CgTCVxiVKItmnD2Ac/IQBR6Yd9CJMSWEpmLvJ3v/r1MOyrWjutuZRM2YdYOae1IMqFiEoqJTPldtEmP0nEEj0ASSmLEpwTckbkzDj0m4PVUVe3KQ91XVMh4yrvBwG5pESUBQBAMVK18yakcLHZOIVSqcxcaTGM42x2FHKJcZe55BRCSlJJZig5oRSL+Wy3vd5Nk9FYSeyMVsx9GqcSz9ZXErjSCihfXV9oKeaumTu1H7YhJSMYkaaSSslWq1JIaS2Bc45UMudEVJi5aSoiJioAWQIzs9ZKfu2luzEHKQUCElMqmYA5l1KKqzQRIYOUUHLKJYcQEKDkmEoAACoZgUqOQmDyE0MGRIWFAFAIKZhKznFKyecUcolA2UoYExWAymDIuZDUiMxl8F4phUL4MFgjnFNEmUrxKeVSjFI++hxDLlELWWmRiSQYqcXHF+eZy6xymMs0DaWwVkYLOU7DwuFV30vtKm13/dYZvaqr1er09OTFq+unOXlm0kojUUzRWYMIuZSUIxYWyFQ4xSy/+spdRJi8J4ZYEgpEAGVMhpIBfZycqyJxyPFTYLGSgphM5SiXRIkoM+WYI1NxztQGiakwCcHDMMbkl6vlbr8uXNabrdYilaS7WgLt+37W1oAildQ6G3JGqaQA5pQIClAKySoJjEYicM7Ey8Zqwa01DOCL7aq7Snb7tM9xev3mbcph7ePt2/daV6eUE+en652prDJ68GMuEZFCKOdXF5v9RYxTzkGg1MohZSoeJYeUYgyZMgIKBAK2VS3feXDHc3HOYSEBpLXKuSgLMU0hB1Rq2c2AeTvuUQhE2ThXVbUxDjANMRAVJTAVqpq6cq1gQqQQeioMDEikpfLD/nLfK6NyKloJzJ5L2k57SkwlMcoYS2SapomRZ5WLVDiDJdBSIIFUPKSoACJnEtRWKoeimpN3fvVbBNXzi0cIod+uZ61FRGVcSmXfb8fosyRjqqeX55+CqHsfjELkcjXsU4mAqKSqXWeI27obh/2UQ6ECxEKiNjKkSKX8/wGQ6NFbqW8yLwAAAABJRU5ErkJggg==" width="52" height="52" alt="Budget Chat" style="display:block;border-radius:13px;border:0;">
+                  </td>
+                  <td valign="middle">
+                    <div style="font-size:16px;font-weight:600;color:#171717;letter-spacing:-0.02em;line-height:1.2;">Budget Chat</div>
+                    <div style="font-size:12px;color:#a3a3a3;margin-top:2px;">Liam's expense tracking app, powered by AI</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- HERO CARD -->
+          <tr>
+            <td style="background:#ffffff;border-radius:10px;border:1px solid #e5e5e5;box-shadow:0 1px 2px rgba(0,0,0,0.05),0 4px 6px rgba(0,0,0,0.04);">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:36px 40px 32px;">
+                    <div style="display:inline-block;background:#eff6ff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;color:#3b82f6;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:16px;">March 1, 2026</div>
+                    <h1 style="margin:0 0 14px 0;font-size:24px;font-weight:600;color:#171717;letter-spacing:-0.02em;line-height:1.25;">Welcome to the Budget Chat beta!</h1>
+                    <p style="margin:0 0 14px 0;font-size:14px;line-height:1.7;color:#525252;">Happy first day of March! Wanted to reach out because the beginning of the month is the best time to set up your budget and get logging.</p>
+                    <p style="margin:0;font-size:14px;line-height:1.7;color:#525252;">Budget Chat lets you track expenses through a conversational chat interface. Just describe what you spent and the AI handles the rest: categorization, date parsing, and budget tracking included.</p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td style="padding:0 40px 12px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8faff;border-radius:8px;border:1px solid #dbeafe;">
+                      <tr>
+                        <td style="padding:20px 24px;">
+                          <div style="font-size:11px;font-weight:600;color:#3b82f6;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px;">How to access</div>
+                          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px;">
+                            <tr>
+                              <td style="background:#3b82f6;border-radius:7px;text-align:center;">
+                                <a href="https://testflight.apple.com/join/gEX2Z9de" style="display:block;padding:11px 20px;text-decoration:none;font-size:14px;font-weight:500;color:#ffffff;letter-spacing:-0.01em;">Download on iOS via TestFlight &rarr;</a>
+                              </td>
+                            </tr>
+                          </table>
+                          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="background:#ffffff;border-radius:7px;border:1px solid #dbeafe;text-align:center;">
+                                <a href="https://budget-master-lh.web.app" style="display:block;padding:10px 20px;text-decoration:none;font-size:14px;font-weight:500;color:#3b82f6;letter-spacing:-0.01em;">Open the web app</a>
+                              </td>
+                            </tr>
+                          </table>
+                          <p style="margin:10px 0 12px 0;font-size:12px;color:#6b9fd4;line-height:1.5;">Sign in with Google, GitHub, or Apple. No separate password needed!</p>
+                          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="background:#dbeafe;border-radius:7px;padding:11px 16px;">
+                                <span style="font-size:13px;font-weight:600;color:#1e40af;line-height:1.5;">The TestFlight link above is shareable, so feel free to pass it along to anyone who might want to try the app!</span>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <tr><td style="height:24px;"></td></tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr><td style="height:12px;"></td></tr>
+
+          <!-- GETTING STARTED -->
+          <tr>
+            <td style="background:#ffffff;border-radius:10px;border:1px solid #e5e5e5;box-shadow:0 1px 2px rgba(0,0,0,0.05),0 4px 6px rgba(0,0,0,0.04);">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:32px 40px;">
+                    <div style="font-size:11px;font-weight:600;color:#3b82f6;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:22px;">Getting started</div>
+
+                    <!-- Step 1 -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:22px;">
+                      <tr>
+                        <td valign="top" style="width:40px;">
+                          <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="width:32px;height:32px;background:#3b82f6;border-radius:8px;text-align:center;vertical-align:middle;font-size:14px;font-weight:600;color:#ffffff;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;">1</td>
+                            </tr>
+                          </table>
+                        </td>
+                        <td valign="top" style="padding-left:14px;">
+                          <div style="font-size:14px;font-weight:600;color:#171717;line-height:1.3;margin-bottom:5px;">Sign in</div>
+                          <div style="font-size:13px;color:#525252;line-height:1.6;">Go to budget-master-lh.web.app and sign in with Google, GitHub, or Apple. Your account is created automatically, no setup needed.</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Step 2 -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:22px;">
+                      <tr>
+                        <td valign="top" style="width:40px;">
+                          <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="width:32px;height:32px;background:#3b82f6;border-radius:8px;text-align:center;vertical-align:middle;font-size:14px;font-weight:600;color:#ffffff;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;">2</td>
+                            </tr>
+                          </table>
+                        </td>
+                        <td valign="top" style="padding-left:14px;">
+                          <div style="font-size:14px;font-weight:600;color:#171717;line-height:1.3;margin-bottom:5px;">Set your budget caps <span style="font-size:12px;font-weight:400;color:#a3a3a3;">(optional, but recommended)</span></div>
+                          <div style="font-size:13px;color:#525252;line-height:1.6;">Visit the Dashboard and set a monthly spending limit for each category, food, groceries, gas, and more. You'll get automatic in-chat alerts as you approach each limit.</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Step 3 -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:22px;">
+                      <tr>
+                        <td valign="top" style="width:40px;">
+                          <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="width:32px;height:32px;background:#3b82f6;border-radius:8px;text-align:center;vertical-align:middle;font-size:14px;font-weight:600;color:#ffffff;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;">3</td>
+                            </tr>
+                          </table>
+                        </td>
+                        <td valign="top" style="padding-left:14px;">
+                          <div style="font-size:14px;font-weight:600;color:#171717;line-height:1.3;margin-bottom:5px;">Log your first expense</div>
+                          <div style="font-size:13px;color:#525252;line-height:1.6;">Open the Chat tab and type something like <span style="font-family:monospace;font-size:12px;background:#f5f5f5;border-radius:4px;padding:1px 6px;color:#171717;">Coffee $5 this morning</span> or <span style="font-family:monospace;font-size:12px;background:#f5f5f5;border-radius:4px;padding:1px 6px;color:#171717;">Lunch $14 at Chipotle</span>. The AI infers the category, date, and name automatically!</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Step 4 -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td valign="top" style="width:40px;">
+                          <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="width:32px;height:32px;background:#3b82f6;border-radius:8px;text-align:center;vertical-align:middle;font-size:14px;font-weight:600;color:#ffffff;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;">4</td>
+                            </tr>
+                          </table>
+                        </td>
+                        <td valign="top" style="padding-left:14px;">
+                          <div style="font-size:14px;font-weight:600;color:#171717;line-height:1.3;margin-bottom:5px;">Ask questions about your spending</div>
+                          <div style="font-size:13px;color:#525252;line-height:1.6;">The chat isn't just for logging. Try <span style="font-family:monospace;font-size:12px;background:#f5f5f5;border-radius:4px;padding:1px 6px;color:#171717;">How much have I spent on food this month?</span> or <span style="font-family:monospace;font-size:12px;background:#f5f5f5;border-radius:4px;padding:1px 6px;color:#171717;">What were my top 5 expenses last week?</span></div>
+                        </td>
+                      </tr>
+                    </table>
+
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr><td style="height:12px;"></td></tr>
+
+          <!-- OTHER FEATURES -->
+          <tr>
+            <td style="background:#ffffff;border-radius:10px;border:1px solid #e5e5e5;box-shadow:0 1px 2px rgba(0,0,0,0.05),0 4px 6px rgba(0,0,0,0.04);">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:32px 40px;">
+                    <div style="font-size:11px;font-weight:600;color:#3b82f6;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:22px;">A few other things you can do</div>
+
+                    <!-- Feature 1 -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px;">
+                      <tr>
+                        <td valign="top" style="width:36px;">
+                          <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="width:28px;height:28px;background:#3b82f6;border-radius:6px;"></td>
+                            </tr>
+                          </table>
+                        </td>
+                        <td valign="top" style="padding-left:12px;">
+                          <div style="font-size:13px;color:#525252;line-height:1.6;"><span style="font-weight:600;color:#171717;">Attach a receipt photo.</span> Send an image of any receipt in the chat and the AI extracts the amount, merchant, and items automatically.</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Feature 2 -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px;">
+                      <tr>
+                        <td valign="top" style="width:36px;">
+                          <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="width:28px;height:28px;background:#3b82f6;border-radius:6px;"></td>
+                            </tr>
+                          </table>
+                        </td>
+                        <td valign="top" style="padding-left:12px;">
+                          <div style="font-size:13px;color:#525252;line-height:1.6;"><span style="font-weight:600;color:#171717;">Edit or delete by asking.</span> Made a mistake? Just say <span style="font-family:monospace;font-size:12px;background:#f5f5f5;border-radius:4px;padding:1px 5px;color:#171717;">actually that was $6.50</span> or <span style="font-family:monospace;font-size:12px;background:#f5f5f5;border-radius:4px;padding:1px 5px;color:#171717;">delete that last one</span> and the AI handles it.</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Feature 3 -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px;">
+                      <tr>
+                        <td valign="top" style="width:36px;">
+                          <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="width:28px;height:28px;background:#3b82f6;border-radius:6px;"></td>
+                            </tr>
+                          </table>
+                        </td>
+                        <td valign="top" style="padding-left:12px;">
+                          <div style="font-size:13px;color:#525252;line-height:1.6;"><span style="font-weight:600;color:#171717;">Set up recurring expenses.</span> For rent, subscriptions, or any regular bill, just describe it once and the app will prompt you to confirm it each month automatically.</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Feature 4 -->
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td valign="top" style="width:36px;">
+                          <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="width:28px;height:28px;background:#3b82f6;border-radius:6px;"></td>
+                            </tr>
+                          </table>
+                        </td>
+                        <td valign="top" style="padding-left:12px;">
+                          <div style="font-size:13px;color:#525252;line-height:1.6;"><span style="font-weight:600;color:#171717;">Voice on Apple Watch.</span> If you install the iOS app, you can log expenses by speaking directly from your Apple Watch.</div>
+                        </td>
+                      </tr>
+                    </table>
+
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr><td style="height:12px;"></td></tr>
+
+          <!-- BLUE CTA CARD -->
+          <tr>
+            <td style="background:#3b82f6;border-radius:10px;border:1px solid #2563eb;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:28px 40px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td valign="middle">
+                          <div style="font-size:15px;font-weight:600;color:#ffffff;letter-spacing:-0.01em;margin-bottom:4px;">Start tracking today.</div>
+                          <div style="font-size:13px;color:rgba(255,255,255,0.8);line-height:1.5;">Log your first expense in under 30 seconds!</div>
+                        </td>
+                        <td valign="middle" align="right" style="white-space:nowrap;padding-left:20px;">
+                          <a href="https://testflight.apple.com/join/gEX2Z9de" style="display:inline-block;background:#ffffff;border-radius:7px;padding:10px 18px;text-decoration:none;font-size:13px;font-weight:600;color:#3b82f6;letter-spacing:-0.01em;white-space:nowrap;">Download on iOS &rarr;</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr><td style="height:12px;"></td></tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background:#ffffff;border-radius:10px;border:1px solid #e5e5e5;box-shadow:0 1px 2px rgba(0,0,0,0.05),0 4px 6px rgba(0,0,0,0.04);">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding:22px 40px;">
+                    <p style="margin:0 0 6px 0;font-size:13px;color:#525252;line-height:1.6;">Built and maintained by Liam. Reply to this email with feedback, bugs, or feature requests. All of it is welcome.</p>
+                    <p style="margin:0;font-size:12px;color:#a3a3a3;line-height:1.5;">You're receiving this as a Budget Chat beta tester.</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr><td style="height:32px;"></td></tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

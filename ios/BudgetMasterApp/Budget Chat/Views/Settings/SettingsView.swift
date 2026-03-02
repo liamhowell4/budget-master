@@ -1,7 +1,11 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var selectedTab = 0
+    @State private var selectedTab: Int
+
+    init(initialTab: Int = 0) {
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     var body: some View {
         NavigationStack {

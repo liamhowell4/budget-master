@@ -1,12 +1,18 @@
 import SwiftUI
 
+private struct SettingsSheet: Identifiable {
+    let tab: Int
+    var id: Int { tab }
+}
+
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @Environment(\.appAccent) private var appAccent
     @State private var selectedCategory: CategoryBreakdown?
-    @State private var showSettings = false
+    @State private var settingsSheet: SettingsSheet? = nil
     @State private var selectedYear: Int = Calendar.current.component(.year, from: Date())
     @State private var selectedMonth: Int = Calendar.current.component(.month, from: Date())
+    @State private var showAllCategories = false
 
     private var isCurrentMonth: Bool {
         let cal = Calendar.current
@@ -56,13 +62,13 @@ struct DashboardView: View {
             .navigationTitle("Dashboard")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: {
+                    Button { settingsSheet = SettingsSheet(tab: 0) } label: {
                         Image(systemName: "gearshape")
                     }
                 }
             }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
+            .sheet(item: $settingsSheet) { sheet in
+                SettingsView(initialTab: sheet.tab)
             }
             .refreshable {
                 await viewModel.loadData(year: selectedYear, month: selectedMonth)
@@ -325,18 +331,57 @@ struct DashboardView: View {
     // MARK: - Category Breakdown Grid
 
     private var categoryBreakdownSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Category Breakdown")
-                .font(.headline)
+        let displayed = showAllCategories
+            ? viewModel.categories
+            : viewModel.categories.filter { $0.amount > 0 }
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Category Breakdown")
+                    .font(.headline)
+
+                Spacer()
+
+                if viewModel.categories.contains(where: { $0.amount == 0 }) || showAllCategories {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showAllCategories.toggle()
+                        }
+                    } label: {
+                        Text(showAllCategories ? "Hide Unused" : "Show All")
+                            .font(.subheadline)
+                            .foregroundStyle(appAccent)
+                    }
+                }
+            }
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                ForEach(viewModel.categories) { category in
+                ForEach(displayed) { category in
                     Button { selectedCategory = category } label: {
                         categoryCard(category)
                     }
                     .buttonStyle(.plain)
                 }
             }
+
+            // Full-width Edit Categories button
+            Button {
+                settingsSheet = SettingsSheet(tab: 2)
+            } label: {
+                HStack {
+                    Image(systemName: "tag")
+                        .font(.subheadline)
+                    Text("Edit Categories")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.primary.opacity(0.06))
+                .foregroundStyle(Color.primary)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -352,6 +397,7 @@ struct DashboardView: View {
                     .fontWeight(.semibold)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                    .foregroundStyle(category.amount == 0 ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
             }
 
             Text(category.name)
@@ -479,8 +525,11 @@ class DashboardViewModel: ObservableObject {
             excludedCategories = budget.excluded_categories
 
             categories = budget.categories
-                .filter { $0.spending > 0 }
-                .sorted { $0.spending > $1.spending }
+                .filter { $0.spending > 0 || $0.cap > 0 }
+                .sorted { lhs, rhs in
+                    if lhs.spending != rhs.spending { return lhs.spending > rhs.spending }
+                    return lhs.cap > rhs.cap
+                }
                 .map { budgetCat in
                     let cat = catMap[budgetCat.category]
                     return CategoryBreakdown(

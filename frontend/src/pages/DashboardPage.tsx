@@ -4,7 +4,7 @@ import { useBudget, invalidateBudgetCache } from '@/hooks/useBudget'
 import { useCategories } from '@/hooks/useCategories'
 import { cn } from '@/utils/cn'
 import { formatCurrency } from '@/utils/formatters'
-import { Settings, EyeOff, ChevronLeft, ChevronRight, Calculator } from 'lucide-react'
+import { Settings, EyeOff, ChevronLeft, ChevronRight, Calculator, Tag } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { BudgetCategory } from '@/types/budget'
 import type { Category } from '@/types/category'
@@ -87,6 +87,7 @@ export function DashboardPage() {
   const { categories, loading: categoriesLoading } = useCategories()
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null)
   const [calculatorOpen, setCalculatorOpen] = useState(false)
+  const [showAllCategories, setShowAllCategories] = useState(false)
   const navigate = useNavigate()
 
   const isCurrentMonthSelected = isCurrentMonth(selectedYear, selectedMonth)
@@ -160,14 +161,21 @@ export function DashboardPage() {
 
   if (!budget) return null
 
-  // Filter active categories and sort by sort_order from categories list
-  const activeCategories = budget.categories
+  // All categories with a budget cap, sorted by sort_order
+  const baseCategories = budget.categories
     .filter((cat) => cat.cap > 0)
     .sort((a, b) => {
       const aOrder = categories.find((c) => c.category_id === a.category)?.sort_order ?? 999
       const bOrder = categories.find((c) => c.category_id === b.category)?.sort_order ?? 999
       return aOrder - bOrder
     })
+
+  // Show only categories with spending, unless showAllCategories is toggled
+  const displayedCategories = showAllCategories
+    ? baseCategories
+    : baseCategories.filter((cat) => cat.spending > 0)
+
+  const hasUnusedCategories = baseCategories.some((cat) => cat.spending === 0)
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 sm:p-6 space-y-6 sm:space-y-8">
@@ -300,16 +308,27 @@ export function DashboardPage() {
           </div>
         </Card>
 
-        {activeCategories.length > 0 && (
+        {baseCategories.length > 0 && (
           <div>
-            <h2 className="text-sm font-medium text-[var(--text-primary)] mb-4">
-              Top Categories
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-medium text-[var(--text-primary)]">
+                Category Breakdown
+              </h2>
+              {hasUnusedCategories && (
+                <button
+                  onClick={() => setShowAllCategories((v) => !v)}
+                  className="text-xs text-[var(--accent-primary)] hover:underline"
+                >
+                  {showAllCategories ? 'Hide Unused' : 'Show All'}
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {activeCategories.map((cat) => {
+              {displayedCategories.map((cat) => {
                 const categoryInfo = getCategoryInfo(cat.category, categories)
                 const displayName = getCategoryDisplayName(cat.category, categories)
                 const isExcluded = budget.excluded_categories?.includes(cat.category)
+                const isUnused = cat.spending === 0
 
                 return (
                   <button
@@ -323,7 +342,7 @@ export function DashboardPage() {
                           className="flex h-10 w-10 items-center justify-center rounded-md"
                           style={{
                             backgroundColor: categoryInfo
-                              ? `${categoryInfo.color}20`
+                              ? `${categoryInfo.color}${isUnused ? '10' : '20'}`
                               : undefined,
                           }}
                         >
@@ -331,7 +350,7 @@ export function DashboardPage() {
                             <DynamicIcon
                               name={categoryInfo.icon}
                               className="h-5 w-5"
-                              style={{ color: categoryInfo.color }}
+                              style={{ color: isUnused ? `${categoryInfo.color}80` : categoryInfo.color }}
                             />
                           ) : (
                             <CategoryIcon
@@ -343,7 +362,10 @@ export function DashboardPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-1.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-sm font-medium text-[var(--text-primary)]">
+                              <span className={cn(
+                                'text-sm font-medium',
+                                isUnused ? 'text-[var(--text-muted)]' : 'text-[var(--text-primary)]'
+                              )}>
                                 {displayName}
                               </span>
                               {isExcluded && (
@@ -367,10 +389,25 @@ export function DashboardPage() {
                 )
               })}
             </div>
+            {/* Edit Categories button */}
+            <button
+              onClick={() => navigate('/settings', { state: { tab: 'categories' } })}
+              className={cn(
+                'mt-3 w-full flex items-center justify-center gap-2',
+                'py-2.5 rounded-lg text-sm font-medium',
+                'bg-[var(--surface-primary)] border border-[var(--border-primary)]',
+                'text-[var(--text-secondary)]',
+                'hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]',
+                'transition-colors'
+              )}
+            >
+              <Tag className="h-3.5 w-3.5" />
+              Edit Categories
+            </button>
           </div>
         )}
 
-        {activeCategories.length === 0 && (
+        {baseCategories.length === 0 && (
           <Card padding="lg">
             <p className="text-center text-sm text-[var(--text-muted)]">
               No budget caps configured yet. Start tracking expenses to see category breakdowns.
