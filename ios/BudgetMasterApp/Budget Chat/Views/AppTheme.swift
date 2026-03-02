@@ -93,6 +93,20 @@ struct GlassCapsuleModifier: ViewModifier {
 extension AppTheme {
     /// Maps a Lucide icon name (stored in Firestore categories) to an SF Symbol name.
     static func sfSymbol(for lucideIcon: String) -> String {
+        // Icons saved via IconPicker are already SF Symbol names — pass through directly.
+        let knownSFSymbols: Set<String> = [
+            "fork.knife", "cup.and.saucer.fill", "cart.fill", "car.fill",
+            "fuelpump.fill", "house.fill", "heart.fill", "airplane",
+            "laptopcomputer", "building.2.fill", "bolt.fill", "creditcard.fill",
+            "headphones", "bag.fill", "dumbbell.fill", "book.fill",
+            "wifi", "gift.fill", "gamecontroller.fill", "camera.fill",
+            "paintbrush.fill", "wrench.fill", "leaf.fill", "star.fill",
+            "music.note", "tv.fill", "bicycle", "tram.fill",
+            "stethoscope", "pills.fill", "graduationcap.fill", "theatermasks.fill"
+        ]
+        if knownSFSymbols.contains(lucideIcon) {
+            return lucideIcon
+        }
         switch lucideIcon.lowercased() {
         case "utensils", "fork", "pizza":           return "fork.knife"
         case "coffee", "cup":                        return "cup.and.saucer.fill"
