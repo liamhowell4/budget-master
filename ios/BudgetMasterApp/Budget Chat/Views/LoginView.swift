@@ -181,7 +181,9 @@ struct LoginView: View {
 
                     Spacer(minLength: 32)
                 }
+                .dismissKeyboardOnTap()
             }
+            .scrollDismissesKeyboard(.interactively)
         }
         .alert("Reset Password", isPresented: $showingResetPassword) {
             TextField("Email", text: $email)

@@ -194,3 +194,21 @@ extension View {
         modifier(GlassCapsuleModifier())
     }
 }
+
+// MARK: - Keyboard Dismissal
+
+extension View {
+    /// Dismisses the keyboard/keypad when the user taps outside a focused field.
+    /// Apply to a container view (e.g., the VStack inside a ScrollView body) so
+    /// that any tap on non-interactive background area resigns first responder.
+    /// SwiftUI buttons handle their own taps before the gesture propagates,
+    /// so this does not interfere with any interactive controls.
+    func dismissKeyboardOnTap() -> some View {
+        self.onTapGesture {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil, from: nil, for: nil
+            )
+        }
+    }
+}

@@ -74,7 +74,9 @@ struct ProfileTab: View {
                 signOutSection
             }
             .padding()
+            .dismissKeyboardOnTap()
         }
+        .scrollDismissesKeyboard(.interactively)
         .sheet(isPresented: $showFeedback) {
             FeedbackView()
         }

@@ -233,6 +233,7 @@ struct OnboardingView: View {
                 Spacer()
             }
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func featureBullet(icon: String, title: String, subtitle: String) -> some View {
@@ -339,7 +340,9 @@ struct OnboardingView: View {
 
                 Spacer()
             }
+            .dismissKeyboardOnTap()
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: - Step 3: Categories
@@ -347,6 +350,7 @@ struct OnboardingView: View {
     private var categoriesStep: some View {
         ScrollView {
             VStack(spacing: 20) {
+
                 VStack(spacing: 8) {
                     Text("Choose Your Categories")
                         .font(.title2.bold())
@@ -399,6 +403,7 @@ struct OnboardingView: View {
                 Spacer().frame(height: 24)
             }
         }
+        .scrollDismissesKeyboard(.interactively)
         .sheet(isPresented: $showAddCustomSheet) {
             AddCustomCategorySheet { custom in
                 customCategories.append(custom)
@@ -521,7 +526,9 @@ struct OnboardingView: View {
 
                 Spacer().frame(height: 24)
             }
+            .dismissKeyboardOnTap()
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var allocationSummary: some View {
@@ -851,6 +858,7 @@ struct OnboardingView: View {
                 Spacer().frame(height: 24)
             }
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func reviewRow(name: String, icon: String, color: Color, amount: Double) -> some View {
@@ -1165,7 +1173,9 @@ struct AddCustomCategorySheet: View {
 
                     Spacer().frame(height: 24)
                 }
+                .dismissKeyboardOnTap()
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Add Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
