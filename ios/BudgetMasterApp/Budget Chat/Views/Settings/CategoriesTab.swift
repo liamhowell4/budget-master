@@ -27,7 +27,10 @@ struct CategoriesTab: View {
             await viewModel.loadData()
         }
         .sheet(isPresented: $showAddSheet) {
-            AddCategorySheet { request in
+            AddCategorySheet(
+                otherCap: viewModel.otherCap,
+                isAtLimit: viewModel.isAtCategoryLimit
+            ) { request in
                 Task {
                     await viewModel.createCategory(request)
                 }
@@ -71,12 +74,12 @@ struct CategoriesTab: View {
         .overlay {
             if viewModel.isLoading && viewModel.categories.isEmpty {
                 ProgressView()
-            } else if let error = viewModel.errorMessage, viewModel.categories.isEmpty {
+            } else if viewModel.categories.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
-                    Text(error)
+                    Text(viewModel.errorMessage ?? "Failed to load categories")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -87,6 +90,14 @@ struct CategoriesTab: View {
                 }
                 .padding()
             }
+        }
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.errorMessage != nil && !viewModel.categories.isEmpty },
+            set: { if !$0 { viewModel.errorMessage = nil } }
+        )) {
+            Button("OK") { viewModel.errorMessage = nil }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
         }
     }
 
@@ -300,6 +311,7 @@ struct CategoriesTab: View {
 class CategoriesViewModel: ObservableObject {
     @Published var categories: [ExpenseCategory] = []
     @Published var totalBudget: Double = 0
+    @Published var maxCategories: Int = 20
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -307,12 +319,21 @@ class CategoriesViewModel: ObservableObject {
     @Published var totalBudgetText = ""
     @Published var isSavingBudget = false
 
+    var otherCap: Double {
+        categories.first { $0.categoryId == "OTHER" }?.monthlyCap ?? 0
+    }
+
+    var isAtCategoryLimit: Bool {
+        categories.count >= maxCategories
+    }
+
     func loadData() async {
         isLoading = true
         do {
             let response = try await CategoryService.getCategories()
             categories = response.categories.sorted { $0.sortOrder < $1.sortOrder }
             totalBudget = response.totalMonthlyBudget
+            maxCategories = response.maxCategories
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -373,6 +394,8 @@ class CategoriesViewModel: ObservableObject {
 // MARK: - Add Category Sheet
 
 struct AddCategorySheet: View {
+    let otherCap: Double
+    let isAtLimit: Bool
     let onAdd: (CategoryCreateRequest) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -381,10 +404,34 @@ struct AddCategorySheet: View {
     @State private var selectedColor = "#6366f1"
     @State private var capText = ""
 
+    private var capValue: Double { Double(capText) ?? 0 }
+    private var otherAfter: Double { otherCap - capValue }
+    private var otherWouldGoNegative: Bool { otherAfter < 0 }
+    private var canAdd: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && !otherWouldGoNegative
+            && !isAtLimit
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
+                    // Limit banner (only when at max)
+                    if isAtLimit {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                            Text("Max categories reached (20)")
+                                .font(.subheadline.weight(.medium))
+                        }
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                        .background(.orange.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .padding(.horizontal, 24)
+                    }
+
                     // Preview
                     VStack(spacing: 8) {
                         Image(systemName: selectedIcon)
@@ -425,6 +472,27 @@ struct AddCategorySheet: View {
                         .padding(14)
                         .background(Color(uiColor: .secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                        // Other budget impact hint
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.caption2)
+                            Text("Pulled from Other: ")
+                                .font(.caption)
+                            + Text(otherCap.formatted(.currency(code: "USD")))
+                                .font(.caption)
+                            + Text(" → ")
+                                .font(.caption)
+                            + Text(otherAfter.formatted(.currency(code: "USD")))
+                                .font(.caption.weight(otherWouldGoNegative ? .semibold : .regular))
+                        }
+                        .foregroundStyle(otherWouldGoNegative ? .red : .secondary)
+
+                        if otherWouldGoNegative {
+                            Text("Reduce the budget or lower your Other category cap first.")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                     }
                     .padding(.horizontal, 24)
 
@@ -472,7 +540,7 @@ struct AddCategorySheet: View {
                         onAdd(request)
                         dismiss()
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(!canAdd)
                 }
             }
         }

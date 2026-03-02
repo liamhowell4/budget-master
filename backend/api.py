@@ -890,16 +890,17 @@ async def create_category(
         if not user_firebase.has_categories_setup():
             user_firebase.migrate_from_budget_caps()
 
-        # Check available budget
-        total_budget = user_firebase.get_total_monthly_budget()
+        # Check available budget against the OTHER category cap.
+        # OTHER is the auto-recalculated remainder (total - sum of all non-OTHER caps),
+        # so the new cap must fit within what OTHER currently holds.
         categories = user_firebase.get_user_categories()
-        allocated = sum(cat.get("monthly_cap", 0) for cat in categories)
-        available = total_budget - allocated
+        other_category = next((cat for cat in categories if cat.get("category_id") == "OTHER"), None)
+        other_cap = other_category.get("monthly_cap", 0) if other_category else 0
 
-        if category.monthly_cap > available:
+        if category.monthly_cap > other_cap:
             raise HTTPException(
                 status_code=400,
-                detail=f"Monthly cap ${category.monthly_cap:.2f} exceeds available budget ${available:.2f}"
+                detail=f"Monthly cap ${category.monthly_cap:.2f} exceeds available Other budget ${other_cap:.2f}"
             )
 
         # Create category

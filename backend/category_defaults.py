@@ -104,7 +104,7 @@ COMMON_PRESELECTED: List[str] = [
 ]
 
 # Maximum number of categories a user can have
-MAX_CATEGORIES = 15
+MAX_CATEGORIES = 20
 
 
 def get_default_category(category_id: str) -> Dict[str, Any]:
