@@ -631,10 +631,11 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
         else:
             raise ValueError(f"Unknown tool: {name}")
     except Exception as e:
-        # Return error as TextContent
+        # Return error as JSON-encoded TextContent so callers can always parse the result
         import traceback
-        error_msg = f"Error executing {name}: {str(e)}\n{traceback.format_exc()}"
-        return [TextContent(type="text", text=error_msg)]
+        import json as _json
+        error_payload = _json.dumps({"error": f"Error executing {name}: {str(e)}", "traceback": traceback.format_exc()})
+        return [TextContent(type="text", text=error_payload)]
 
 
 async def _save_expense(arguments: dict) -> list[TextContent]:

@@ -438,6 +438,7 @@ actor APIService {
                     guard let name = call["name"] as? String ?? call["tool"] as? String else { return nil }
                     var resultJSON = "{}"
                     if let result = call["result"],
+                       (result is [String: Any] || result is [Any]),
                        let d = try? JSONSerialization.data(withJSONObject: result),
                        let s = String(data: d, encoding: .utf8) { resultJSON = s }
                     return RawToolCall(name: name, resultJSON: resultJSON)
@@ -699,6 +700,7 @@ extension APIService {
                 let tool = json["name"] as? String ?? ""
                 var resultJSON = "{}"
                 if let result = json["result"],
+                   (result is [String: Any] || result is [Any]),
                    let d = try? JSONSerialization.data(withJSONObject: result),
                    let s = String(data: d, encoding: .utf8) { resultJSON = s }
                 event = .toolEnd(id: id, tool: tool, resultJSON: resultJSON)
