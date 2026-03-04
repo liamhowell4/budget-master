@@ -1795,6 +1795,61 @@ async def admin_get_analytics(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class AdminChatRequest(BaseModel):
+    """Request model for admin chat."""
+    message: str
+    history: List[dict] = []
+    context: dict = {}
+
+
+@app.post("/admin/chat")
+async def admin_chat(
+    body: AdminChatRequest,
+    x_api_key: Optional[str] = Header(None),
+):
+    """
+    Streaming chat endpoint for the admin dashboard.
+    Answers natural language questions about aggregate usage data.
+    Requires X-API-Key header.
+    """
+    if not ADMIN_API_KEY:
+        raise HTTPException(status_code=500, detail="ADMIN_API_KEY not configured on server")
+    if x_api_key != ADMIN_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
+
+    import anthropic
+
+    system_prompt = (
+        "You are an analytics assistant for a personal finance app's admin dashboard. "
+        "You have access to aggregate usage data below. Answer questions about token usage, "
+        "API calls, tool usage, endpoint usage, and trends. Keep answers concise and data-driven. "
+        "Never reference individual users by name or UID.\n\n"
+        f"Dashboard Data:\n{json.dumps(body.context, indent=2)}"
+    )
+
+    # Build messages from history + current message
+    messages = [{"role": m["role"], "content": m["content"]} for m in body.history]
+    messages.append({"role": "user", "content": body.message})
+
+    async def event_stream():
+        try:
+            client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            async with client.messages.stream(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1024,
+                system=system_prompt,
+                messages=messages,
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield f"data: {json.dumps({'text': text})}\n\n"
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        except Exception as e:
+            logger.exception("[Admin] Error in admin chat stream")
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 # ==================== User Settings Endpoints ====================
 
 class UserSettingsResponse(BaseModel):
