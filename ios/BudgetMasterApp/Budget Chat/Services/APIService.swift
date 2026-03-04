@@ -86,6 +86,7 @@ struct ConversationDetail {
     let conversation_id: String
     let messages: [ConversationMessage]
     let summary: String?
+    let deleted_expense_ids: [String]
 }
 
 struct ConversationMessage {
@@ -447,7 +448,44 @@ actor APIService {
             return ConversationMessage(role: role, content: content, timestamp: timestamp, toolCalls: toolCalls)
         }
 
-        return ConversationDetail(conversation_id: conversationId, messages: messages, summary: summary)
+        let deletedExpenseIds = json["deleted_expense_ids"] as? [String] ?? []
+        return ConversationDetail(conversation_id: conversationId, messages: messages, summary: summary, deleted_expense_ids: deletedExpenseIds)
+    }
+
+    func verifyExpenses(ids: [String]) async throws -> [String] {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/expenses/verify") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["expense_ids": ids])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let existingIds = json["existing_ids"] as? [String] else {
+            return []
+        }
+        return existingIds
+    }
+
+    func markExpenseDeleted(conversationId: String, expenseId: String) async throws {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/conversations/\(conversationId)/deleted-expenses") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["expense_id": expenseId])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
     }
 
     func deleteConversation(id: String) async throws {

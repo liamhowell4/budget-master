@@ -967,10 +967,14 @@ struct ExpenseCardView: View {
     @ObservedObject var viewModel: ChatViewModel
     var onSelectExpense: ((APIExpense) -> Void)? = nil
     @State private var showDeleteConfirm = false
-    @State private var isDeleted = false
     @State private var isDeleting = false
     @State private var showEditSheet = false
     @State private var currentCategory: String
+
+    private var isDeleted: Bool {
+        guard let eid = result.expense_id else { return false }
+        return viewModel.deletedExpenseIds.contains(eid)
+    }
 
     init(result: SaveExpenseResult, budgetWarning: String? = nil, viewModel: ChatViewModel, onSelectExpense: ((APIExpense) -> Void)? = nil) {
         self.result = result
@@ -1039,7 +1043,6 @@ struct ExpenseCardView: View {
                 isDeleting = true
                 Task {
                     await viewModel.deleteExpense(id: expenseId)
-                    isDeleted = true
                     isDeleting = false
                 }
             }
@@ -1773,6 +1776,7 @@ class ChatViewModel: ObservableObject {
     @Published var pendingToolNames: [String] = []
     @Published var pendingExpenses: [PendingExpense] = []
     @Published var availableCategories: [APICategory] = []
+    @Published var deletedExpenseIds: Set<String> = []
 
     let api = APIService()
 
@@ -1939,6 +1943,33 @@ class ChatViewModel: ObservableObject {
         do {
             let detail = try await api.fetchConversation(id: id)
             guard !detail.messages.isEmpty else { return }
+
+            // Build deleted expense IDs set before setting messages
+            // so both update together and ExpenseCardView sees correct state.
+            var deletedIds = Set<String>(detail.deleted_expense_ids)
+
+            // Extract expense IDs from save_expense tool calls and verify existence
+            var expenseIdsFromTools: [String] = []
+            for msg in detail.messages {
+                for tc in msg.toolCalls where tc.name == "save_expense" {
+                    if let data = tc.resultJSON.data(using: .utf8),
+                       let r = try? JSONDecoder().decode(SaveExpenseResult.self, from: data),
+                       let eid = r.expense_id,
+                       !deletedIds.contains(eid) {
+                        expenseIdsFromTools.append(eid)
+                    }
+                }
+            }
+
+            if !expenseIdsFromTools.isEmpty {
+                if let existingIds = try? await api.verifyExpenses(ids: expenseIdsFromTools) {
+                    let existingSet = Set(existingIds)
+                    for eid in expenseIdsFromTools where !existingSet.contains(eid) {
+                        deletedIds.insert(eid)
+                    }
+                }
+            }
+
             let isoFull = ISO8601DateFormatter()
             isoFull.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let isoBasic = ISO8601DateFormatter()
@@ -1952,6 +1983,7 @@ class ChatViewModel: ObservableObject {
                 ))
             }
             messages = loaded
+            deletedExpenseIds = deletedIds
             conversationId = id
         } catch { }
     }
@@ -1973,10 +2005,18 @@ class ChatViewModel: ObservableObject {
     func newConversation() {
         messages = []
         conversationId = nil
+        deletedExpenseIds = []
     }
 
     func deleteExpense(id: String) async {
-        do { try await api.deleteExpense(id: id) } catch { }
+        do {
+            try await api.deleteExpense(id: id)
+            deletedExpenseIds.insert(id)
+            // Persist to conversation so reload shows deleted state
+            if let convId = conversationId {
+                try? await api.markExpenseDeleted(conversationId: convId, expenseId: id)
+            }
+        } catch { }
     }
 
     func loadSuggestions() async {
