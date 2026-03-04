@@ -146,7 +146,8 @@ struct ChatView: View {
     @Environment(\.appAccent) private var appAccent
     @Environment(\.appBackgroundTint) private var backgroundTint
     @FocusState private var isInputFocused: Bool
-    @State private var showHistory = false
+    @State private var drawerOffset: CGFloat = 0
+    @State private var isDrawerOpen = false
     @State private var showSettings = false
     @State private var chatSelectedExpense: APIExpense?
     @State private var chatSelectedCategory: CategoryBreakdown?
@@ -155,9 +156,91 @@ struct ChatView: View {
     @State private var selectedImageData: Data?
     @State private var showImagePreview = false
 
+    private let drawerWidth: CGFloat = 280
+
+    private var drawerProgress: Double {
+        Double(drawerOffset / drawerWidth)
+    }
+
     var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                // 1. Drawer (sits behind the main content)
+                ConversationDrawerView(viewModel: viewModel, onSelect: closeDrawer)
+                    .frame(width: drawerWidth)
+
+                // 2. Main chat content (slides right to reveal drawer)
+                mainChatView
+                    .frame(width: geo.size.width)
+                    .overlay {
+                        Color.black
+                            .opacity(drawerProgress * 0.3)
+                            .allowsHitTesting(isDrawerOpen)
+                            .onTapGesture { closeDrawer() }
+                    }
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: min(CGFloat(drawerProgress) * 16, 16),
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: min(CGFloat(drawerProgress) * 16, 16)
+                        )
+                    )
+                    .shadow(color: .black.opacity(min(drawerProgress * 0.15, 0.15)), radius: 10, x: -5)
+                    .offset(x: drawerOffset)
+                    .gesture(isDrawerOpen ? drawerDragGesture : nil)
+
+                // 3. Edge swipe area (only when drawer is closed)
+                if !isDrawerOpen {
+                    Color.clear
+                        .frame(width: 30)
+                        .frame(maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .gesture(drawerDragGesture)
+                }
+            }
+        }
+        .ignoresSafeArea(.keyboard)
+        .clipped()
+    }
+
+    // MARK: - Main Chat Content
+
+    private var mainChatView: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Custom header styled to match system nav bar
+                VStack(spacing: 0) {
+                    HStack {
+                        Button { toggleDrawer() } label: {
+                            Image(systemName: "line.3.horizontal")
+                                .imageScale(.large)
+                        }
+                        Spacer()
+                        Text("Budget Assistant")
+                            .font(.headline)
+                        Spacer()
+                        HStack(spacing: 16) {
+                            Button {
+                                viewModel.newConversation()
+                                if isDrawerOpen { closeDrawer() }
+                            } label: {
+                                Image(systemName: "square.and.pencil")
+                                    .imageScale(.large)
+                            }
+                            Button { showSettings = true } label: {
+                                Image(systemName: "gearshape")
+                                    .imageScale(.large)
+                            }
+                        }
+                    }
+                    .foregroundStyle(appAccent)
+                    .padding(.horizontal)
+                    .frame(height: 44)
+                }
+                .padding(.top, 1)
+                .background(.bar)
+
                 if viewModel.messages.isEmpty && !viewModel.isStreaming {
                     emptyStateView.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -167,27 +250,7 @@ struct ChatView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 10)
             }
-            .navigationTitle("Budget Assistant")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button { showHistory = true } label: {
-                        Image(systemName: "clock.arrow.circlepath")
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 12) {
-                        Button { viewModel.newConversation() } label: {
-                            Image(systemName: "square.and.pencil")
-                        }
-                        Button { showSettings = true } label: {
-                            Image(systemName: "gearshape")
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showHistory) {
-                ConversationHistorySheet(viewModel: viewModel, isPresented: $showHistory)
-            }
+            .navigationBarHidden(true)
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
@@ -241,6 +304,52 @@ struct ChatView: View {
                 isInputFocused = true
             }
         }
+    }
+
+    // MARK: - Drawer Helpers
+
+    private func toggleDrawer() {
+        if isDrawerOpen {
+            closeDrawer()
+        } else {
+            openDrawer()
+        }
+    }
+
+    private func openDrawer() {
+        isInputFocused = false
+        viewModel.refreshConversationsQuietly()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            drawerOffset = drawerWidth
+            isDrawerOpen = true
+        }
+    }
+
+    private func closeDrawer() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            drawerOffset = 0
+            isDrawerOpen = false
+        }
+    }
+
+    private var drawerDragGesture: some Gesture {
+        DragGesture(minimumDistance: 15, coordinateSpace: .global)
+            .onChanged { value in
+                let base: CGFloat = isDrawerOpen ? drawerWidth : 0
+                let newOffset = base + value.translation.width
+                drawerOffset = min(max(newOffset, 0), drawerWidth)
+            }
+            .onEnded { value in
+                let velocity = value.predictedEndTranslation.width - value.translation.width
+                let shouldOpen = velocity > 300 || drawerOffset > drawerWidth / 2
+                if shouldOpen && !isDrawerOpen {
+                    viewModel.refreshConversationsQuietly()
+                }
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                    drawerOffset = shouldOpen ? drawerWidth : 0
+                    isDrawerOpen = shouldOpen
+                }
+            }
     }
 
     // MARK: Empty State
@@ -580,62 +689,106 @@ struct ChatView: View {
     }
 }
 
-// MARK: - Conversation History Sheet
+// MARK: - Conversation Drawer View
 
-struct ConversationHistorySheet: View {
+struct ConversationDrawerView: View {
     @ObservedObject var viewModel: ChatViewModel
-    @Binding var isPresented: Bool
+    var onSelect: () -> Void
     @Environment(\.appAccent) private var appAccent
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        NavigationStack {
-            List {
-                Button {
-                    viewModel.newConversation()
-                    isPresented = false
-                } label: {
-                    Label("New Conversation", systemImage: "square.and.pencil")
-                        .foregroundStyle(appAccent)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            Text("History")
+                .font(.title2.bold())
+                .padding(.horizontal, 16)
+                .padding(.top, 60)
+                .padding(.bottom, 16)
 
-                if viewModel.isLoadingHistory {
-                    HStack { Spacer(); ProgressView(); Spacer() }
-                } else if viewModel.conversations.isEmpty {
-                    Text("No conversations yet").foregroundStyle(.secondary)
-                } else {
-                    Section("Recent") {
+            // New conversation button
+            Button {
+                viewModel.newConversation()
+                onSelect()
+            } label: {
+                Label("New Chat", systemImage: "square.and.pencil")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(appAccent)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .background(appAccent.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
+
+            Divider()
+                .padding(.horizontal, 12)
+
+            // Conversations list
+            if viewModel.isLoadingHistory {
+                Spacer()
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                Spacer()
+            } else if viewModel.conversations.isEmpty {
+                Spacer()
+                Text("No conversations yet")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 4) {
                         ForEach(viewModel.conversations, id: \.conversation_id) { conv in
-                            Button {
-                                Task {
-                                    await viewModel.loadConversation(id: conv.conversation_id)
-                                    isPresented = false
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(conv.summary ?? "Conversation")
-                                        .font(.subheadline).lineLimit(2).foregroundStyle(.primary)
-                                    if let ts = conv.last_activity,
-                                       let date = parseConvDate(ts) {
-                                        Text(date, style: .relative)
-                                            .font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    Task { await viewModel.deleteConversation(id: conv.conversation_id) }
-                                } label: { Label("Delete", systemImage: "trash") }
-                            }
+                            conversationRow(conv)
                         }
                     }
+                    .padding(.vertical, 8)
                 }
             }
-            .navigationTitle("History")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) { Button("Done") { isPresented = false } }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    private func conversationRow(_ conv: ConversationSummary) -> some View {
+        let isActive = viewModel.conversationId == conv.conversation_id
+        return Button {
+            Task {
+                await viewModel.loadConversation(id: conv.conversation_id)
+                onSelect()
             }
-            .task { await viewModel.fetchConversations() }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(conv.summary ?? "Conversation")
+                    .font(.subheadline)
+                    .lineLimit(2)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading)
+                if let ts = conv.last_activity,
+                   let date = parseConvDate(ts) {
+                    Text(date, style: .relative)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 10)
+            .background(
+                isActive ? appAccent.opacity(0.12) : Color(uiColor: .secondarySystemGroupedBackground),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+        }
+        .padding(.horizontal, 12)
+        .contextMenu {
+            Button(role: .destructive) {
+                Task { await viewModel.deleteConversation(id: conv.conversation_id) }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 
@@ -1789,6 +1942,7 @@ class ChatViewModel: ObservableObject {
     func sendMessage() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let isNewConversation = conversationId == nil
         messages.append(ChatMessage(content: text, isUser: true))
         inputText = ""
         isStreaming = true
@@ -1796,6 +1950,9 @@ class ChatViewModel: ObservableObject {
         messages.append(ChatMessage(content: "", isUser: false))
         await streamResponse(for: text)
         isStreaming = false
+        if isNewConversation && conversationId != nil {
+            refreshConversationsQuietly()
+        }
     }
 
     func regenerate(withModel model: String? = nil) async {
@@ -1896,7 +2053,11 @@ class ChatViewModel: ObservableObject {
                 audioData: audioData,
                 conversationId: conversationId
             )
-            if let id = response.conversation_id { conversationId = id }
+            if let id = response.conversation_id {
+                let wasNew = conversationId == nil
+                conversationId = id
+                if wasNew { refreshConversationsQuietly() }
+            }
             messages.append(ChatMessage(content: response.message, isUser: false))
         } catch {
             errorMessage = error.localizedDescription
@@ -1909,6 +2070,7 @@ class ChatViewModel: ObservableObject {
 
     func sendImage(data: Data, text: String) async {
         let displayText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isNewConversation = conversationId == nil
         messages.append(ChatMessage(content: displayText.isEmpty ? "[Receipt photo]" : displayText, isUser: true))
         inputText = ""
         isStreaming = true
@@ -1927,6 +2089,9 @@ class ChatViewModel: ObservableObject {
         }
 
         isStreaming = false
+        if isNewConversation && conversationId != nil {
+            refreshConversationsQuietly()
+        }
     }
 
     // MARK: Conversation History
@@ -1989,9 +2154,15 @@ class ChatViewModel: ObservableObject {
     }
 
     func fetchConversations() async {
-        isLoadingHistory = true
+        if conversations.isEmpty { isLoadingHistory = true }
         do { conversations = try await api.fetchConversations(limit: 20) } catch { }
         isLoadingHistory = false
+    }
+
+    func refreshConversationsQuietly() {
+        Task {
+            do { conversations = try await api.fetchConversations(limit: 20) } catch { }
+        }
     }
 
     func deleteConversation(id: String) async {
@@ -2052,6 +2223,7 @@ class ChatViewModel: ObservableObject {
         do {
             availableCategories = try await api.fetchCategories()
         } catch { }
+        await fetchConversations()
     }
 }
 
