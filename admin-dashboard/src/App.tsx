@@ -19,6 +19,7 @@ export default function App() {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedUid, setSelectedUid] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     setLoading(true)
@@ -79,7 +80,7 @@ export default function App() {
           {tabs.map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => { setTab(t.id); setSelectedUid(undefined) }}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.id
                   ? 'border-indigo-500 text-indigo-400'
@@ -111,7 +112,26 @@ export default function App() {
             <div className="mt-6">
               {tab === 'overview' && null}
               {tab === 'users' && (
-                <UserTable tokenUsage={tokenUsage} toolCalls={toolCalls} uidToName={uidToName} />
+                <>
+                  <UserTable
+                    tokenUsage={tokenUsage}
+                    toolCalls={toolCalls}
+                    uidToName={uidToName}
+                    selectedUid={selectedUid}
+                    onSelectUid={setSelectedUid}
+                  />
+                  <div className="mt-6">
+                    <DailyActivityChart
+                      tokenUsage={tokenUsage}
+                      filterUid={selectedUid}
+                      title={
+                        selectedUid
+                          ? `Daily Activity — ${uidToName[selectedUid] ?? selectedUid}`
+                          : 'Daily Activity — All Users'
+                      }
+                    />
+                  </div>
+                </>
               )}
               {tab === 'tools' && <ToolUsageChart toolCalls={toolCalls} />}
               {tab === 'endpoints' && <EndpointPieChart tokenUsage={tokenUsage} />}

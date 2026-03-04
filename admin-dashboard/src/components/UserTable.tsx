@@ -5,6 +5,8 @@ interface Props {
   tokenUsage: TokenUsageDoc[]
   toolCalls: ToolCallDoc[]
   uidToName: Record<string, string>
+  selectedUid?: string
+  onSelectUid?: (uid: string | undefined) => void
 }
 
 interface UserRow {
@@ -19,7 +21,7 @@ interface UserRow {
 
 type SortKey = keyof UserRow
 
-export default function UserTable({ tokenUsage, toolCalls, uidToName }: Props) {
+export default function UserTable({ tokenUsage, toolCalls, uidToName, selectedUid, onSelectUid }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('calls')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
@@ -107,7 +109,15 @@ export default function UserTable({ tokenUsage, toolCalls, uidToName }: Props) {
           </thead>
           <tbody>
             {sorted.map((row) => (
-              <tr key={row.uid} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+              <tr
+                key={row.uid}
+                onClick={() => onSelectUid?.(selectedUid === row.uid ? undefined : row.uid)}
+                className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
+                  selectedUid === row.uid
+                    ? 'bg-indigo-950/60 hover:bg-indigo-950/80'
+                    : 'hover:bg-gray-800/30'
+                }`}
+              >
                 <td className="px-4 py-3 text-white font-medium">{row.name}</td>
                 <td className="px-4 py-3 text-gray-300">{row.calls.toLocaleString()}</td>
                 <td className="px-4 py-3 text-gray-300">{row.tokensIn.toLocaleString()}</td>

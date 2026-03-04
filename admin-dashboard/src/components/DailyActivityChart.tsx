@@ -7,6 +7,8 @@ import type { TokenUsageDoc } from '../types'
 
 interface Props {
   tokenUsage: TokenUsageDoc[]
+  filterUid?: string
+  title?: string
 }
 
 interface DayData {
@@ -15,22 +17,23 @@ interface DayData {
   tokens: number
 }
 
-export default function DailyActivityChart({ tokenUsage }: Props) {
+export default function DailyActivityChart({ tokenUsage, filterUid, title }: Props) {
   const data = useMemo((): DayData[] => {
+    const docs = filterUid ? tokenUsage.filter((d) => d.uid === filterUid) : tokenUsage
     const byDay: Record<string, DayData> = {}
-    for (const doc of tokenUsage) {
+    for (const doc of docs) {
       const date = doc.timestamp ? doc.timestamp.slice(0, 10) : 'unknown'
       if (!byDay[date]) byDay[date] = { date, calls: 0, tokens: 0 }
       byDay[date].calls += 1
       byDay[date].tokens += (doc.input_tokens || 0) + (doc.output_tokens || 0)
     }
     return Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date))
-  }, [tokenUsage])
+  }, [tokenUsage, filterUid])
 
   if (data.length === 0) {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-gray-400 mb-3">Daily Activity</h2>
+        <h2 className="text-sm font-semibold text-gray-400 mb-3">{title ?? 'Daily Activity'}</h2>
         <p className="text-gray-600 text-sm">No data</p>
       </div>
     )
@@ -38,7 +41,7 @@ export default function DailyActivityChart({ tokenUsage }: Props) {
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-gray-400 mb-4">Daily Activity</h2>
+      <h2 className="text-sm font-semibold text-gray-400 mb-4">{title ?? 'Daily Activity'}</h2>
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
