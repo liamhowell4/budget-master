@@ -145,13 +145,19 @@ def get_user_budget_manager(arguments: dict) -> BudgetManager:
     return BudgetManager(firebase)
 
 
-def validate_category(category_str: str, firebase: FirebaseClient) -> None:
+def validate_category(category_str: str, firebase: FirebaseClient) -> str:
     """
-    Validate that a category exists for the user.
+    Validate that a category exists for the user and return the canonical category ID.
+
+    Accepts the category_id (any case) or display_name so the model doesn't fail
+    when it uses a different casing or the friendly display name.
 
     Args:
-        category_str: Category ID to validate
+        category_str: Category ID or display name to validate
         firebase: User-scoped FirebaseClient
+
+    Returns:
+        The canonical category_id as stored in Firestore
 
     Raises:
         InvalidCategoryError: If category does not exist
@@ -159,13 +165,17 @@ def validate_category(category_str: str, firebase: FirebaseClient) -> None:
     # Check if user has custom categories set up
     if firebase.has_categories_setup():
         categories = firebase.get_user_categories()
-        valid_ids = [c.get("category_id") for c in categories]
-        if category_str not in valid_ids:
-            raise InvalidCategoryError(category_str)
+        needle = category_str.lower()
+        for cat in categories:
+            if cat.get("category_id", "").lower() == needle:
+                return cat["category_id"]
+            if cat.get("display_name", "").lower() == needle:
+                return cat["category_id"]
+        raise InvalidCategoryError(category_str)
     else:
         # Fallback to ExpenseType enum for backward compatibility
         try:
-            ExpenseType[category_str]
+            return ExpenseType[category_str.upper()].name
         except KeyError:
             raise InvalidCategoryError(category_str)
 
