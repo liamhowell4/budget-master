@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Pencil, Trash2, Check, X, ChevronDown } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '@/utils/constants'
@@ -72,6 +72,13 @@ export function ExpenseCard({ result, budgetWarning, initialDeleted, onDelete, o
   const [savedCategory, setSavedCategory] = useState(result.category)
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
   const [isDeleted, setIsDeleted] = useState(initialDeleted ?? false)
+
+  // Sync prop → state when parent updates deletedExpenseIds after mount
+  useEffect(() => {
+    if (initialDeleted !== undefined) {
+      setIsDeleted(initialDeleted)
+    }
+  }, [initialDeleted])
 
   const category = (isEditing ? editCategory : savedCategory) as ExpenseType
   const colors = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.OTHER

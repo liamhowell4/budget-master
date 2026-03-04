@@ -93,9 +93,10 @@ export function useChat() {
           timestamp: new Date(msg.timestamp),
           toolCalls: msg.tool_calls,
         }))
-        setMessages(loadedMessages)
 
-        // Build deleted expense IDs set
+        // Build deleted expense IDs set BEFORE setting messages,
+        // so both state updates batch into one render and ExpenseCards
+        // mount with the correct initialDeleted value.
         // 1. Start with IDs persisted on the conversation doc
         const deletedIds = new Set<string>(conv.deleted_expense_ids ?? [])
 
@@ -133,6 +134,8 @@ export function useChat() {
           }
         }
 
+        // Set both together so React batches them into a single render
+        setMessages(loadedMessages)
         setDeletedExpenseIds(deletedIds)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load conversation')
