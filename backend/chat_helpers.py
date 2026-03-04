@@ -267,8 +267,7 @@ async def _run_anthropic_streaming_loop(
 
                 # Inject auth_token for MCP tool authentication (defense in depth)
                 tool_args = dict(tool_input)
-                if tool_name != "get_categories":
-                    tool_args["auth_token"] = current_user_token
+                tool_args["auth_token"] = current_user_token
 
                 # Execute the tool
                 result_text, parsed_result = await _execute_mcp_tool(client, tool_name, tool_args)
@@ -368,8 +367,7 @@ async def _run_non_anthropic_tool_loop(
             tool_args = tc.arguments
             tool_use_id = tc.id
 
-            if tool_name != "get_categories":
-                tool_args = {**tool_args, "auth_token": current_user_token}
+            tool_args = {**tool_args, "auth_token": current_user_token}
 
             tool_start_event = {
                 "type": "tool_start",
