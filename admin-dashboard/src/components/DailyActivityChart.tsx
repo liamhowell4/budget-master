@@ -4,6 +4,7 @@ import {
   Legend, ResponsiveContainer
 } from 'recharts'
 import type { TokenUsageDoc } from '../types'
+import { FloatingTooltip, TOOLTIP_WRAPPER } from './ChartTooltip'
 
 interface Props {
   tokenUsage: TokenUsageDoc[]
@@ -40,15 +41,30 @@ export default function DailyActivityChart({ tokenUsage, filterUid, title }: Pro
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 overflow-visible">
       <h2 className="text-sm font-semibold text-gray-400 mb-4">{title ?? 'Daily Activity'}</h2>
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={260} style={{ overflow: 'visible' }}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
           <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 12 }} />
           <YAxis yAxisId="left" tick={{ fill: '#6b7280', fontSize: 12 }} />
           <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 12 }} />
-          <Tooltip contentStyle={{ background: '#111827', border: '1px solid #374151', color: '#f9fafb' }} />
+          <Tooltip
+            wrapperStyle={TOOLTIP_WRAPPER}
+            allowEscapeViewBox={{ x: true, y: true }}
+            content={(props) => {
+              const { active, payload, label, coordinate, viewBox } = props as any
+              if (!active || !payload?.length) return null
+              const row = payload[0].payload as DayData
+              return (
+                <FloatingTooltip active={active} coordinate={coordinate} viewBox={viewBox}>
+                  <div style={{ fontWeight: 600, marginBottom: 3, fontSize: 11 }}>{label}</div>
+                  <div>{row.calls.toLocaleString()} calls</div>
+                  <div style={{ color: '#9ca3af' }}>{row.tokens.toLocaleString()} tokens</div>
+                </FloatingTooltip>
+              )
+            }}
+          />
           <Legend />
           <Line yAxisId="left" type="monotone" dataKey="calls" stroke="#6366f1" strokeWidth={2} dot={false} name="API Calls" />
           <Line yAxisId="right" type="monotone" dataKey="tokens" stroke="#10b981" strokeWidth={2} dot={false} name="Tokens" />
