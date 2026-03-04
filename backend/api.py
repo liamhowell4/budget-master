@@ -67,6 +67,9 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:8000",   # Allow same-origin too
         "http://127.0.0.1:8000",
+        "https://happy-pi-day.tail993508.ts.net:5174",  # Admin dashboard (Tailscale)
+        "https://happy-pi-day.tail993508.ts.net:5173",  # Frontend (Tailscale)
+        "https://happy-pi-day.tail993508.ts.net:3000",  # Frontend alt (Tailscale)
         "https://budget-master-lh.web.app",      # Firebase Hosting (production)
         "https://budget-master-lh.firebaseapp.com",  # Firebase Hosting (alt domain)
     ],

@@ -662,9 +662,21 @@ class FirebaseClient:
         for doc in docs:
             category_data = doc.to_dict()
             category_data["category_id"] = doc.id
-            # Ensure exclude_from_total has a default value for backwards compatibility
+            # Ensure fields have defaults for backwards compatibility
             if "exclude_from_total" not in category_data:
                 category_data["exclude_from_total"] = False
+            if "sort_order" not in category_data:
+                category_data["sort_order"] = 0
+            if "is_system" not in category_data:
+                category_data["is_system"] = False
+            # Convert Firestore timestamps to ISO strings for JSON serialization
+            if "created_at" in category_data and category_data["created_at"] is not None:
+                try:
+                    category_data["created_at"] = category_data["created_at"].isoformat()
+                except (AttributeError, TypeError):
+                    category_data["created_at"] = str(category_data["created_at"])
+            else:
+                category_data["created_at"] = None
             categories.append(category_data)
 
         # Sort by sort_order
@@ -1815,9 +1827,13 @@ class FirebaseClient:
             # Extract uid from path: users/{uid}/token_usage/{doc_id}
             uid = doc.reference.path.split('/')[1]
             data['uid'] = uid
-            # Convert Firestore timestamps to ISO strings
+            # Convert Firestore timestamps to ISO strings in user timezone
             if hasattr(data.get('timestamp'), 'isoformat'):
-                data['timestamp'] = data['timestamp'].isoformat()
+                user_tz = pytz.timezone(os.getenv("USER_TIMEZONE", "America/Chicago"))
+                ts_val = data['timestamp']
+                if ts_val.tzinfo is None:
+                    ts_val = pytz.utc.localize(ts_val)
+                data['timestamp'] = ts_val.astimezone(user_tz).isoformat()
             results.append(data)
         return results
 
