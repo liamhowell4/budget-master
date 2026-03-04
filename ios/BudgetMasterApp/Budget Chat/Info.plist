@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Budget Master</string>
+	<string>Budget Chat</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -23,11 +23,11 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Budget Master uses the microphone to record voice memos for expense tracking.</string>
+	<string>Budget Chat uses the microphone to record voice memos for expense tracking.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Budget Master uses the camera to capture receipts.</string>
+	<string>Budget Chat uses the camera to capture receipts.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Budget Master accesses your photos to upload receipt images.</string>
+	<string>Budget Chat accesses your photos to upload receipt images.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

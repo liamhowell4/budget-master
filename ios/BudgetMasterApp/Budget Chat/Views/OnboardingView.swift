@@ -205,7 +205,7 @@ struct OnboardingView: View {
                     Text("Welcome to")
                         .font(.title2)
                         .foregroundStyle(.secondary)
-                    Text("Budget Master")
+                    Text("Budget Chat")
                         .font(.largeTitle.bold())
                 }
 

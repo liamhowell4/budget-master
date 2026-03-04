@@ -39,29 +39,43 @@ extension ThemeColorScheme {
     private static let lightCoral = ThemeColorScheme(
         id: "light-coral", label: "Coral", description: "Warm, vibrant", mode: .light,
         accentColor: Color(hex: 0xE11D48), tintColor: Color(hex: 0xE11D48),
-        backgroundTint: Color(hex: 0xFFF1F2), userBubbleColor: Color(hex: 0xE11D48), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0xFFF5F5), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0xFDE8EB), userBubbleColor: Color(hex: 0xE11D48), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0xFFF0F1), aiBubbleText: .primary
     )
 
     private static let lightEmerald = ThemeColorScheme(
         id: "light-emerald", label: "Emerald", description: "Fresh, natural", mode: .light,
         accentColor: Color(hex: 0x059669), tintColor: Color(hex: 0x059669),
-        backgroundTint: Color(hex: 0xECFDF5), userBubbleColor: Color(hex: 0x059669), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0xF0FDF9), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0xDFF5EB), userBubbleColor: Color(hex: 0x059669), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0xEAFAF2), aiBubbleText: .primary
     )
 
     private static let lightAmber = ThemeColorScheme(
         id: "light-amber", label: "Amber", description: "Warm, energetic", mode: .light,
         accentColor: Color(hex: 0xD97706), tintColor: Color(hex: 0xD97706),
-        backgroundTint: Color(hex: 0xFFFBEB), userBubbleColor: Color(hex: 0xD97706), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0xFFFDF5), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0xFFF0D1), userBubbleColor: Color(hex: 0xD97706), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0xFFF7E2), aiBubbleText: .primary
     )
 
     private static let lightOcean = ThemeColorScheme(
         id: "light-ocean", label: "Ocean", description: "Cool, calm", mode: .light,
         accentColor: Color(hex: 0x0891B2), tintColor: Color(hex: 0x0891B2),
-        backgroundTint: Color(hex: 0xECFEFF), userBubbleColor: Color(hex: 0x0891B2), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0xF0FDFE), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0xDBF0F5), userBubbleColor: Color(hex: 0x0891B2), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0xE8F6FA), aiBubbleText: .primary
+    )
+
+    private static let lightSoft = ThemeColorScheme(
+        id: "light-soft", label: "Soft", description: "Warm, calming", mode: .light,
+        accentColor: Color(hex: 0x8B9A83), tintColor: Color(hex: 0x8B9A83),
+        backgroundTint: Color(hex: 0xF2ECE3), userBubbleColor: Color(hex: 0x8B9A83), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0xEDE7DD), aiBubbleText: Color(hex: 0x3D3A36)
+    )
+
+    private static let lightGlass = ThemeColorScheme(
+        id: "light-glass", label: "Glass", description: "Frosted, airy", mode: .light,
+        accentColor: Color(hex: 0x6366F1), tintColor: Color(hex: 0x6366F1),
+        backgroundTint: Color(hex: 0xE6ECF4), userBubbleColor: Color(hex: 0x6366F1), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0xDCE3EE), aiBubbleText: Color(hex: 0x0F172A)
     )
 
     // MARK: Dark Themes
@@ -69,55 +83,69 @@ extension ThemeColorScheme {
     private static let darkCharcoal = ThemeColorScheme(
         id: "dark-charcoal", label: "Charcoal", description: "Minimal, refined", mode: .dark,
         accentColor: Color(hex: 0xCBD5E1), tintColor: Color(hex: 0xCBD5E1),
-        backgroundTint: Color(hex: 0x000000), userBubbleColor: Color(hex: 0x1A2233), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0x0C0F14), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0x08090E), userBubbleColor: Color(hex: 0x1A2233), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x10131A), aiBubbleText: .primary
     )
 
     private static let darkViolet = ThemeColorScheme(
         id: "dark-violet", label: "Violet", description: "Rich, creative", mode: .dark,
         accentColor: Color(hex: 0xC4B5FD), tintColor: Color(hex: 0xC4B5FD),
-        backgroundTint: Color(hex: 0x050212), userBubbleColor: Color(hex: 0x5B21B6), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0x0B0620), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0x0E0826), userBubbleColor: Color(hex: 0x5B21B6), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x160E32), aiBubbleText: .primary
     )
 
     private static let darkRose = ThemeColorScheme(
         id: "dark-rose", label: "Rose", description: "Bold, playful", mode: .dark,
         accentColor: Color(hex: 0xFB7DD1), tintColor: Color(hex: 0xFB7DD1),
-        backgroundTint: Color(hex: 0x060106), userBubbleColor: Color(hex: 0xBE185D), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0x12071A), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0x150A18), userBubbleColor: Color(hex: 0xBE185D), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x1E1024), aiBubbleText: .primary
     )
 
     private static let darkSunset = ThemeColorScheme(
         id: "dark-sunset", label: "Sunset", description: "Warm, glowing", mode: .dark,
         accentColor: Color(hex: 0xFD8C45), tintColor: Color(hex: 0xFD8C45),
-        backgroundTint: Color(hex: 0x080400), userBubbleColor: Color(hex: 0xC2410C), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0x130900), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0x140A04), userBubbleColor: Color(hex: 0xC2410C), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x1E1208), aiBubbleText: .primary
     )
 
     private static let darkOcean = ThemeColorScheme(
         id: "dark-ocean", label: "Ocean", description: "Deep, focused", mode: .dark,
         accentColor: Color(hex: 0x00E5FF), tintColor: Color(hex: 0x00E5FF),
-        backgroundTint: Color(hex: 0x000D12), userBubbleColor: Color(hex: 0x0369A1), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0x060F14), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0x061620), userBubbleColor: Color(hex: 0x0369A1), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x0C1E2C), aiBubbleText: .primary
     )
 
     private static let darkNeon = ThemeColorScheme(
         id: "dark-neon", label: "Neon", description: "Electric, matrix", mode: .dark,
         accentColor: Color(hex: 0x00FF41), tintColor: Color(hex: 0x00FF41),
-        backgroundTint: Color(hex: 0x010301), userBubbleColor: Color(hex: 0x003311), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0x050F06), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0x041408), userBubbleColor: Color(hex: 0x003311), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x0A1E0E), aiBubbleText: .primary
     )
 
     private static let darkCyber = ThemeColorScheme(
         id: "dark-cyber", label: "Cyber", description: "Neon pink, futuristic", mode: .dark,
         accentColor: Color(hex: 0xFF2D9B), tintColor: Color(hex: 0xFF2D9B),
-        backgroundTint: Color(hex: 0x060005), userBubbleColor: Color(hex: 0x6D0050), userBubbleText: .white,
-        aiBubbleColor: Color(hex: 0x0D0011), aiBubbleText: .primary
+        backgroundTint: Color(hex: 0x120814), userBubbleColor: Color(hex: 0x6D0050), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x1C0E20), aiBubbleText: .primary
+    )
+
+    private static let darkMidnight = ThemeColorScheme(
+        id: "dark-midnight", label: "Midnight", description: "Deep, cosmic", mode: .dark,
+        accentColor: Color(hex: 0x8B5CF6), tintColor: Color(hex: 0x8B5CF6),
+        backgroundTint: Color(hex: 0x0A0A2A), userBubbleColor: Color(hex: 0x6366F1), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x12123C), aiBubbleText: .primary
+    )
+
+    private static let darkCocoa = ThemeColorScheme(
+        id: "dark-cocoa", label: "Cocoa", description: "Warm, earthy", mode: .dark,
+        accentColor: Color(hex: 0xD4915C), tintColor: Color(hex: 0xD4915C),
+        backgroundTint: Color(hex: 0x16100A), userBubbleColor: Color(hex: 0x8B5E3C), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x201812), aiBubbleText: .primary
     )
 
     static let allSchemes: [ThemeColorScheme] = [
-        lightClassic, lightCoral, lightEmerald, lightAmber, lightOcean,
-        darkCharcoal, darkViolet, darkRose, darkSunset, darkOcean, darkNeon, darkCyber,
+        lightClassic, lightCoral, lightEmerald, lightAmber, lightOcean, lightSoft, lightGlass,
+        darkCharcoal, darkViolet, darkRose, darkSunset, darkOcean, darkNeon, darkCyber, darkMidnight, darkCocoa,
     ]
 
     static let lightSchemes: [ThemeColorScheme] = allSchemes.filter { $0.mode == .light }

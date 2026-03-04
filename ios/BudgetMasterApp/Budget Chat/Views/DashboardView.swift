@@ -8,6 +8,7 @@ private struct SettingsSheet: Identifiable {
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @Environment(\.appAccent) private var appAccent
+    @Environment(\.appBackgroundTint) private var backgroundTint
     @State private var selectedCategory: CategoryBreakdown?
     @State private var settingsSheet: SettingsSheet? = nil
     @State private var selectedYear: Int = Calendar.current.component(.year, from: Date())
@@ -59,6 +60,10 @@ struct DashboardView: View {
                 }
                 .padding()
             }
+            .scrollContentBackground(.hidden)
+            .background(backgroundTint.ignoresSafeArea())
+            .toolbarBackground(backgroundTint, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .navigationTitle("Dashboard")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

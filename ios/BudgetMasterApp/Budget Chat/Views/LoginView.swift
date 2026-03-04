@@ -38,7 +38,7 @@ struct LoginView: View {
                             .font(.system(size: 64))
                             .foregroundStyle(AppTheme.accent)
 
-                        Text("Budget Master")
+                        Text("Budget Chat")
                             .font(.system(size: 28, weight: .bold))
 
                         Text(isSignUpMode ? "Create your account" : "Welcome back")
@@ -151,7 +151,7 @@ struct LoginView: View {
                     // Prominent mode-toggle section — full-width outlined button so new users
                     // immediately see the sign-up path without hunting for small secondary text.
                     VStack(spacing: 12) {
-                        Text(isSignUpMode ? "Already have an account?" : "New to Budget Master?")
+                        Text(isSignUpMode ? "Already have an account?" : "New to Budget Chat?")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
 

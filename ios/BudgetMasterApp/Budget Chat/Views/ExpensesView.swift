@@ -12,6 +12,7 @@ enum ExpenseSort: String, CaseIterable {
 struct ExpensesView: View {
     @StateObject private var viewModel = ExpensesViewModel()
     @Environment(\.appAccent) private var appAccent
+    @Environment(\.appBackgroundTint) private var backgroundTint
     @State private var showingAddExpense = false
     @State private var showingFilters = false
     @State private var selectedTab = 0
@@ -47,6 +48,9 @@ struct ExpensesView: View {
                     }
                 }
             }
+            .background(backgroundTint.ignoresSafeArea())
+            .toolbarBackground(backgroundTint, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .navigationTitle("Expenses")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -225,6 +229,7 @@ struct ExpensesView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .sheet(item: $viewModel.selectedExpense) { expense in
             EditExpenseView(
                 expense: expense,
@@ -268,6 +273,7 @@ struct ExpensesView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
     }
 
     private var emptyStateView: some View {

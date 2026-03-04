@@ -83,14 +83,20 @@ struct ContentView: View {
                 DashboardView()
                     .tabItem { Label("Dashboard", systemImage: "chart.pie") }
                     .tag(0)
+                    .toolbarBackground(resolvedScheme.backgroundTint, for: .tabBar)
+                    .toolbarBackground(.visible, for: .tabBar)
 
                 ChatView(pendingPrefill: $pendingChatPrefill)
                     .tabItem { Label("Chat", systemImage: "message.fill") }
                     .tag(1)
+                    .toolbarBackground(resolvedScheme.backgroundTint, for: .tabBar)
+                    .toolbarBackground(.visible, for: .tabBar)
 
                 ExpensesView()
                     .tabItem { Label("Expenses", systemImage: "dollarsign.circle") }
                     .tag(2)
+                    .toolbarBackground(resolvedScheme.backgroundTint, for: .tabBar)
+                    .toolbarBackground(.visible, for: .tabBar)
             }
             .onReceive(NotificationCenter.default.publisher(for: .prefillChatPrompt)) { notification in
                 guard let prompt = notification.object as? String else { return }

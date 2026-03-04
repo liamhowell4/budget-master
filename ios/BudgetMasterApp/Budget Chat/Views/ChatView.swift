@@ -202,6 +202,7 @@ struct ChatView: View {
         }
         .ignoresSafeArea(.keyboard)
         .clipped()
+        .background(backgroundTint.ignoresSafeArea())
     }
 
     // MARK: - Main Chat Content
@@ -216,9 +217,6 @@ struct ChatView: View {
                             Image(systemName: "line.3.horizontal")
                                 .imageScale(.large)
                         }
-                        Spacer()
-                        Text("Budget Assistant")
-                            .font(.headline)
                         Spacer()
                         HStack(spacing: 16) {
                             Button {
@@ -237,9 +235,15 @@ struct ChatView: View {
                     .foregroundStyle(appAccent)
                     .padding(.horizontal)
                     .frame(height: 44)
+
+                    Text("Budget Chat")
+                        .font(.title.bold())
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+                        .padding(.top, 4)
+                        .padding(.bottom, 8)
                 }
-                .padding(.top, 1)
-                .background(.bar)
 
                 if viewModel.messages.isEmpty && !viewModel.isStreaming {
                     emptyStateView.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -250,6 +254,7 @@ struct ChatView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 10)
             }
+            .background(backgroundTint.ignoresSafeArea())
             .navigationBarHidden(true)
             .sheet(isPresented: $showSettings) {
                 SettingsView()
@@ -695,6 +700,7 @@ struct ConversationDrawerView: View {
     @ObservedObject var viewModel: ChatViewModel
     var onSelect: () -> Void
     @Environment(\.appAccent) private var appAccent
+    @Environment(\.appBackgroundTint) private var backgroundTint
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -750,7 +756,7 @@ struct ConversationDrawerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(backgroundTint)
     }
 
     private func conversationRow(_ conv: ConversationSummary) -> some View {
