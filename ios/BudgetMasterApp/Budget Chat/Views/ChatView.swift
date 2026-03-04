@@ -27,26 +27,55 @@ struct ToolCall: Identifiable {
     }
 }
 
+enum ContentBlock: Identifiable {
+    case text(id: UUID = UUID(), content: String)
+    case toolCall(ToolCall)
+
+    var id: String {
+        switch self {
+        case .text(let id, _): return id.uuidString
+        case .toolCall(let tc): return tc.id
+        }
+    }
+}
+
 struct ChatMessage: Identifiable {
     let id: UUID = UUID()
-    /// Text that arrived before the first tool call (rendered above widgets).
-    var contentBefore: String
-    /// Text that arrived after tool calls complete (rendered below widgets).
-    var content: String
+    var blocks: [ContentBlock]
     let isUser: Bool
     let timestamp: Date
-    var toolCalls: [ToolCall]
     var audioMetadata: AudioMetadata?
 
     var isAudioMessage: Bool { audioMetadata != nil }
 
     init(content: String, isUser: Bool, timestamp: Date = Date(), toolCalls: [ToolCall] = [], audioMetadata: AudioMetadata? = nil) {
-        self.contentBefore = ""
-        self.content = content
+        var blocks: [ContentBlock] = []
+        if !content.isEmpty {
+            blocks.append(.text(content: content))
+        }
+        for tc in toolCalls {
+            blocks.append(.toolCall(tc))
+        }
+        self.blocks = blocks
         self.isUser = isUser
         self.timestamp = timestamp
-        self.toolCalls = toolCalls
         self.audioMetadata = audioMetadata
+    }
+
+    /// All tool calls extracted from blocks
+    var toolCalls: [ToolCall] {
+        blocks.compactMap {
+            if case .toolCall(let tc) = $0 { return tc }
+            return nil
+        }
+    }
+
+    /// All text content joined
+    var content: String {
+        blocks.compactMap {
+            if case .text(_, let content) = $0 { return content }
+            return nil
+        }.joined(separator: "\n\n")
     }
 
     /// Detects the save_expense + get_budget_status pattern (mirrors React ChatMessage.tsx)
@@ -64,19 +93,21 @@ struct ChatMessage: Identifiable {
         return w
     }
 
-    /// Tool calls to display — hides get_budget_status when budget pattern is detected
-    var visibleToolCalls: [ToolCall] {
-        hasBudgetPattern ? toolCalls.filter { $0.name != "get_budget_status" } : toolCalls
-    }
-
-    /// Whether to show pre-widget text — hidden when budget pattern is detected
-    var shouldShowContentBefore: Bool {
-        !contentBefore.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasBudgetPattern
-    }
-
-    /// Whether to show post-widget text — hidden when budget pattern is detected
-    var shouldShowContent: Bool {
-        !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasBudgetPattern
+    /// Blocks to display — hides get_budget_status and text blocks when budget pattern is detected
+    var visibleBlocks: [ContentBlock] {
+        if hasBudgetPattern {
+            return blocks.filter {
+                if case .text = $0 { return false }
+                if case .toolCall(let tc) = $0 { return tc.name != "get_budget_status" }
+                return true
+            }
+        }
+        return blocks.filter {
+            if case .text(_, let content) = $0 {
+                return !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            return true
+        }
     }
 }
 
@@ -628,14 +659,12 @@ struct MessageActionBar: View {
     @Environment(\.appAccent) private var appAccent
 
     private var fullText: String {
-        [message.contentBefore, message.content]
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .joined(separator: "\n\n")
+        message.content
     }
 
     var body: some View {
         let hasContent = !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !message.visibleToolCalls.isEmpty
+            || !message.visibleBlocks.contains(where: { if case .toolCall = $0 { return true }; return false })
         if hasContent {
             HStack(spacing: 12) {
                 // Copy
@@ -709,36 +738,32 @@ struct ChatMessageView: View {
                 MessageBubble(message: message)
             }
         } else {
+            let visible = message.visibleBlocks
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 8) {
-                    // 1. Text that arrived before tool calls
-                    if message.shouldShowContentBefore {
-                        aiTextView(
-                            message.contentBefore,
-                            timestamp: !message.shouldShowContent && message.visibleToolCalls.isEmpty
-                                ? message.timestamp : nil
-                        )
-                    }
-                    // 2. Tool cards (filtered via visibleToolCalls)
-                    ForEach(message.visibleToolCalls) { tc in
-                        HStack {
-                            ToolCallCardView(
-                                toolCall: tc,
-                                budgetWarning: tc.name == "save_expense" ? message.budgetWarning : nil,
-                                viewModel: viewModel,
-                                onSelectExpense: onSelectExpense,
-                                onSelectCategory: onSelectCategory,
-                                onSelectRecurring: onSelectRecurring
-                            ).frame(maxWidth: 340, alignment: .leading)
-                            Spacer(minLength: 0)
-                        }.padding(.horizontal)
-                    }
-                    // 3. Text that arrived after tool calls
-                    if message.shouldShowContent {
-                        aiTextView(message.content, timestamp: message.timestamp)
+                    ForEach(Array(visible.enumerated()), id: \.element.id) { idx, block in
+                        switch block {
+                        case .text(_, let text):
+                            aiTextView(
+                                text,
+                                timestamp: idx == visible.count - 1 ? message.timestamp : nil
+                            )
+                        case .toolCall(let tc):
+                            HStack {
+                                ToolCallCardView(
+                                    toolCall: tc,
+                                    budgetWarning: tc.name == "save_expense" ? message.budgetWarning : nil,
+                                    viewModel: viewModel,
+                                    onSelectExpense: onSelectExpense,
+                                    onSelectCategory: onSelectCategory,
+                                    onSelectRecurring: onSelectRecurring
+                                ).frame(maxWidth: 340, alignment: .leading)
+                                Spacer(minLength: 0)
+                            }.padding(.horizontal)
+                        }
                     }
                 }
-                // 4. Action bar
+                // Action bar
                 MessageActionBar(message: message, viewModel: viewModel, isLast: isLast)
                     .padding(.top, 4)
             }
@@ -1794,27 +1819,29 @@ class ChatViewModel: ObservableObject {
                 case .conversationId(let id):
                     self.conversationId = id
                 case .text(let chunk):
-                    // Route pre-tool text above widgets, post-tool text below
-                    if self.messages[lastIdx].toolCalls.isEmpty {
-                        self.messages[lastIdx].contentBefore += chunk
+                    // Append to current text block or create a new one
+                    if case .text(let id, let existing) = self.messages[lastIdx].blocks.last {
+                        self.messages[lastIdx].blocks[self.messages[lastIdx].blocks.count - 1] = .text(id: id, content: existing + chunk)
                     } else {
-                        self.messages[lastIdx].content += chunk
+                        self.messages[lastIdx].blocks.append(.text(content: chunk))
                     }
                 case .toolStart(let id, let tool):
                     self.pendingToolNames.append(tool)
-                    self.messages[lastIdx].toolCalls.append(ToolCall(id: id, name: tool))
+                    self.messages[lastIdx].blocks.append(.toolCall(ToolCall(id: id, name: tool)))
                 case .toolEnd(let id, let tool, let resultJSON):
                     self.pendingToolNames.removeAll { $0 == tool }
-                    if let tcIdx = self.messages[lastIdx].toolCalls.firstIndex(where: { $0.id == id }) {
-                        self.messages[lastIdx].toolCalls[tcIdx] = ToolCall(id: id, name: tool, resultJSON: resultJSON)
+                    if let bIdx = self.messages[lastIdx].blocks.firstIndex(where: {
+                        if case .toolCall(let tc) = $0 { return tc.id == id }
+                        return false
+                    }) {
+                        self.messages[lastIdx].blocks[bIdx] = .toolCall(ToolCall(id: id, name: tool, resultJSON: resultJSON))
                     }
                 case .done:
                     self.pendingToolNames.removeAll()
                     self.isStreaming = false
-                    // Remove empty placeholder if no content or tools
-                    if self.messages[lastIdx].contentBefore.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        && self.messages[lastIdx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        && self.messages[lastIdx].toolCalls.isEmpty {
+                    // Remove empty placeholder if no blocks
+                    if self.messages[lastIdx].blocks.isEmpty
+                        || self.messages[lastIdx].visibleBlocks.isEmpty {
                         self.messages.remove(at: lastIdx)
                     }
                 case .error(let msg):

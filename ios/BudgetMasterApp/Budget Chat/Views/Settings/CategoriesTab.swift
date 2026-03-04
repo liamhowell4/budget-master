@@ -477,14 +477,9 @@ struct AddCategorySheet: View {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .font(.caption2)
-                            Text("Pulled from Other: ")
+                            Text("Pulled from Other: \(otherCap.formatted(.currency(code: "USD"))) \u{2192} \(otherAfter.formatted(.currency(code: "USD")))")
                                 .font(.caption)
-                            + Text(otherCap.formatted(.currency(code: "USD")))
-                                .font(.caption)
-                            + Text(" → ")
-                                .font(.caption)
-                            + Text(otherAfter.formatted(.currency(code: "USD")))
-                                .font(.caption.weight(otherWouldGoNegative ? .semibold : .regular))
+                                .fontWeight(otherWouldGoNegative ? .semibold : .regular)
                         }
                         .foregroundStyle(otherWouldGoNegative ? .red : .secondary)
 
