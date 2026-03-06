@@ -27,10 +27,13 @@ enum AppEnvironment {
         if let urlString = ProcessInfo.processInfo.environment["API_BASE_URL"] {
             return urlString
         }
-        
+
         switch self {
         case .development:
-            return "http://localhost:8000"
+            // Use HTTPS even in development. Run the local server with a
+            // self-signed cert and trust it in Simulator via Keychain, or
+            // set API_BASE_URL env var to override.
+            return "https://localhost:8000"
         case .staging:
             return "https://staging-api.budgetmaster.com"
         case .production:
@@ -91,14 +94,18 @@ final class AppConfiguration {
     /// On a real device or release builds, always returns production.
     static func resolveBaseURL() async -> URL {
 #if DEBUG && targetEnvironment(simulator)
-        let localURL = URL(string: "http://localhost:8000")!
-        var request = URLRequest(url: localURL.appendingPathComponent("health"),
-                                 timeoutInterval: 1.5)
-        request.httpMethod = "GET"
-        if let (_, response) = try? await URLSession.shared.data(for: request),
-           (response as? HTTPURLResponse)?.statusCode == 200 {
-            NSLog("✅ [AppConfiguration] Local backend reachable — using http://localhost:8000")
-            return localURL
+        // Probe the local dev server. Prefer HTTPS; fall back to HTTP only on
+        // the loopback interface where MITM risk is negligible.
+        for scheme in ["https", "http"] {
+            let localURL = URL(string: "\(scheme)://localhost:8000")!
+            var request = URLRequest(url: localURL.appendingPathComponent("health"),
+                                     timeoutInterval: 1.5)
+            request.httpMethod = "GET"
+            if let (_, response) = try? await URLSession.shared.data(for: request),
+               (response as? HTTPURLResponse)?.statusCode == 200 {
+                NSLog("✅ [AppConfiguration] Local backend reachable — using \(localURL.absoluteString)")
+                return localURL
+            }
         }
         NSLog("⚠️ [AppConfiguration] Local backend not reachable — falling back to production")
 #endif
