@@ -40,7 +40,63 @@
 
 **Fix:** Created `CertificatePinning.swift` with a `URLSessionDelegate` that performs SHA-256 SPKI public-key pinning. The `APIClient` now creates a pinned `URLSession` in production builds, while debug builds skip pinning for localhost compatibility.
 
-**Action required before shipping:** Replace the placeholder SPKI hashes in `CertificatePinning.swift` with real hashes from the production server's TLS certificate chain (instructions in code comments).
+**Action required before shipping:** Replace the placeholder SPKI hashes in `CertificatePinning.swift` with real hashes from the production server's TLS certificate chain.
+
+### How to extract the SPKI hashes
+
+Run these commands on your machine to get the leaf certificate hash:
+
+```bash
+# 1. Get the leaf cert SPKI hash
+openssl s_client -connect expense-tracker-nsz3hblwea-uc.a.run.app:443 \
+  -servername expense-tracker-nsz3hblwea-uc.a.run.app </dev/null 2>/dev/null \
+  | openssl x509 -pubkey -noout \
+  | openssl pkey -pubin -outform DER \
+  | openssl dgst -sha256 -binary | base64
+```
+
+To also get the intermediate CA hash (recommended as a backup pin):
+
+```bash
+# 2. Get the full chain, then extract the intermediate (2nd cert)
+openssl s_client -connect expense-tracker-nsz3hblwea-uc.a.run.app:443 \
+  -servername expense-tracker-nsz3hblwea-uc.a.run.app -showcerts </dev/null 2>/dev/null \
+  | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{ if(n>0) print; } /END CERTIFICATE/{n++}' \
+  | head -n $(openssl s_client -connect expense-tracker-nsz3hblwea-uc.a.run.app:443 \
+      -servername expense-tracker-nsz3hblwea-uc.a.run.app -showcerts </dev/null 2>/dev/null \
+      | awk '/BEGIN CERTIFICATE/{n++} n==2{print; next} /END CERTIFICATE/&&n==2{print; exit}' | wc -l) \
+  | openssl x509 -pubkey -noout \
+  | openssl pkey -pubin -outform DER \
+  | openssl dgst -sha256 -binary | base64
+```
+
+Or more simply, save the full chain and extract manually:
+
+```bash
+# Save full cert chain
+openssl s_client -connect expense-tracker-nsz3hblwea-uc.a.run.app:443 \
+  -servername expense-tracker-nsz3hblwea-uc.a.run.app -showcerts </dev/null 2>/dev/null \
+  > /tmp/fullchain.pem
+
+# Split into individual certs, then for each:
+# openssl x509 -in cert.pem -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256 -binary | base64
+```
+
+### Where to paste the hashes
+
+Open `ios/BudgetMaster/Networking/CertificatePinning.swift` and replace the two placeholder strings:
+
+```swift
+public static let production = CertificatePinningDelegate(
+    host: "expense-tracker-nsz3hblwea-uc.a.run.app",
+    hashes: [
+        "PASTE_LEAF_CERT_HASH_HERE",       // leaf cert
+        "PASTE_INTERMEDIATE_CERT_HASH_HERE" // backup / intermediate
+    ]
+)
+```
+
+Include **at least two** pins (leaf + intermediate) so certificate rotation doesn't break the app.
 
 ---
 
