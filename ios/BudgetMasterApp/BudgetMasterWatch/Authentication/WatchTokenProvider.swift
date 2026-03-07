@@ -4,17 +4,13 @@ import BudgetMaster
 
 /// Watch-side `TokenProvider` implementation.
 ///
-/// Stores the Firebase token received from the iPhone in `UserDefaults` with a 55-minute TTL.
+/// Stores the Firebase token received from the iPhone in the Keychain with a 55-minute TTL.
 /// When the token is stale or missing, it requests a fresh one from the phone via WCSession.
 @MainActor
 final class WatchTokenProvider: NSObject, ObservableObject {
 
     static let shared = WatchTokenProvider()
 
-    // MARK: - UserDefaults Keys
-
-    private let tokenKey      = "watch.firebase.token"
-    private let timestampKey  = "watch.firebase.tokenTimestamp"
     private let tokenTTL: TimeInterval = 55 * 60  // 55 minutes
 
     // MARK: - Published State
@@ -30,20 +26,19 @@ final class WatchTokenProvider: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Storage
+    // MARK: - Storage (Keychain-backed)
 
     private var storedToken: String? {
         guard
-            let token = UserDefaults.standard.string(forKey: tokenKey),
-            let ts    = UserDefaults.standard.object(forKey: timestampKey) as? TimeInterval
+            let token = KeychainTokenStore.token(),
+            let ts    = KeychainTokenStore.tokenTimestamp()
         else { return nil }
         let age = Date().timeIntervalSince1970 - ts
         return age < tokenTTL ? token : nil
     }
 
     private func persist(token: String, timestamp: TimeInterval) {
-        UserDefaults.standard.set(token, forKey: tokenKey)
-        UserDefaults.standard.set(timestamp, forKey: timestampKey)
+        KeychainTokenStore.save(token: token, timestamp: timestamp)
         hasToken = true
     }
 

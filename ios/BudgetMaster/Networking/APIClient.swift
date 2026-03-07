@@ -10,14 +10,28 @@ public actor APIClient {
     private let encoder: JSONEncoder
     private var tokenProvider: TokenProvider
 
+    // Keep a strong reference so the delegate isn't deallocated.
+    private let pinningDelegate: CertificatePinningDelegate?
+
     public init(
         baseURL: URL = URL(string: "https://expense-tracker-nsz3hblwea-uc.a.run.app")!,
-        session: URLSession = .shared,
+        session: URLSession? = nil,
         tokenProvider: TokenProvider = StubTokenProvider()
     ) {
         self.baseURL = baseURL
-        self.session = session
         self.tokenProvider = tokenProvider
+
+        #if DEBUG
+        // Skip certificate pinning in debug builds so localhost / simulators work.
+        self.pinningDelegate = nil
+        self.session = session ?? .shared
+        #else
+        // Production: use a URLSession with certificate pinning enabled.
+        let delegate = CertificatePinningDelegate.production
+        self.pinningDelegate = delegate
+        let config = URLSessionConfiguration.default
+        self.session = session ?? URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        #endif
 
         self.decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

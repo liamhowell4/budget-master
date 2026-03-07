@@ -20,14 +20,18 @@ class AuthenticationManager: ObservableObject {
     private var currentNonce: String?
 
     init() {
+        #if DEBUG
         print("🔐 AuthenticationManager: init() called")
+        #endif
         setupAuthStateListener()
 
         // Safety timeout: if Firebase doesn't respond in 5 seconds, stop loading
         Task {
             try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
             if isLoading {
+                #if DEBUG
                 print("⚠️ AuthenticationManager: Timeout reached, forcing isLoading = false")
+                #endif
                 self.isLoading = false
             }
         }
@@ -40,9 +44,13 @@ class AuthenticationManager: ObservableObject {
     }
 
     private func setupAuthStateListener() {
+        #if DEBUG
         print("🔐 AuthenticationManager: setting up Firebase auth state listener...")
+        #endif
         authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            #if DEBUG
             print("🔐 AuthenticationManager: auth state changed — user: \(user?.uid ?? "nil")")
+            #endif
             Task { @MainActor in
                 self?.isAuthenticated = user != nil
                 if let user = user {
@@ -55,7 +63,9 @@ class AuthenticationManager: ObservableObject {
                     self?.currentUser = nil
                 }
                 // Mark initial auth resolution complete
+                #if DEBUG
                 print("🔐 AuthenticationManager: isLoading = false, isAuthenticated = \(self?.isAuthenticated ?? false)")
+                #endif
                 self?.isLoading = false
             }
         }

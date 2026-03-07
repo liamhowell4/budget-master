@@ -6,6 +6,7 @@
 import SwiftUI
 import FirebaseCore
 import FirebaseAuth
+import FirebaseAppCheck
 import GoogleSignIn
 import BudgetMaster
 
@@ -16,16 +17,28 @@ struct BudgetMasterApp: App {
     @StateObject private var themeManager = ThemeManager()
 
     init() {
+        #if DEBUG
         NSLog("==================================================")
         NSLog("🚀 APP STARTING - BudgetMasterApp init()")
         NSLog("==================================================")
+        #endif
+
+        // Configure App Check BEFORE FirebaseApp.configure() so that all
+        // Firebase SDKs automatically attach App Check tokens to requests.
+        // This ensures that even if the API key in GoogleService-Info.plist is
+        // extracted, it cannot be used outside a genuine copy of this app.
+        AppCheckSetup.configure()
 
         // Configure Firebase before anything else, then init the auth manager.
+        #if DEBUG
         NSLog("🚀 BudgetMasterApp: calling FirebaseApp.configure()")
+        #endif
 
         // Check if GoogleService-Info.plist exists
         if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
+            #if DEBUG
             NSLog("✅ GoogleService-Info.plist found")
+            #endif
         } else {
             NSLog("❌ WARNING: GoogleService-Info.plist NOT FOUND!")
         }
@@ -37,12 +50,16 @@ struct BudgetMasterApp: App {
         if let clientID = FirebaseApp.app()?.options.clientID {
             let config = GIDConfiguration(clientID: clientID)
             GIDSignIn.sharedInstance.configuration = config
+            #if DEBUG
             NSLog("✅ GIDSignIn configured with clientID")
+            #endif
         } else {
             NSLog("❌ WARNING: Could not read clientID for GIDSignIn configuration")
         }
 
+        #if DEBUG
         NSLog("🚀 BudgetMasterApp: Firebase configured, creating AuthenticationManager")
+        #endif
         _authManager = StateObject(wrappedValue: AuthenticationManager())
 
         // Configure BudgetMaster package's APIClient with the correct URL and Firebase auth.
@@ -56,7 +73,9 @@ struct BudgetMasterApp: App {
         }
         // Activate WCSession early so the Watch receives its token as soon as possible.
         _ = WatchSessionManager.shared
+        #if DEBUG
         NSLog("🚀 BudgetMasterApp: init() complete")
+        #endif
     }
 
     var body: some Scene {
