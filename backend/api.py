@@ -10,6 +10,7 @@ Endpoints:
 """
 
 import os
+import hmac
 import logging
 from datetime import datetime, date
 from typing import Optional, List
@@ -34,6 +35,9 @@ from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Hea
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from .firebase_client import FirebaseClient
 from .budget_manager import BudgetManager
@@ -48,12 +52,17 @@ from .chat_helpers import (
 )
 from .model_client import SUPPORTED_MODELS, DEFAULT_MODEL
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Personal Expense Tracker API",
     description="API for tracking personal expenses via SMS/MMS and Streamlit UI",
     version="2.0.0"
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Add CORS middleware to allow frontend origins
 app.add_middleware(
@@ -74,8 +83,8 @@ app.add_middleware(
         "https://budget-master-lh.firebaseapp.com",  # Firebase Hosting (alt domain)
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 # Initialize Firebase client and budget manager
@@ -359,7 +368,9 @@ class BulkBudgetUpdateResponse(BaseModel):
 # ==================== Endpoints ====================
 
 @app.post("/mcp/process_expense", response_model=ExpenseResponse)
+@limiter.limit("30/minute")
 async def mcp_process_expense(
+    request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
     text: Optional[str] = Form(None, description="Text description of expense"),
     image: Optional[UploadFile] = File(None, description="Receipt image"),
@@ -396,12 +407,27 @@ async def mcp_process_expense(
             # Validate audio type
             allowed_audio_types = ["audio/wav", "audio/mpeg", "audio/mp3", "audio/webm", "audio/ogg", "audio/mp4", "audio/x-wav"]
             if audio.content_type and audio.content_type not in allowed_audio_types:
-                logger.warning("Audio type %s not in allowed list, proceeding anyway", audio.content_type)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid audio type. Allowed: {allowed_audio_types}"
+                )
 
             audio_bytes = await audio.read()
+
+            # Enforce file size limit (25 MB max for Whisper)
+            max_audio_size = 25 * 1024 * 1024
+            if len(audio_bytes) > max_audio_size:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Audio file too large. Maximum size is 25 MB."
+                )
+
             logger.info("Transcribing audio: %d bytes, type: %s", len(audio_bytes), audio.content_type)
 
-            transcription = await transcribe_audio(audio_bytes, audio.filename or "recording.wav")
+            # Sanitize filename to prevent path traversal
+            import pathlib
+            safe_filename = pathlib.PurePosixPath(audio.filename or "recording.wav").name
+            transcription = await transcribe_audio(audio_bytes, safe_filename)
             logger.debug("Transcription: %s", transcription)
 
             # Combine transcription with text (transcription first, then user text)
@@ -431,6 +457,14 @@ async def mcp_process_expense(
 
             # Read image bytes
             image_bytes = await image.read()
+
+            # Enforce file size limit (10 MB max)
+            max_image_size = 10 * 1024 * 1024
+            if len(image_bytes) > max_image_size:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Image file too large. Maximum size is 10 MB."
+                )
 
             # Convert to base64 with data URL prefix
             image_base64 = base64.b64encode(image_bytes).decode('utf-8')
@@ -473,7 +507,7 @@ async def mcp_process_expense(
         raise
     except Exception as e:
         logger.exception("Error in /mcp/process_expense")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/expenses")
@@ -531,7 +565,7 @@ async def get_expenses(
         raise
     except Exception as e:
         logger.error("Error in /expenses: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.delete("/expenses/{expense_id}")
@@ -565,7 +599,7 @@ async def delete_expense(
         raise
     except Exception as e:
         logger.error("Error in DELETE /expenses/%s: %s", expense_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 class ExpenseUpdateRequest(BaseModel):
@@ -652,7 +686,7 @@ async def update_expense(
         raise
     except Exception as e:
         logger.error("Error in PUT /expenses/%s: %s", expense_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/budget", response_model=BudgetStatusResponse)
@@ -764,7 +798,7 @@ async def get_budget_status(
 
     except Exception as e:
         logger.error("Error in /budget: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.put("/budget-caps/bulk-update", response_model=BulkBudgetUpdateResponse)
@@ -838,7 +872,7 @@ async def bulk_update_budget_caps(
         raise
     except Exception as e:
         logger.exception("Error in /budget-caps/bulk-update")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ==================== Category Endpoints ====================
@@ -870,7 +904,7 @@ async def get_categories(
         }
     except Exception as e:
         logger.exception("Error in GET /categories")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/categories")
@@ -928,7 +962,7 @@ async def create_category(
         raise
     except Exception as e:
         logger.exception("Error in POST /categories")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # NOTE: /categories/reorder and /categories/defaults MUST be before /categories/{category_id}
@@ -953,7 +987,7 @@ async def reorder_categories(
         }
     except Exception as e:
         logger.exception("Error in PUT /categories/reorder")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/categories/defaults")
@@ -1036,7 +1070,7 @@ async def update_category(
         raise
     except Exception as e:
         logger.exception("Error in PUT /categories/%s", category_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.delete("/categories/{category_id}")
@@ -1082,7 +1116,7 @@ async def delete_category(
         raise
     except Exception as e:
         logger.exception("Error in DELETE /categories/%s", category_id)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ==================== Total Budget Endpoints ====================
@@ -1112,7 +1146,7 @@ async def get_total_budget(
         }
     except Exception as e:
         logger.exception("Error in GET /budget/total")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 class TotalBudgetUpdate(BaseModel):
@@ -1159,7 +1193,7 @@ async def update_total_budget(
         raise
     except Exception as e:
         logger.exception("Error in PUT /budget/total")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ==================== Onboarding Endpoints ====================
@@ -1264,7 +1298,7 @@ async def complete_onboarding(
         raise
     except Exception as e:
         logger.exception("Error in POST /onboarding/complete")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ==================== Recurring Expense Endpoints ====================
@@ -1306,7 +1340,7 @@ async def get_recurring_expenses(
         return {"recurring_expenses": result}
     except Exception as e:
         logger.error("Error in /recurring: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/pending")
@@ -1320,7 +1354,7 @@ async def get_pending_expenses(
         return {"pending_expenses": pending_expenses}
     except Exception as e:
         logger.error("Error in /pending: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/pending/{pending_id}/confirm")
@@ -1367,7 +1401,7 @@ async def confirm_pending_expense(
         raise
     except Exception as e:
         logger.error("Error in /pending/%s/confirm: %s", pending_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.delete("/pending/{pending_id}")
@@ -1406,7 +1440,7 @@ async def delete_pending_expense(
         return {"success": True, "message": "Pending expense deleted"}
     except Exception as e:
         logger.error("Error in /pending/%s: %s", pending_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.delete("/recurring/{template_id}")
@@ -1421,7 +1455,7 @@ async def delete_recurring_template(
         return {"success": True, "message": "Recurring expense deleted"}
     except Exception as e:
         logger.error("Error in /recurring/%s: %s", template_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ==================== Conversation History Endpoints ====================
@@ -1450,7 +1484,7 @@ async def list_conversations(
         return {"conversations": conversations}
     except Exception as e:
         logger.error("Error in /conversations: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/conversations/{conversation_id}")
@@ -1478,7 +1512,7 @@ async def get_conversation(
         raise
     except Exception as e:
         logger.error("Error in GET /conversations/%s: %s", conversation_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 class DeletedExpenseRequest(BaseModel):
@@ -1512,7 +1546,7 @@ async def add_deleted_expense(
         raise
     except Exception as e:
         logger.error("Error in POST /conversations/%s/deleted-expenses: %s", conversation_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 class VerifyExpensesRequest(BaseModel):
@@ -1537,7 +1571,7 @@ async def verify_expenses(
         return {"existing_ids": existing_ids}
     except Exception as e:
         logger.error("Error in POST /expenses/verify: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.delete("/conversations/{conversation_id}")
@@ -1558,7 +1592,7 @@ async def delete_conversation(
         raise
     except Exception as e:
         logger.error("Error in DELETE /conversations/%s: %s", conversation_id, e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/conversations")
@@ -1576,7 +1610,7 @@ async def create_conversation(
         return {"conversation_id": conversation_id}
     except Exception as e:
         logger.error("Error in POST /conversations: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ==================== Admin Endpoints ====================
@@ -1586,7 +1620,8 @@ ADMIN_API_KEY = os.getenv("ADMIN_API_KEY")
 
 
 @app.post("/admin/check-recurring")
-async def admin_check_recurring(x_api_key: Optional[str] = Header(None)):
+@limiter.limit("5/minute")
+async def admin_check_recurring(request: Request, x_api_key: Optional[str] = Header(None)):
     """
     Check for due recurring expenses and create pending expenses for ALL users.
 
@@ -1606,7 +1641,7 @@ async def admin_check_recurring(x_api_key: Optional[str] = Header(None)):
             detail="ADMIN_API_KEY not configured on server"
         )
 
-    if x_api_key != ADMIN_API_KEY:
+    if not x_api_key or not hmac.compare_digest(x_api_key, ADMIN_API_KEY):
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing X-API-Key header"
@@ -1647,11 +1682,13 @@ async def admin_check_recurring(x_api_key: Optional[str] = Header(None)):
         }
     except Exception as e:
         logger.exception("[Admin] Error checking recurring expenses")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/admin/cleanup-conversations")
+@limiter.limit("5/minute")
 async def admin_cleanup_conversations(
+    request: Request,
     x_api_key: Optional[str] = Header(None),
     ttl_hours: int = 1440  # 60 days default (60 * 24 = 1440 hours)
 ):
@@ -1677,7 +1714,7 @@ async def admin_cleanup_conversations(
             detail="ADMIN_API_KEY not configured on server"
         )
 
-    if x_api_key != ADMIN_API_KEY:
+    if not x_api_key or not hmac.compare_digest(x_api_key, ADMIN_API_KEY):
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing X-API-Key header"
@@ -1699,11 +1736,12 @@ async def admin_cleanup_conversations(
         }
     except Exception as e:
         logger.exception("[Admin] Error cleaning up conversations")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/admin/users")
-async def admin_get_users(x_api_key: Optional[str] = Header(None)):
+@limiter.limit("5/minute")
+async def admin_get_users(request: Request, x_api_key: Optional[str] = Header(None)):
     """
     Get all Firebase Auth users.
     Returns list of {uid, email, display_name, photo_url, last_sign_in, created_at}.
@@ -1711,7 +1749,7 @@ async def admin_get_users(x_api_key: Optional[str] = Header(None)):
     """
     if not ADMIN_API_KEY:
         raise HTTPException(status_code=500, detail="ADMIN_API_KEY not configured on server")
-    if x_api_key != ADMIN_API_KEY:
+    if not x_api_key or not hmac.compare_digest(x_api_key, ADMIN_API_KEY):
         raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
 
     try:
@@ -1732,11 +1770,13 @@ async def admin_get_users(x_api_key: Optional[str] = Header(None)):
         return {"users": users}
     except Exception as e:
         logger.exception("[Admin] Error listing users")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/admin/analytics")
+@limiter.limit("5/minute")
 async def admin_get_analytics(
+    request: Request,
     x_api_key: Optional[str] = Header(None),
     days: int = 30
 ):
@@ -1747,7 +1787,7 @@ async def admin_get_analytics(
     """
     if not ADMIN_API_KEY:
         raise HTTPException(status_code=500, detail="ADMIN_API_KEY not configured on server")
-    if x_api_key != ADMIN_API_KEY:
+    if not x_api_key or not hmac.compare_digest(x_api_key, ADMIN_API_KEY):
         raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
 
     try:
@@ -1792,7 +1832,7 @@ async def admin_get_analytics(
         }
     except Exception as e:
         logger.exception("[Admin] Error fetching analytics")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 class AdminChatRequest(BaseModel):
@@ -1803,7 +1843,9 @@ class AdminChatRequest(BaseModel):
 
 
 @app.post("/admin/chat")
+@limiter.limit("10/minute")
 async def admin_chat(
+    request: Request,
     body: AdminChatRequest,
     x_api_key: Optional[str] = Header(None),
 ):
@@ -1814,7 +1856,7 @@ async def admin_chat(
     """
     if not ADMIN_API_KEY:
         raise HTTPException(status_code=500, detail="ADMIN_API_KEY not configured on server")
-    if x_api_key != ADMIN_API_KEY:
+    if not x_api_key or not hmac.compare_digest(x_api_key, ADMIN_API_KEY):
         raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key header")
 
     import anthropic
@@ -1845,7 +1887,7 @@ async def admin_chat(
             yield f"data: {json.dumps({'done': True})}\n\n"
         except Exception as e:
             logger.exception("[Admin] Error in admin chat stream")
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'error': 'An unexpected error occurred'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -1881,7 +1923,7 @@ async def get_user_settings(
         return UserSettingsResponse(selected_model=selected_model)
     except Exception as e:
         logger.exception("Error in GET /user/settings")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.put("/user/settings", response_model=UserSettingsResponse)
@@ -1911,7 +1953,7 @@ async def update_user_settings(
         raise
     except Exception as e:
         logger.exception("Error in PUT /user/settings")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/health")
@@ -1919,40 +1961,6 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "version": "3.2.0",
-        "endpoints": [
-            "POST /mcp/process_expense",
-            "GET /expenses",
-            "GET /budget",
-            "PUT /budget-caps/bulk-update",
-            "GET /categories",
-            "POST /categories",
-            "PUT /categories/{id}",
-            "DELETE /categories/{id}",
-            "PUT /categories/reorder",
-            "GET /categories/defaults",
-            "GET /budget/total",
-            "PUT /budget/total",
-            "GET /recurring",
-            "GET /pending",
-            "POST /pending/{id}/confirm",
-            "DELETE /pending/{id}",
-            "DELETE /recurring/{id}",
-            "GET /conversations",
-            "GET /conversations/{id}",
-            "POST /conversations",
-            "DELETE /conversations/{id}",
-            "POST /admin/check-recurring",
-            "POST /admin/cleanup-conversations",
-            "GET /admin/users",
-            "GET /admin/analytics",
-            "GET /health",
-            "GET /servers",
-            "POST /connect/{server_id}",
-            "GET /status",
-            "POST /disconnect",
-            "POST /chat/stream"
-        ]
     }
 
 
@@ -2088,7 +2096,9 @@ class ChatMessage(BaseModel):
 
 
 @app.post("/chat/stream")
+@limiter.limit("30/minute")
 async def chat_stream(
+    request: Request,
     chat_message: ChatMessage,
     current_user: AuthenticatedUser = Depends(get_current_user)
 ):
@@ -2179,8 +2189,7 @@ async def chat_stream(
 
         except Exception as e:
             logger.exception("Error in chat stream")
-            error_msg = f"[ERROR] {str(e)}"
-            yield f"data: {error_msg}\n\n"
+            yield f"data: [ERROR] An unexpected error occurred. Please try again.\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -2188,14 +2197,17 @@ async def chat_stream(
 # ==================== WebSocket: Realtime Voice Assistant ====================
 
 @app.websocket("/ws/realtime")
-async def ws_realtime(websocket: WebSocket, token: str = None, mode: str = "voice"):
+async def ws_realtime(websocket: WebSocket, mode: str = "voice"):
     """
     WebSocket endpoint for the Watch conversational voice assistant.
 
-    Auth: Firebase token via ?token= query param (watchOS cannot send
-    custom WS upgrade headers, so the token is passed as a query param).
+    Auth: Firebase token via first WebSocket message.
 
-    Protocol:
+    First-message auth protocol:
+      Watch → Backend: {"type": "auth", "token": "<firebase_id_token>"}
+      Backend → Watch: {"type": "auth_ok"} or {"type": "error", ...}
+
+    After auth:
       Watch → Backend: {"type": "audio_chunk", "data": "<base64 pcm16>"}
                        {"type": "audio_done"}
                        {"type": "cancel"}
@@ -2207,11 +2219,22 @@ async def ws_realtime(websocket: WebSocket, token: str = None, mode: str = "voic
     """
     await websocket.accept()
 
-    # Auth: verify token from query param
-    if not token:
-        await websocket.send_text(json.dumps({"type": "error", "message": "Missing token"}))
-        await websocket.close(code=4001)
-        return
+    # Auth: require first-message auth (token must not be sent via query string)
+    token = None
+    try:
+        import asyncio
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+        auth_msg = json.loads(raw)
+        if auth_msg.get("type") == "auth" and auth_msg.get("token"):
+            token = auth_msg["token"]
+        else:
+            await websocket.send_text(json.dumps({"type": "error", "message": "Expected auth message"}))
+            await websocket.close(code=4001)
+            return
+    except Exception:
+            await websocket.send_text(json.dumps({"type": "error", "message": "Auth timeout or invalid message"}))
+            await websocket.close(code=4001)
+            return
 
     try:
         import firebase_admin.auth as firebase_auth_mod
@@ -2225,6 +2248,12 @@ async def ws_realtime(websocket: WebSocket, token: str = None, mode: str = "voic
     except Exception as exc:
         await websocket.send_text(json.dumps({"type": "error", "message": "Invalid token"}))
         await websocket.close(code=4001)
+        return
+
+    # Notify client that auth succeeded (for first-message auth flow)
+    try:
+        await websocket.send_text(json.dumps({"type": "auth_ok"}))
+    except Exception:
         return
 
     if not _mcp_client:
@@ -2250,6 +2279,6 @@ async def ws_realtime(websocket: WebSocket, token: str = None, mode: str = "voic
     except Exception as exc:
         logger.exception("Realtime session error: uid=%s", user.uid)
         try:
-            await websocket.send_text(json.dumps({"type": "error", "message": str(exc)}))
+            await websocket.send_text(json.dumps({"type": "error", "message": "An unexpected error occurred"}))
         except Exception:
             pass

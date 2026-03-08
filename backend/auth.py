@@ -7,12 +7,15 @@ Handles:
 - Auth dependency injection
 """
 
+import logging
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import firebase_admin.auth as firebase_auth
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class AuthenticatedUser(BaseModel):
@@ -72,9 +75,10 @@ async def get_current_user(
             detail="Authentication token has expired"
         )
     except Exception as e:
+        logger.error("Authentication failed: %s", e)
         raise HTTPException(
             status_code=401,
-            detail=f"Authentication failed: {str(e)}"
+            detail="Authentication failed"
         )
 
 

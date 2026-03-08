@@ -34,6 +34,9 @@ class ToolLoopResult:
     had_error: bool = False
 
 
+MAX_CONVERSATION_MESSAGES = 50
+
+
 def get_or_create_conversation(
     user_firebase: FirebaseClient,
     conversation_id: Optional[str],
@@ -48,7 +51,8 @@ def get_or_create_conversation(
 
     Returns:
         (conversation_id, conversation_messages) where conversation_messages
-        is the existing history (empty list for new conversations).
+        is the existing history (empty list for new conversations), capped at
+        MAX_CONVERSATION_MESSAGES most recent messages to prevent memory exhaustion.
     """
     conversation_messages: list[dict] = []
 
@@ -75,8 +79,10 @@ def get_or_create_conversation(
                     )
                     conversation_id = None
                 else:
-                    # Get existing messages for context
-                    conversation_messages = existing_conv.get("messages", [])
+                    # Get existing messages for context, capped to prevent
+                    # memory exhaustion and runaway token costs
+                    all_messages = existing_conv.get("messages", [])
+                    conversation_messages = all_messages[-MAX_CONVERSATION_MESSAGES:]
         else:
             conversation_id = None  # Conversation not found
 

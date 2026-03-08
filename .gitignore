@@ -45,3 +45,6 @@ backups/
 .swiftpm/
 *.xcodeproj/xcuserdata/
 **/*.xcworkspace/xcuserdata/
+
+# Claude Code worktrees
+.claude/worktrees/
