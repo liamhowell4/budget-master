@@ -5,12 +5,12 @@ import type { BudgetStatus } from '@/types/budget'
 // Session cache for budget - persists across component mounts
 const budgetCache = new Map<string, BudgetStatus>()
 
-function getCacheKey(year?: number, month?: number): string {
-  return `${year ?? 'current'}-${month ?? 'current'}`
+function getCacheKey(periodOffset: number): string {
+  return `period-${periodOffset}`
 }
 
-export function useBudget(year?: number, month?: number) {
-  const cacheKey = getCacheKey(year, month)
+export function useBudget(periodOffset: number = 0) {
+  const cacheKey = getCacheKey(periodOffset)
   const cachedData = budgetCache.get(cacheKey)
 
   const [budget, setBudget] = useState<BudgetStatus | null>(cachedData ?? null)
@@ -27,7 +27,7 @@ export function useBudget(year?: number, month?: number) {
     try {
       setLoading(true)
       setError(null)
-      const data = await getBudgetStatus(year, month)
+      const data = await getBudgetStatus(undefined, undefined, periodOffset)
       budgetCache.set(cacheKey, data)
       setBudget(data)
       fetchedRef.current = cacheKey
@@ -36,7 +36,7 @@ export function useBudget(year?: number, month?: number) {
     } finally {
       setLoading(false)
     }
-  }, [year, month, cacheKey])
+  }, [periodOffset, cacheKey])
 
   useEffect(() => {
     // If we have cached data, use it immediately
@@ -68,10 +68,10 @@ export function useBudget(year?: number, month?: number) {
 }
 
 // Export function to invalidate cache (useful after adding/editing expenses)
-export function invalidateBudgetCache(year?: number, month?: number) {
-  if (year === undefined && month === undefined) {
+export function invalidateBudgetCache(periodOffset?: number) {
+  if (periodOffset === undefined) {
     budgetCache.clear()
   } else {
-    budgetCache.delete(getCacheKey(year, month))
+    budgetCache.delete(getCacheKey(periodOffset))
   }
 }

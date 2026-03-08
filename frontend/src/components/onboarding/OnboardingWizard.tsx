@@ -12,12 +12,13 @@ import { CategoriesStep, type CustomCategory } from './CategoriesStep'
 import { CapsStep } from './CapsStep'
 import { ExclusionsStep } from './ExclusionsStep'
 import { ReviewStep } from './ReviewStep'
+import { BudgetPeriodStep, type BudgetPeriodType } from './BudgetPeriodStep'
 import { categoryService } from '@/services/categoryService'
 import { ArrowLeft, X } from 'lucide-react'
 
-type Step = 'welcome' | 'incomePlanner' | 'totalBudget' | 'categories' | 'caps' | 'exclusions' | 'review'
+type Step = 'welcome' | 'budgetPeriod' | 'incomePlanner' | 'totalBudget' | 'categories' | 'caps' | 'exclusions' | 'review'
 
-const STEPS: Step[] = ['welcome', 'incomePlanner', 'totalBudget', 'categories', 'caps', 'exclusions', 'review']
+const STEPS: Step[] = ['welcome', 'budgetPeriod', 'incomePlanner', 'totalBudget', 'categories', 'caps', 'exclusions', 'review']
 
 const contentVariants = {
   enter: (direction: number) => ({
@@ -52,6 +53,12 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([])
   const [categoryCaps, setCategoryCaps] = useState<Record<string, number>>({})
   const [excludedCategoryIds, setExcludedCategoryIds] = useState<string[]>([])
+
+  // Budget period state
+  const [budgetPeriodType, setBudgetPeriodType] = useState<BudgetPeriodType>('monthly')
+  const [monthStartDay, setMonthStartDay] = useState(1)
+  const [weekStartDay, setWeekStartDay] = useState("Monday")
+  const [biweeklyAnchor, setBiweeklyAnchor] = useState(() => new Date().toISOString().split('T')[0])
 
   // Lock body scroll
   useEffect(() => {
@@ -149,6 +156,10 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
           monthly_cap: categoryCaps[c.id] || 0,
         })),
         excluded_category_ids: excludedCategoryIds,
+        budget_period_type: budgetPeriodType,
+        month_start_day: monthStartDay,
+        week_start_day: weekStartDay,
+        biweekly_anchor: biweeklyAnchor,
       })
 
       onComplete()
@@ -269,6 +280,18 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                 transition={{ duration: 0.25, ease: 'easeInOut' }}
               >
                 {currentStep === 'welcome' && <WelcomeStep />}
+                {currentStep === 'budgetPeriod' && (
+                  <BudgetPeriodStep
+                    periodType={budgetPeriodType}
+                    monthStartDay={monthStartDay}
+                    weekStartDay={weekStartDay}
+                    biweeklyAnchor={biweeklyAnchor}
+                    onPeriodTypeChange={setBudgetPeriodType}
+                    onMonthStartDayChange={setMonthStartDay}
+                    onWeekStartDayChange={setWeekStartDay}
+                    onBiweeklyAnchorChange={setBiweeklyAnchor}
+                  />
+                )}
                 {currentStep === 'incomePlanner' && (
                   <IncomePlannerStep
                     onApply={handleIncomePlannerApply}

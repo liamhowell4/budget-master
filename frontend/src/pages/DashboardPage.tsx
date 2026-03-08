@@ -12,26 +12,11 @@ import { BudgetCalculatorModal } from '@/components/modals/BudgetCalculatorModal
 import { TipsWidget } from '@/components/dashboard/TipsWidget'
 import { updateBudgetCaps } from '@/services/budgetService'
 
-// Check if a given year/month is the current month
-function isCurrentMonth(year: number, month: number): boolean {
-  const now = new Date()
-  return year === now.getFullYear() && month === now.getMonth() + 1
-}
-
-// Helper to get days in a month
-function getDaysInMonth(year: number, month: number): number {
-  return new Date(year, month, 0).getDate()
-}
-
-// Helper to calculate pace (% used / % of month elapsed)
-function calculatePace(percentage: number, year: number, month: number): number {
-  const now = new Date()
-  const currentDay = now.getDate()
-  const daysInMonth = getDaysInMonth(year, month)
-  const monthProgress = (currentDay / daysInMonth) * 100
-
-  if (monthProgress === 0) return 0
-  return percentage / monthProgress
+// Helper to calculate pace (% used / % of period elapsed)
+function calculatePace(percentage: number, daysElapsed: number, daysInPeriod: number): number {
+  const periodProgress = (daysElapsed / daysInPeriod) * 100
+  if (periodProgress === 0) return 0
+  return percentage / periodProgress
 }
 
 // Format pace for display
@@ -41,12 +26,9 @@ function formatPace(pace: number): string {
 
 // Calculate dollar difference from 1x pace
 // Negative = under pace (good), Positive = over pace (bad)
-function calculatePaceDifference(spending: number, cap: number, year: number, month: number): number {
-  const now = new Date()
-  const currentDay = now.getDate()
-  const daysInMonth = getDaysInMonth(year, month)
-  const monthProgress = currentDay / daysInMonth
-  const expectedSpending = cap * monthProgress
+function calculatePaceDifference(spending: number, cap: number, daysElapsed: number, daysInPeriod: number): number {
+  const periodProgress = daysElapsed / daysInPeriod
+  const expectedSpending = cap * periodProgress
   return spending - expectedSpending
 }
 
@@ -79,42 +61,28 @@ function getCategoryInfo(categoryId: string, categories: Category[]): Category |
 }
 
 export function DashboardPage() {
-  const now = new Date()
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear())
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
+  const [periodOffset, setPeriodOffset] = useState(0)
 
-  const { budget, loading, error, refetch } = useBudget(selectedYear, selectedMonth)
+  const { budget, loading, error, refetch } = useBudget(periodOffset)
   const { categories, loading: categoriesLoading } = useCategories()
   const [selectedCategory, setSelectedCategory] = useState<BudgetCategory | null>(null)
   const [calculatorOpen, setCalculatorOpen] = useState(false)
   const [showAllCategories, setShowAllCategories] = useState(false)
   const navigate = useNavigate()
 
-  const isCurrentMonthSelected = isCurrentMonth(selectedYear, selectedMonth)
+  const isCurrentPeriod = periodOffset === 0
 
-  const goToPreviousMonth = () => {
-    if (selectedMonth === 1) {
-      setSelectedYear(selectedYear - 1)
-      setSelectedMonth(12)
-    } else {
-      setSelectedMonth(selectedMonth - 1)
-    }
+  const goToPreviousPeriod = () => {
+    setPeriodOffset((prev) => prev - 1)
   }
 
-  const goToNextMonth = () => {
-    if (isCurrentMonthSelected) return
-
-    if (selectedMonth === 12) {
-      setSelectedYear(selectedYear + 1)
-      setSelectedMonth(1)
-    } else {
-      setSelectedMonth(selectedMonth + 1)
-    }
+  const goToNextPeriod = () => {
+    if (isCurrentPeriod) return
+    setPeriodOffset((prev) => prev + 1)
   }
 
-  const goToCurrentMonth = () => {
-    setSelectedYear(now.getFullYear())
-    setSelectedMonth(now.getMonth() + 1)
+  const goToCurrentPeriod = () => {
+    setPeriodOffset(0)
   }
 
   const handleCalculatorApply = async (monthlyBudget: number) => {
@@ -161,6 +129,8 @@ export function DashboardPage() {
 
   if (!budget) return null
 
+  const periodLabel = budget.period_label ?? budget.month_name
+
   // All categories with a budget cap, sorted by sort_order
   const baseCategories = budget.categories
     .filter((cat) => cat.cap > 0)
@@ -177,6 +147,9 @@ export function DashboardPage() {
 
   const hasUnusedCategories = baseCategories.some((cat) => cat.spending === 0)
 
+  const daysElapsed = budget.days_elapsed ?? new Date().getDate()
+  const daysInPeriod = budget.days_in_period ?? 30
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 sm:p-6 space-y-6 sm:space-y-8">
         <div className="flex items-start justify-between">
@@ -186,7 +159,7 @@ export function DashboardPage() {
             </h1>
             <div className="flex items-center gap-2 mt-1">
               <button
-                onClick={goToPreviousMonth}
+                onClick={goToPreviousPeriod}
                 className={cn(
                   'p-1 rounded-md',
                   'text-[var(--text-muted)]',
@@ -194,33 +167,33 @@ export function DashboardPage() {
                   'hover:text-[var(--text-primary)]',
                   'transition-colors'
                 )}
-                aria-label="Previous month"
+                aria-label="Previous period"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
-                onClick={goToCurrentMonth}
+                onClick={goToCurrentPeriod}
                 className={cn(
                   'text-sm font-medium min-w-[120px] text-center',
-                  isCurrentMonthSelected
+                  isCurrentPeriod
                     ? 'text-[var(--text-primary)]'
                     : 'text-[var(--accent-primary)] hover:underline'
                 )}
-                disabled={isCurrentMonthSelected}
+                disabled={isCurrentPeriod}
               >
-                {budget.month_name}
+                {periodLabel}
               </button>
               <button
-                onClick={goToNextMonth}
-                disabled={isCurrentMonthSelected}
+                onClick={goToNextPeriod}
+                disabled={isCurrentPeriod}
                 className={cn(
                   'p-1 rounded-md',
                   'transition-colors',
-                  isCurrentMonthSelected
+                  isCurrentPeriod
                     ? 'text-[var(--text-muted)] opacity-50 cursor-not-allowed'
                     : 'text-[var(--text-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'
                 )}
-                aria-label="Next month"
+                aria-label="Next period"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -256,14 +229,14 @@ export function DashboardPage() {
                 <span className="text-sm text-[var(--text-muted)] block">
                   {budget.total_percentage.toFixed(0)}% used
                 </span>
-                {isCurrentMonthSelected && (
+                {isCurrentPeriod && (
                   <div className="text-xs">
-                    <span className={getPaceColorClass(calculatePace(budget.total_percentage, budget.year, budget.month))}>
-                      {formatPace(calculatePace(budget.total_percentage, budget.year, budget.month))}
+                    <span className={getPaceColorClass(calculatePace(budget.total_percentage, daysElapsed, daysInPeriod))}>
+                      {formatPace(calculatePace(budget.total_percentage, daysElapsed, daysInPeriod))}
                     </span>
                     <span className="text-[var(--text-muted)] mx-1">|</span>
-                    <span className={getPaceDiffColorClass(calculatePaceDifference(budget.total_spending, budget.total_cap, budget.year, budget.month))}>
-                      {formatPaceDifference(calculatePaceDifference(budget.total_spending, budget.total_cap, budget.year, budget.month))}
+                    <span className={getPaceDiffColorClass(calculatePaceDifference(budget.total_spending, budget.total_cap, daysElapsed, daysInPeriod))}>
+                      {formatPaceDifference(calculatePaceDifference(budget.total_spending, budget.total_cap, daysElapsed, daysInPeriod))}
                     </span>
                   </div>
                 )}
@@ -274,9 +247,9 @@ export function DashboardPage() {
               <span>Spent: {formatCurrency(budget.total_spending)}</span>
               <span>Budget: {formatCurrency(budget.total_cap)}</span>
             </div>
-            {isCurrentMonthSelected && (
+            {isCurrentPeriod && (
               <div className="text-xs text-[var(--text-muted)] text-center pt-2 border-t border-[var(--border-primary)]">
-                Day {new Date().getDate()} of {getDaysInMonth(budget.year, budget.month)} ({((new Date().getDate() / getDaysInMonth(budget.year, budget.month)) * 100).toFixed(0)}% through month)
+                Day {daysElapsed} of {daysInPeriod} ({((daysElapsed / daysInPeriod) * 100).toFixed(0)}% through period)
               </div>
             )}
             {budget.excluded_categories && budget.excluded_categories.length > 0 && (
@@ -421,8 +394,8 @@ export function DashboardPage() {
           isOpen={selectedCategory !== null}
           onClose={() => setSelectedCategory(null)}
           categories={categories}
-          year={selectedYear}
-          month={selectedMonth}
+          periodStart={budget.period_start}
+          periodEnd={budget.period_end}
         />
 
         {/* Tips Widget */}

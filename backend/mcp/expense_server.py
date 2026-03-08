@@ -718,6 +718,18 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
     else:
         category_display_name = CATEGORY_DISPLAY_NAMES.get(category_str, category_str)
 
+    # Load user period settings and compute the budget period for this expense's date
+    from backend.period_calculator import get_period_containing_date
+    from datetime import date as _date
+    period_settings = firebase.get_budget_period_settings(firebase.user_id)
+    expense_period = get_period_containing_date(
+        target_date=_date(expense_date.year, expense_date.month, expense_date.day),
+        period_type=period_settings.get("budget_period_type", "monthly"),
+        month_start_day=period_settings.get("budget_month_start_day", 1),
+        week_start_day=period_settings.get("budget_week_start_day", "Monday"),
+        biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
+    )
+
     # Get budget status (warning + remaining amounts) in the same call
     user_budget_manager = get_user_budget_manager(arguments)
     budget_data = user_budget_manager.get_budget_status_data(
@@ -725,6 +737,7 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
         amount=amount,
         year=expense_date.year,
         month=expense_date.month,
+        period=expense_period,
     )
 
     import json
@@ -776,6 +789,19 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
             text=f"Error: Invalid category '{category_str}'"
         )]
 
+    # Load user period settings and compute the budget period
+    from backend.period_calculator import get_period_containing_date
+    from datetime import date as _date
+    firebase = get_user_firebase(arguments)
+    period_settings = firebase.get_budget_period_settings(firebase.user_id)
+    budget_period = get_period_containing_date(
+        target_date=_date(year, month, 1),
+        period_type=period_settings.get("budget_period_type", "monthly"),
+        month_start_day=period_settings.get("budget_month_start_day", 1),
+        week_start_day=period_settings.get("budget_week_start_day", "Monday"),
+        biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
+    )
+
     # Get user-scoped budget manager and get structured budget status
     user_budget_manager = get_user_budget_manager(arguments)
     budget_data = user_budget_manager.get_budget_status_data(
@@ -783,6 +809,7 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
         amount=amount,
         year=year,
         month=month,
+        period=budget_period,
     )
 
     result = {
@@ -1541,6 +1568,8 @@ async def _get_budget_remaining(arguments: dict) -> list[TextContent]:
     """
     Get budget remaining for categories (status-style format).
 
+    Uses the user's current budget period and prorates caps accordingly.
+
     Args:
         arguments: {
             "category": str (optional)
@@ -1550,45 +1579,55 @@ async def _get_budget_remaining(arguments: dict) -> list[TextContent]:
         TextContent with budget status
     """
     import json
-    from datetime import datetime
+    from datetime import datetime, date as _date
     import os, pytz
+    from backend.period_calculator import get_current_period, prorate_cap
 
-    # Get current month/year
+    # Get current period
     user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
     tz = pytz.timezone(user_timezone)
     now = datetime.now(tz)
-    year = now.year
-    month = now.month
 
     # Get user-scoped Firebase client and budget manager
     firebase = get_user_firebase(arguments)
     user_budget_manager = get_user_budget_manager(arguments)
 
-    # Get all budget caps
-    all_caps = {}
-    for expense_type in ExpenseType:
-        cap = firebase.get_budget_cap(expense_type.name)
-        if cap:
-            all_caps[expense_type.name] = cap
+    # Load user period settings and compute current period
+    period_settings = firebase.get_budget_period_settings(firebase.user_id)
+    current_period = get_current_period(
+        period_type=period_settings.get("budget_period_type", "monthly"),
+        month_start_day=period_settings.get("budget_month_start_day", 1),
+        week_start_day=period_settings.get("budget_week_start_day", "Monday"),
+        biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
+        as_of=_date(now.year, now.month, now.day),
+    )
 
-    # Get total cap
-    total_cap = firebase.get_budget_cap("TOTAL")
+    # Get spending by category for the current period
+    category_spending = user_budget_manager.get_period_spending_by_category(current_period)
 
-    # Calculate spending per category
-    category_spending = {}
-    for expense_type in ExpenseType:
-        spending = user_budget_manager.calculate_monthly_spending(
-            category=expense_type,
-            year=year,
-            month=month
-        )
-        category_spending[expense_type.name] = spending
-
-    # Check if specific category requested
+    # Get all budget caps (prefer user custom categories, fall back to legacy caps)
     specific_category = arguments.get("category")
 
+    if firebase.has_categories_setup():
+        user_cats = firebase.get_user_categories()
+        # Build prorated cap map
+        all_caps = {
+            cat["category_id"]: prorate_cap(cat.get("monthly_cap", 0), current_period)
+            for cat in user_cats
+            if cat.get("monthly_cap", 0) > 0
+        }
+        total_monthly_cap = firebase.get_total_monthly_budget() or 0
+        total_cap = prorate_cap(total_monthly_cap, current_period) if total_monthly_cap > 0 else 0
+    else:
+        all_caps = {}
+        for expense_type in ExpenseType:
+            cap = firebase.get_budget_cap(expense_type.name)
+            if cap:
+                all_caps[expense_type.name] = prorate_cap(cap, current_period)
+        total_cap_raw = firebase.get_budget_cap("TOTAL") or 0
+        total_cap = prorate_cap(total_cap_raw, current_period) if total_cap_raw > 0 else 0
+
     if specific_category:
-        # Just return this category
         cap = all_caps.get(specific_category, 0)
         spending = category_spending.get(specific_category, 0)
         percentage = (spending / cap * 100) if cap > 0 else 0
@@ -1599,22 +1638,21 @@ async def _get_budget_remaining(arguments: dict) -> list[TextContent]:
             "spending": spending,
             "cap": cap,
             "percentage": percentage,
-            "remaining": remaining
+            "remaining": remaining,
+            "period_label": current_period.label,
+            "period_type": current_period.period_type,
         }
         return [TextContent(type="text", text=json.dumps(result))]
 
     # Return all categories (status format)
     categories = []
-    for expense_type in ExpenseType:
-        cap = all_caps.get(expense_type.name, 0)
-        spending = category_spending.get(expense_type.name, 0)
-
+    for category_id, cap in all_caps.items():
+        spending = category_spending.get(category_id, 0)
         if cap > 0:
             percentage = (spending / cap) * 100
             remaining = cap - spending
-
             categories.append({
-                "category": expense_type.name,
+                "category": category_id,
                 "spending": spending,
                 "cap": cap,
                 "percentage": percentage,
@@ -1633,7 +1671,11 @@ async def _get_budget_remaining(arguments: dict) -> list[TextContent]:
             "cap": total_cap,
             "percentage": total_percentage,
             "remaining": total_remaining
-        }
+        },
+        "period_label": current_period.label,
+        "period_type": current_period.period_type,
+        "period_start": current_period.start_date.isoformat(),
+        "period_end": current_period.end_date.isoformat(),
     }
 
     return [TextContent(type="text", text=json.dumps(result))]

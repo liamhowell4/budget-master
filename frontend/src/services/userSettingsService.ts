@@ -10,6 +10,10 @@ export type SupportedModel =
 
 export interface UserSettings {
   selected_model: SupportedModel
+  budget_period_type?: string
+  month_start_day?: number
+  week_start_day?: string
+  biweekly_anchor?: string
 }
 
 export async function getUserSettings(): Promise<UserSettings> {

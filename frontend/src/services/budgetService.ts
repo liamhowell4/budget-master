@@ -4,11 +4,13 @@ import type { PendingListResponse } from '@/types/recurring'
 
 export async function getBudgetStatus(
   year?: number,
-  month?: number
+  month?: number,
+  periodOffset?: number
 ): Promise<BudgetStatus> {
   const params = new URLSearchParams()
   if (year) params.append('year', year.toString())
   if (month) params.append('month', month.toString())
+  if (periodOffset !== undefined) params.append('period_offset', periodOffset.toString())
 
   const response = await api.get<BudgetStatus>(`/budget?${params}`)
   return response.data

@@ -34,7 +34,7 @@ load_dotenv(env_path, override=True)
 from fastapi import FastAPI, Request, File, Form, UploadFile, HTTPException, Header, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -350,6 +350,14 @@ class BudgetStatusResponse(BaseModel):
     total_percentage: float
     total_remaining: float
     excluded_categories: List[str] = []  # Category IDs excluded from total calculation
+    # Flexible budget period fields (all optional for backward compat)
+    period_type: str = "monthly"
+    period_start: Optional[str] = None   # ISO date string
+    period_end: Optional[str] = None     # ISO date string
+    period_label: Optional[str] = None
+    days_in_period: Optional[int] = None
+    days_elapsed: Optional[int] = None
+    monthly_total_cap: Optional[float] = None  # The un-prorated total cap
 
 
 class BulkBudgetUpdateRequest(BaseModel):
@@ -693,7 +701,8 @@ async def update_expense(
 async def get_budget_status(
     current_user: AuthenticatedUser = Depends(get_current_user),
     year: Optional[int] = None,
-    month: Optional[int] = None
+    month: Optional[int] = None,
+    period_offset: Optional[int] = None,
 ):
     """
     Get current budget status for all categories.
@@ -701,63 +710,107 @@ async def get_budget_status(
     Requires authentication via Firebase Auth token.
 
     Query Parameters:
-    - year: Year to check (defaults to current year)
-    - month: Month to check (defaults to current month)
+    - year: Year to check (defaults to current year, used when period_offset is None)
+    - month: Month to check (defaults to current month, used when period_offset is None)
+    - period_offset: Navigate by N periods from the current period (+/-). When provided,
+                     the user's period settings are used to determine the period type.
 
     Returns budget data for all categories with spending/cap/percentage.
     Total spending excludes categories marked with exclude_from_total=true.
     """
+    from .period_calculator import get_current_period, navigate_period, prorate_cap as calc_prorate_cap
+    from calendar import monthrange
+
     try:
         # Create user-scoped Firebase client and budget manager
         user_firebase = FirebaseClient.for_user(current_user.uid)
-        user_budget_manager = BudgetManager(user_firebase)
-
-        # Default to current month
-        if year is None or month is None:
-            now = datetime.now(USER_TIMEZONE)
-            year = year or now.year
-            month = month or now.month
-
-        month_name = datetime(year, month, 1).strftime("%B %Y")
 
         # Silent migration if needed
         if not user_firebase.has_categories_setup():
             user_firebase.migrate_from_budget_caps()
 
+        # Load period settings
+        period_settings = user_firebase.get_budget_period_settings(current_user.uid)
+        period_type = period_settings.get("budget_period_type", "monthly")
+        month_start_day = period_settings.get("budget_month_start_day", 1)
+        week_start_day = period_settings.get("budget_week_start_day", "Monday")
+        biweekly_anchor = period_settings.get("budget_biweekly_anchor", "2024-01-01")
+
+        if period_offset is not None:
+            # Use period-aware navigation
+            now = datetime.now(USER_TIMEZONE)
+            current_period = get_current_period(
+                period_type=period_type,
+                month_start_day=month_start_day,
+                week_start_day=week_start_day,
+                biweekly_anchor=biweekly_anchor,
+            )
+            # Navigate period_offset steps
+            budget_period = current_period
+            for _ in range(abs(period_offset)):
+                direction = 1 if period_offset > 0 else -1
+                budget_period = navigate_period(
+                    budget_period,
+                    direction=direction,
+                    month_start_day=month_start_day,
+                    week_start_day=week_start_day,
+                    biweekly_anchor=biweekly_anchor,
+                )
+            year = budget_period.start_date.year
+            month = budget_period.start_date.month
+            month_name = budget_period.label
+        else:
+            # Legacy mode: use year/month params
+            budget_period = None
+            if year is None or month is None:
+                now = datetime.now(USER_TIMEZONE)
+                year = year or now.year
+                month = month or now.month
+            month_name = datetime(year, month, 1).strftime("%B %Y")
+            # Build a calendar-month period for consistent spending queries
+            from .period_calculator import get_current_period as _gcp
+            from datetime import date as _date
+            budget_period = _gcp(
+                period_type="monthly",
+                month_start_day=1,
+                as_of=_date(year, month, 15),
+            )
+
         # Get user's custom categories
         user_categories = user_firebase.get_user_categories()
 
-        # Build a map of category_id -> category data for quick lookup
-        category_map = {cat["category_id"]: cat for cat in user_categories}
-
-        # Get spending by category for the month
+        # Get spending by category for the period
         from .output_schemas import Date as DateModel
-        start_date = DateModel(day=1, month=month, year=year)
-        # Get last day of month
-        if month == 12:
-            end_day = 31
-        else:
-            from calendar import monthrange
-            end_day = monthrange(year, month)[1]
-        end_date = DateModel(day=end_day, month=month, year=year)
-
+        start_date = DateModel(
+            day=budget_period.start_date.day,
+            month=budget_period.start_date.month,
+            year=budget_period.start_date.year,
+        )
+        end_date = DateModel(
+            day=budget_period.end_date.day,
+            month=budget_period.end_date.month,
+            year=budget_period.end_date.year,
+        )
         spending_by_category = user_firebase.get_spending_by_category(start_date, end_date)
 
         # Build category list and track excluded categories
         category_list = []
         excluded_categories = []
         total_spending_filtered = 0.0
-        excluded_cap_total = 0.0
+        excluded_cap_total_raw = 0.0
 
         for cat in user_categories:
             category_id = cat["category_id"]
             spending = spending_by_category.get(category_id, 0)
-            cap = cat.get("monthly_cap", 0)
+            monthly_cap = cat.get("monthly_cap", 0)
             is_excluded = cat.get("exclude_from_total", False)
 
-            if cap > 0:
-                percentage = (spending / cap) * 100
-                remaining = cap - spending
+            # Prorate cap for non-calendar-month periods
+            effective_cap = calc_prorate_cap(monthly_cap, budget_period) if monthly_cap > 0 else 0
+
+            if effective_cap > 0:
+                percentage = (spending / effective_cap) * 100
+                remaining = effective_cap - spending
             else:
                 percentage = 0
                 remaining = 0
@@ -765,22 +818,24 @@ async def get_budget_status(
             category_list.append(BudgetCategory(
                 category=category_id,
                 spending=spending,
-                cap=cap,
+                cap=effective_cap,
                 percentage=percentage,
                 remaining=remaining,
-                emoji=cat.get("icon", "📦")  # Use icon as emoji for backwards compatibility
+                emoji=cat.get("icon", "📦")
             ))
 
             # Track excluded categories and calculate filtered totals
             if is_excluded:
                 excluded_categories.append(category_id)
-                excluded_cap_total += cap
+                excluded_cap_total_raw += monthly_cap
             else:
                 total_spending_filtered += spending
 
-        # Get total budget cap and subtract excluded category caps
-        total_cap_raw = user_firebase.get_total_monthly_budget() or 0
-        total_cap = total_cap_raw - excluded_cap_total
+        # Get total budget cap
+        monthly_total_cap_raw = user_firebase.get_total_monthly_budget() or 0
+        prorated_excluded = calc_prorate_cap(excluded_cap_total_raw, budget_period) if excluded_cap_total_raw > 0 else 0
+        prorated_total = calc_prorate_cap(monthly_total_cap_raw, budget_period) if monthly_total_cap_raw > 0 else 0
+        total_cap = prorated_total - prorated_excluded
         total_percentage = (total_spending_filtered / total_cap) * 100 if total_cap > 0 else 0
         total_remaining = total_cap - total_spending_filtered
 
@@ -793,7 +848,14 @@ async def get_budget_status(
             total_cap=total_cap,
             total_percentage=total_percentage,
             total_remaining=total_remaining,
-            excluded_categories=excluded_categories
+            excluded_categories=excluded_categories,
+            period_type=budget_period.period_type,
+            period_start=budget_period.start_date.isoformat(),
+            period_end=budget_period.end_date.isoformat(),
+            period_label=budget_period.label,
+            days_in_period=budget_period.days_in_period,
+            days_elapsed=budget_period.days_elapsed,
+            monthly_total_cap=monthly_total_cap_raw,
         )
 
     except Exception as e:
@@ -1213,6 +1275,20 @@ class OnboardingCompleteRequest(BaseModel):
     category_caps: dict  # Dict[str, float] - category_id -> cap
     custom_categories: Optional[List[CustomCategoryInput]] = None
     excluded_category_ids: List[str] = []
+    # Budget period settings (all optional, default to monthly)
+    budget_period_type: str = "monthly"
+    budget_month_start_day: int = Field(default=1, ge=1, le=28)
+    budget_week_start_day: str = "Monday"
+    budget_biweekly_anchor: str = "2024-01-01"
+
+    @field_validator("budget_biweekly_anchor")
+    @classmethod
+    def validate_biweekly_anchor(cls, v: str) -> str:
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("budget_biweekly_anchor must be a valid date in YYYY-MM-DD format")
+        return v
 
 
 @app.post("/onboarding/complete")
@@ -1286,6 +1362,14 @@ async def complete_onboarding(
 
         # Recalculate OTHER cap (gets the unallocated budget)
         other_cap = user_firebase.recalculate_other_cap()
+
+        # Save budget period settings
+        user_firebase.set_budget_period_settings(current_user.uid, {
+            "budget_period_type": request.budget_period_type,
+            "budget_month_start_day": request.budget_month_start_day,
+            "budget_week_start_day": request.budget_week_start_day,
+            "budget_biweekly_anchor": request.budget_biweekly_anchor,
+        })
 
         return {
             "success": True,
@@ -1897,11 +1981,30 @@ async def admin_chat(
 class UserSettingsResponse(BaseModel):
     """Response model for user settings."""
     selected_model: str
+    budget_period_type: str = "monthly"
+    budget_month_start_day: int = 1
+    budget_week_start_day: str = "Monday"
+    budget_biweekly_anchor: str = "2024-01-01"
 
 
 class UserSettingsUpdateRequest(BaseModel):
     """Request model for updating user settings."""
-    selected_model: str
+    selected_model: Optional[str] = None
+    budget_period_type: Optional[str] = None
+    budget_month_start_day: Optional[int] = Field(default=None, ge=1, le=28)
+    budget_week_start_day: Optional[str] = None
+    budget_biweekly_anchor: Optional[str] = None
+
+    @field_validator("budget_biweekly_anchor")
+    @classmethod
+    def validate_biweekly_anchor(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("budget_biweekly_anchor must be a valid date in YYYY-MM-DD format")
+        return v
 
 
 @app.get("/user/settings", response_model=UserSettingsResponse)
@@ -1911,8 +2014,7 @@ async def get_user_settings(
     """
     Get settings for the authenticated user.
 
-    Returns:
-        {"selected_model": "claude-sonnet-4-6"}
+    Returns model preference and budget period configuration.
     """
     try:
         user_firebase = FirebaseClient.for_user(current_user.uid)
@@ -1920,7 +2022,14 @@ async def get_user_settings(
         selected_model = settings.get("selected_model", DEFAULT_MODEL)
         if selected_model not in SUPPORTED_MODELS:
             selected_model = DEFAULT_MODEL
-        return UserSettingsResponse(selected_model=selected_model)
+        period_settings = user_firebase.get_budget_period_settings(current_user.uid)
+        return UserSettingsResponse(
+            selected_model=selected_model,
+            budget_period_type=period_settings.get("budget_period_type", "monthly"),
+            budget_month_start_day=period_settings.get("budget_month_start_day", 1),
+            budget_week_start_day=period_settings.get("budget_week_start_day", "Monday"),
+            budget_biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
+        )
     except Exception as e:
         logger.exception("Error in GET /user/settings")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1934,21 +2043,54 @@ async def update_user_settings(
     """
     Update settings for the authenticated user.
 
-    Request body:
-        {"selected_model": "gpt-5-mini"}
-
-    Validates that the requested model is in SUPPORTED_MODELS.
+    All fields are optional. Validates selected_model against SUPPORTED_MODELS.
     """
     try:
-        if body.selected_model not in SUPPORTED_MODELS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported model '{body.selected_model}'. "
-                       f"Choose from: {list(SUPPORTED_MODELS)}"
-            )
         user_firebase = FirebaseClient.for_user(current_user.uid)
-        user_firebase.update_user_settings(current_user.uid, {"selected_model": body.selected_model})
-        return UserSettingsResponse(selected_model=body.selected_model)
+        updates: dict = {}
+
+        if body.selected_model is not None:
+            if body.selected_model not in SUPPORTED_MODELS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported model '{body.selected_model}'. "
+                           f"Choose from: {list(SUPPORTED_MODELS)}"
+                )
+            updates["selected_model"] = body.selected_model
+
+        period_updates: dict = {}
+        if body.budget_period_type is not None:
+            if body.budget_period_type not in ("monthly", "weekly", "biweekly"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="budget_period_type must be 'monthly', 'weekly', or 'biweekly'"
+                )
+            period_updates["budget_period_type"] = body.budget_period_type
+        if body.budget_month_start_day is not None:
+            period_updates["budget_month_start_day"] = body.budget_month_start_day
+        if body.budget_week_start_day is not None:
+            period_updates["budget_week_start_day"] = body.budget_week_start_day
+        if body.budget_biweekly_anchor is not None:
+            period_updates["budget_biweekly_anchor"] = body.budget_biweekly_anchor
+
+        if updates:
+            user_firebase.update_user_settings(current_user.uid, updates)
+        if period_updates:
+            user_firebase.set_budget_period_settings(current_user.uid, period_updates)
+
+        # Return current state
+        settings = user_firebase.get_user_settings(current_user.uid)
+        selected_model = settings.get("selected_model", DEFAULT_MODEL)
+        if selected_model not in SUPPORTED_MODELS:
+            selected_model = DEFAULT_MODEL
+        period_settings = user_firebase.get_budget_period_settings(current_user.uid)
+        return UserSettingsResponse(
+            selected_model=selected_model,
+            budget_period_type=period_settings.get("budget_period_type", "monthly"),
+            budget_month_start_day=period_settings.get("budget_month_start_day", 1),
+            budget_week_start_day=period_settings.get("budget_week_start_day", "Monday"),
+            budget_biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
+        )
     except HTTPException:
         raise
     except Exception as e:

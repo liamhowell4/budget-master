@@ -6,7 +6,8 @@ from typing import Optional, Dict, Union
 from datetime import datetime
 
 from .firebase_client import FirebaseClient
-from .output_schemas import ExpenseType
+from .output_schemas import ExpenseType, Date
+from .period_calculator import BudgetPeriod, prorate_cap
 
 
 class BudgetManager:
@@ -76,6 +77,63 @@ class BudgetManager:
         """
         return self.firebase.calculate_monthly_total(year, month, category=None)
 
+    def calculate_period_spending(self, category_id: str, period: BudgetPeriod) -> float:
+        """
+        Calculate total spending for a category within an arbitrary BudgetPeriod.
+
+        Args:
+            category_id: The category ID string (e.g., "FOOD_OUT")
+            period: The BudgetPeriod to sum spending within
+
+        Returns:
+            Total amount spent in the category for the period
+        """
+        start = Date(day=period.start_date.day, month=period.start_date.month, year=period.start_date.year)
+        end = Date(day=period.end_date.day, month=period.end_date.month, year=period.end_date.year)
+        expenses = self.firebase.get_expenses_in_date_range(start, end)
+
+        total = 0.0
+        for expense in expenses:
+            if expense.get("category") == category_id:
+                total += expense.get("amount", 0)
+        return total
+
+    def calculate_total_period_spending(self, period: BudgetPeriod) -> float:
+        """
+        Calculate total spending across all categories within a BudgetPeriod.
+
+        Args:
+            period: The BudgetPeriod to sum spending within
+
+        Returns:
+            Total amount spent across all categories for the period
+        """
+        start = Date(day=period.start_date.day, month=period.start_date.month, year=period.start_date.year)
+        end = Date(day=period.end_date.day, month=period.end_date.month, year=period.end_date.year)
+        expenses = self.firebase.get_expenses_in_date_range(start, end)
+        return sum(exp.get("amount", 0) for exp in expenses)
+
+    def get_period_spending_by_category(self, period: BudgetPeriod) -> Dict[str, float]:
+        """
+        Get spending totals for ALL categories within a BudgetPeriod in one query.
+
+        Args:
+            period: The BudgetPeriod to sum spending within
+
+        Returns:
+            Dictionary mapping category IDs to spending amounts
+        """
+        start = Date(day=period.start_date.day, month=period.start_date.month, year=period.start_date.year)
+        end = Date(day=period.end_date.day, month=period.end_date.month, year=period.end_date.year)
+        expenses = self.firebase.get_expenses_in_date_range(start, end)
+
+        category_totals: Dict[str, float] = {}
+        for expense in expenses:
+            category = expense.get("category", "OTHER")
+            amount = expense.get("amount", 0)
+            category_totals[category] = category_totals.get(category, 0) + amount
+        return category_totals
+
     def get_monthly_spending_by_category(self, year: int, month: int) -> Dict[str, float]:
         """
         OPTIMIZED: Get spending totals for ALL categories in a single query.
@@ -142,7 +200,8 @@ class BudgetManager:
         category_id: str,
         amount: float,
         year: int,
-        month: int
+        month: int,
+        period: Optional[BudgetPeriod] = None,
     ) -> dict:
         """
         Compute budget status after adding an expense.
@@ -154,8 +213,11 @@ class BudgetManager:
         Args:
             category_id: The expense category ID string (e.g., "FOOD_OUT")
             amount: The new expense amount to add
-            year: Year (e.g., 2025)
-            month: Month (1-12)
+            year: Year (e.g., 2025) — used when period is None
+            month: Month (1-12) — used when period is None
+            period: Optional BudgetPeriod. When provided, spending is computed
+                    over the period's date range and caps are prorated.
+                    Alert tracking uses period.period_id instead of year/month.
 
         Returns:
             {
@@ -168,6 +230,21 @@ class BudgetManager:
         category_remaining = None
         total_remaining = None
 
+        # Determine alert tracking key
+        if period is not None:
+            period_key = period.period_id
+        else:
+            period_key = f"monthly-{year}-{month:02d}-01"
+
+        # Fetch all spending by category in a single query
+        if period is not None:
+            spending_by_cat = self.get_period_spending_by_category(period)
+        else:
+            spending_by_cat = self.get_monthly_spending_by_category(year, month)
+
+        current_category_spending = spending_by_cat.get(category_id, 0.0)
+        current_total_spending = sum(spending_by_cat.values())
+
         # ==================== Category Budget Check ====================
         category_cap = None
         if self.firebase.user_id and self.firebase.has_categories_setup():
@@ -176,48 +253,53 @@ class BudgetManager:
             category_cap = self.firebase.get_budget_cap(category_id)
 
         if category_cap and category_cap > 0:
-            current_category_spending = self.calculate_monthly_spending_for_category_id(category_id, year, month)
+            # Prorate category cap when a non-calendar-month period is provided
+            effective_category_cap = prorate_cap(category_cap, period) if period else category_cap
+
             projected_category_spending = current_category_spending + amount
-            category_percentage = (projected_category_spending / category_cap) * 100
-            category_remaining = category_cap - projected_category_spending
+            category_percentage = (projected_category_spending / effective_category_cap) * 100
+            category_remaining = effective_category_cap - projected_category_spending
 
             category_warning = self._format_warning(
                 percentage=category_percentage,
                 remaining=category_remaining,
                 budget_type=f"{category_id} budget",
-                cap=category_cap
+                cap=effective_category_cap
             )
             if category_warning:
                 warnings.append(category_warning)
 
-        # ==================== Total Monthly Budget Check ====================
+        # ==================== Total Budget Check ====================
         if self.firebase.user_id and self.firebase.has_categories_setup():
             total_cap = self.firebase.get_total_monthly_budget()
         else:
             total_cap = self.firebase.get_budget_cap("TOTAL")
 
         if total_cap and total_cap > 0:
-            current_total_spending = self.calculate_total_monthly_spending(year, month)
+            # Prorate total cap when a non-calendar-month period is provided
+            effective_total_cap = prorate_cap(total_cap, period) if period else total_cap
+
             projected_total_spending = current_total_spending + amount
-            total_percentage = (projected_total_spending / total_cap) * 100
-            total_remaining = total_cap - projected_total_spending
+            total_percentage = (projected_total_spending / effective_total_cap) * 100
+            total_remaining = effective_total_cap - projected_total_spending
 
             current_threshold = self._get_threshold_level(total_percentage)
             if current_threshold is not None:
-                warned_thresholds = self.firebase.get_warned_thresholds(year, month)
+                warned_thresholds = self.firebase.get_warned_thresholds(period_key)
                 should_warn = current_threshold >= 100 or current_threshold not in warned_thresholds
 
                 if should_warn:
+                    budget_type_label = "budget" if period and period.period_type != "monthly" else "monthly total budget"
                     total_warning = self._format_warning(
                         percentage=total_percentage,
                         remaining=total_remaining,
-                        budget_type="monthly total budget",
-                        cap=total_cap
+                        budget_type=budget_type_label,
+                        cap=effective_total_cap
                     )
                     if total_warning:
                         warnings.append(total_warning)
                         if current_threshold < 100 and current_threshold not in warned_thresholds:
-                            self.firebase.add_warned_threshold(year, month, current_threshold)
+                            self.firebase.add_warned_threshold(period_key, current_threshold)
 
         return {
             "warning": "\n".join(warnings),

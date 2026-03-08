@@ -69,8 +69,10 @@ interface CategoryExpensesModalProps {
   isOpen: boolean
   onClose: () => void
   categories: Category[]
-  year: number
-  month: number
+  year?: number
+  month?: number
+  periodStart?: string
+  periodEnd?: string
 }
 
 export function CategoryExpensesModal({
@@ -80,12 +82,17 @@ export function CategoryExpensesModal({
   categories,
   year,
   month,
+  periodStart,
+  periodEnd,
 }: CategoryExpensesModalProps) {
   const [sortBy, setSortBy] = useState<SortOption>('date-desc')
+  // When period dates are provided, use them instead of calendar month
   const { expenses, loading } = useExpenses(
-    year,
-    month,
-    category?.category
+    periodStart ? undefined : year,
+    periodStart ? undefined : month,
+    category?.category,
+    periodStart,
+    periodEnd
   )
 
   const sortedExpenses = useMemo(() => sortExpenses(expenses, sortBy), [expenses, sortBy])

@@ -593,19 +593,18 @@ class FirebaseClient:
 
         return caps
 
-    def get_warned_thresholds(self, year: int, month: int) -> List[int]:
+    def get_warned_thresholds(self, period_id: str) -> List[int]:
         """
-        Get list of overall budget thresholds already warned about for a given month.
+        Get list of overall budget thresholds already warned about for a given period.
 
         Args:
-            year: Year (e.g., 2025)
-            month: Month (1-12)
+            period_id: Unique period identifier string (e.g., "monthly-2026-03-01",
+                       "weekly-2026-03-02", "biweekly-2026-02-24")
 
         Returns:
             List of threshold percentages already warned about (e.g., [50, 90])
         """
-        doc_id = f"{year}-{month:02d}"
-        doc = self.db.collection(self._get_collection_path("budget_alert_tracking")).document(doc_id).get()
+        doc = self.db.collection(self._get_collection_path("budget_alert_tracking")).document(period_id).get()
 
         if doc.exists:
             data = doc.to_dict()
@@ -613,17 +612,15 @@ class FirebaseClient:
 
         return []
 
-    def add_warned_threshold(self, year: int, month: int, threshold: int) -> None:
+    def add_warned_threshold(self, period_id: str, threshold: int) -> None:
         """
-        Add a threshold to the list of warned thresholds for a given month.
+        Add a threshold to the list of warned thresholds for a given period.
 
         Args:
-            year: Year (e.g., 2025)
-            month: Month (1-12)
+            period_id: Unique period identifier string (e.g., "monthly-2026-03-01")
             threshold: Threshold percentage (50, 90, 95, or 100)
         """
-        doc_id = f"{year}-{month:02d}"
-        doc_ref = self.db.collection(self._get_collection_path("budget_alert_tracking")).document(doc_id)
+        doc_ref = self.db.collection(self._get_collection_path("budget_alert_tracking")).document(period_id)
 
         # Get existing thresholds
         existing_doc = doc_ref.get()
@@ -641,6 +638,40 @@ class FirebaseClient:
                 "thresholds_warned": existing_thresholds,
                 "last_updated": firestore.SERVER_TIMESTAMP
             })
+
+    def get_budget_period_settings(self, uid: str) -> dict:
+        """
+        Get budget period settings for a user from their user document.
+
+        Args:
+            uid: Firebase Auth UID
+
+        Returns:
+            Dict with keys: budget_period_type, budget_month_start_day,
+            budget_week_start_day, budget_biweekly_anchor
+        """
+        doc = self.db.collection("users").document(uid).get()
+        if not doc.exists:
+            return {}
+        data = doc.to_dict() or {}
+        return {
+            "budget_period_type": data.get("budget_period_type", "monthly"),
+            "budget_month_start_day": data.get("budget_month_start_day", 1),
+            "budget_week_start_day": data.get("budget_week_start_day", "Monday"),
+            "budget_biweekly_anchor": data.get("budget_biweekly_anchor", "2024-01-01"),
+        }
+
+    def set_budget_period_settings(self, uid: str, settings: dict) -> None:
+        """
+        Merge budget period settings into the user's document.
+
+        Args:
+            uid: Firebase Auth UID
+            settings: Dict with any subset of: budget_period_type,
+                      budget_month_start_day, budget_week_start_day,
+                      budget_biweekly_anchor
+        """
+        self.db.collection("users").document(uid).set(settings, merge=True)
 
     # ==================== Category Operations ====================
 

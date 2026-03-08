@@ -6,12 +6,14 @@ import { CategoriesTab } from '@/components/settings/CategoriesTab'
 import { AppearanceTab } from '@/components/settings/AppearanceTab'
 import { ProfileTab } from '@/components/settings/ProfileTab'
 import { AIModelTab } from '@/components/settings/AIModelTab'
-import { Tag, Palette, User, Cpu } from 'lucide-react'
+import { BudgetPeriodTab } from '@/components/settings/BudgetPeriodTab'
+import { Tag, Palette, User, Cpu, Calendar } from 'lucide-react'
 
 const tabs = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'categories', label: 'Categories', icon: Tag },
+  { id: 'budget-period', label: 'Budget Period', icon: Calendar },
   { id: 'ai-model', label: 'AI Model', icon: Cpu },
 ] as const
 
@@ -94,6 +96,7 @@ export function SettingsPage() {
                   {activeTab === 'profile' && <ProfileTab />}
                   {activeTab === 'appearance' && <AppearanceTab />}
                   {activeTab === 'categories' && <CategoriesTab />}
+                  {activeTab === 'budget-period' && <BudgetPeriodTab />}
                   {activeTab === 'ai-model' && <AIModelTab />}
                 </motion.div>
               </AnimatePresence>

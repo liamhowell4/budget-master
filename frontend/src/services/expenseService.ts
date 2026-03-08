@@ -4,12 +4,16 @@ import type { ExpensesResponse } from '@/types/expense'
 export async function getExpenses(
   year?: number,
   month?: number,
-  category?: string
+  category?: string,
+  startDate?: string,
+  endDate?: string
 ): Promise<ExpensesResponse> {
   const params = new URLSearchParams()
   if (year) params.append('year', year.toString())
   if (month) params.append('month', month.toString())
   if (category) params.append('category', category)
+  if (startDate) params.append('start_date', startDate)
+  if (endDate) params.append('end_date', endDate)
 
   const response = await api.get<ExpensesResponse>(`/expenses?${params}`)
   return response.data

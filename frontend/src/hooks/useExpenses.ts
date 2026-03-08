@@ -5,12 +5,18 @@ import type { Expense } from '@/types/expense'
 // Session cache for expenses - persists across component mounts
 const expensesCache = new Map<string, Expense[]>()
 
-function getCacheKey(year?: number, month?: number, category?: string): string {
-  return `${year ?? 'all'}-${month ?? 'all'}-${category ?? 'all'}`
+function getCacheKey(year?: number, month?: number, category?: string, startDate?: string, endDate?: string): string {
+  return `${year ?? 'all'}-${month ?? 'all'}-${category ?? 'all'}-${startDate ?? ''}-${endDate ?? ''}`
 }
 
-export function useExpenses(year?: number, month?: number, category?: string) {
-  const cacheKey = getCacheKey(year, month, category)
+export function useExpenses(
+  year?: number,
+  month?: number,
+  category?: string,
+  startDate?: string,
+  endDate?: string
+) {
+  const cacheKey = getCacheKey(year, month, category, startDate, endDate)
   const cachedData = expensesCache.get(cacheKey)
 
   const [expenses, setExpenses] = useState<Expense[]>(cachedData ?? [])
@@ -27,7 +33,7 @@ export function useExpenses(year?: number, month?: number, category?: string) {
     try {
       setLoading(true)
       setError(null)
-      const data = await getExpenses(year, month, category)
+      const data = await getExpenses(year, month, category, startDate, endDate)
       expensesCache.set(cacheKey, data.expenses)
       setExpenses(data.expenses)
       fetchedRef.current = cacheKey
@@ -36,7 +42,7 @@ export function useExpenses(year?: number, month?: number, category?: string) {
     } finally {
       setLoading(false)
     }
-  }, [year, month, category, cacheKey])
+  }, [year, month, category, startDate, endDate, cacheKey])
 
   useEffect(() => {
     // If we have cached data, use it immediately
