@@ -145,19 +145,31 @@ public struct OnboardingCompleteRequest: Codable, Sendable {
     public let categoryCaps: [String: Double]
     public let customCategories: [CustomCategoryInput]?
     public let excludedCategoryIds: [String]?
+    public let budgetPeriodType: String?
+    public let budgetMonthStartDay: Int?
+    public let budgetWeekStartDay: String?
+    public let budgetBiweeklyAnchor: String?
 
     public init(
         totalBudget: Double,
         selectedCategoryIds: [String],
         categoryCaps: [String: Double],
         customCategories: [CustomCategoryInput]?,
-        excludedCategoryIds: [String]? = nil
+        excludedCategoryIds: [String]? = nil,
+        budgetPeriodType: String? = nil,
+        budgetMonthStartDay: Int? = nil,
+        budgetWeekStartDay: String? = nil,
+        budgetBiweeklyAnchor: String? = nil
     ) {
         self.totalBudget = totalBudget
         self.selectedCategoryIds = selectedCategoryIds
         self.categoryCaps = categoryCaps
         self.customCategories = customCategories
         self.excludedCategoryIds = excludedCategoryIds
+        self.budgetPeriodType = budgetPeriodType
+        self.budgetMonthStartDay = budgetMonthStartDay
+        self.budgetWeekStartDay = budgetWeekStartDay
+        self.budgetBiweeklyAnchor = budgetBiweeklyAnchor
     }
 }
 

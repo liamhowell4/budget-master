@@ -22,11 +22,20 @@ struct OnboardingView: View {
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var showAddCustomSheet = false
+    // Budget period settings
+    @State private var budgetPeriodType: String = "monthly"
+    @State private var budgetMonthStartDay: Int = 1
+    @State private var budgetWeekStartDay: String = "Monday"
+    @State private var budgetBiweeklyAnchor: String = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date())
+    }()
 
     // Step indices:
-    // 0 = welcome, 1 = income planner, 2 = budget, 3 = categories,
-    // 4 = allocation, 5 = exclusions, 6 = review
-    private let stepCount = 7
+    // 0 = welcome, 1 = income planner, 2 = budget period, 3 = budget,
+    // 4 = categories, 5 = allocation, 6 = exclusions, 7 = review
+    private let stepCount = 8
 
     var body: some View {
         ZStack {
@@ -41,11 +50,12 @@ struct OnboardingView: View {
                 TabView(selection: $currentStep) {
                     welcomeStep.tag(0)
                     incomePlannerStep.tag(1)
-                    budgetStep.tag(2)
-                    categoriesStep.tag(3)
-                    allocationStep.tag(4)
-                    exclusionsStep.tag(5)
-                    reviewStep.tag(6)
+                    budgetPeriodStep.tag(2)
+                    budgetStep.tag(3)
+                    categoriesStep.tag(4)
+                    allocationStep.tag(5)
+                    exclusionsStep.tag(6)
+                    reviewStep.tag(7)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: currentStep)
@@ -101,7 +111,7 @@ struct OnboardingView: View {
 
     /// Steps that manage their own navigation via internal buttons (no outer Next button shown).
     private var stepManagesOwnNavigation: Bool {
-        currentStep == 1 || currentStep == 5
+        currentStep == 1 || currentStep == 6
     }
 
     private var navigationButtons: some View {
@@ -181,11 +191,12 @@ struct OnboardingView: View {
         switch currentStep {
         case 0: return true           // welcome
         case 1: return true           // income planner (handled by its own buttons)
-        case 2: return totalBudget > 0 // budget
-        case 3: return !selectedCategoryIds.isEmpty // categories
-        case 4: return true           // allocation
-        case 5: return true           // exclusions (handled by its own buttons)
-        case 6: return true           // review
+        case 2: return true           // budget period
+        case 3: return totalBudget > 0 // budget
+        case 4: return !selectedCategoryIds.isEmpty // categories
+        case 5: return true           // allocation
+        case 6: return true           // exclusions (handled by its own buttons)
+        case 7: return true           // review
         default: return true
         }
     }
@@ -260,11 +271,11 @@ struct OnboardingView: View {
     private var incomePlannerStep: some View {
         IncomePlannerStepView(
             onApply: { recommendedAmount in
-                // Apply the calculated budget to the budget field and advance
+                // Apply the calculated budget to the budget field and advance past budget period to budget step
                 totalBudget = recommendedAmount
                 budgetText = "\(Int(recommendedAmount))"
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    currentStep = 2
+                    currentStep = 3
                 }
             },
             onSkip: {
@@ -275,7 +286,197 @@ struct OnboardingView: View {
         )
     }
 
-    // MARK: - Step 2: Total Budget
+    // MARK: - Step 2: Budget Period
+
+    private let periodDayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    private var budgetPeriodStep: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer().frame(height: 24)
+
+                VStack(spacing: 8) {
+                    Text("Budget Period")
+                        .font(.title2.bold())
+                    Text("How would you like to track your spending? You can always change this later in Settings.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                }
+
+                // Period type radio cards
+                VStack(spacing: 8) {
+                    periodRadioCard(
+                        type: "monthly",
+                        icon: "calendar",
+                        label: "Monthly",
+                        description: "Track spending over a calendar-style month."
+                    )
+                    periodRadioCard(
+                        type: "weekly",
+                        icon: "calendar.day.timeline.left",
+                        label: "Weekly",
+                        description: "Your monthly budget will be automatically split into weekly windows."
+                    )
+                    periodRadioCard(
+                        type: "biweekly",
+                        icon: "calendar.badge.clock",
+                        label: "Biweekly",
+                        description: "Your monthly budget will be automatically split into biweekly windows."
+                    )
+                }
+                .padding(.horizontal, 24)
+
+                // Conditional sub-options
+                if budgetPeriodType == "monthly" {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("What day does your budget month start?")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("Align with your pay day.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            TextField("Day", value: $budgetMonthStartDay, format: .number)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                                .onChange(of: budgetMonthStartDay) { _, newValue in
+                                    budgetMonthStartDay = max(1, min(28, newValue))
+                                }
+                            Stepper("", value: $budgetMonthStartDay, in: 1...28)
+                                .labelsHidden()
+                        }
+                        Text("Day 1-28 (max 28 to work every month)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(16)
+                    .glassCard()
+                    .padding(.horizontal, 24)
+                } else if budgetPeriodType == "weekly" {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("What day does your week start?")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        FlowLayout(spacing: 8) {
+                            ForEach(periodDayNames, id: \.self) { day in
+                                let isSelected = budgetWeekStartDay == day
+                                Button {
+                                    budgetWeekStartDay = day
+                                } label: {
+                                    Text(String(day.prefix(3)))
+                                        .font(.caption.weight(.medium))
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                        .background(isSelected ? appAccent.opacity(0.15) : Color(uiColor: .secondarySystemFill))
+                                        .foregroundStyle(isSelected ? appAccent : .primary)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 8)
+                                                .stroke(isSelected ? appAccent : .clear, lineWidth: 1.5)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .glassCard()
+                    .padding(.horizontal, 24)
+                } else if budgetPeriodType == "biweekly" {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("When does your next pay period start?")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("Future pay periods will repeat every 14 days from this date.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        DatePicker(
+                            "Anchor date",
+                            selection: Binding(
+                                get: {
+                                    let formatter = DateFormatter()
+                                    formatter.dateFormat = "yyyy-MM-dd"
+                                    return formatter.date(from: budgetBiweeklyAnchor) ?? Date()
+                                },
+                                set: { newDate in
+                                    let formatter = DateFormatter()
+                                    formatter.dateFormat = "yyyy-MM-dd"
+                                    budgetBiweeklyAnchor = formatter.string(from: newDate)
+                                }
+                            ),
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                    }
+                    .padding(16)
+                    .glassCard()
+                    .padding(.horizontal, 24)
+                }
+
+                Spacer()
+            }
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private func periodRadioCard(type: String, icon: String, label: String, description: String) -> some View {
+        let isSelected = budgetPeriodType == type
+
+        return Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                budgetPeriodType = type
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? appAccent : .secondary)
+                    .frame(width: 36, height: 36)
+                    .background((isSelected ? appAccent : Color(uiColor: .secondarySystemFill)).opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isSelected ? appAccent : .primary)
+                    Text(description)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Circle()
+                    .fill(isSelected ? appAccent : .clear)
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Circle()
+                            .stroke(isSelected ? appAccent : Color(uiColor: .systemGray3), lineWidth: 2)
+                    )
+                    .overlay(
+                        Circle()
+                            .fill(.white)
+                            .frame(width: 8, height: 8)
+                            .opacity(isSelected ? 1 : 0)
+                    )
+            }
+            .padding(16)
+            .background(isSelected ? appAccent.opacity(0.08) : Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(isSelected ? appAccent : Color(uiColor: .separator), lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Step 3: Total Budget
 
     private var budgetStep: some View {
         ScrollView {
@@ -345,7 +546,7 @@ struct OnboardingView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    // MARK: - Step 3: Categories
+    // MARK: - Step 4: Categories
 
     private var categoriesStep: some View {
         ScrollView {
@@ -485,7 +686,7 @@ struct OnboardingView: View {
         .glassCard(cornerRadius: 12)
     }
 
-    // MARK: - Step 4: Budget Allocation
+    // MARK: - Step 5: Budget Allocation
 
     private var allocationStep: some View {
         ScrollView {
@@ -696,7 +897,7 @@ struct OnboardingView: View {
         .opacity(0.7)
     }
 
-    // MARK: - Step 5b: Exclusions
+    // MARK: - Step 6: Exclusions
 
     private var exclusionsStep: some View {
         ExclusionsStepView(
@@ -706,13 +907,13 @@ struct OnboardingView: View {
             excludedCategoryIds: $excludedCategoryIds,
             onContinue: {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    currentStep = 6
+                    currentStep = 7
                 }
             },
             onSkipExclusions: {
                 excludedCategoryIds = []
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    currentStep = 6
+                    currentStep = 7
                 }
             }
         )
@@ -730,7 +931,7 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Step 6: Review (was Step 5)
+    // MARK: - Step 7: Review
 
     private var reviewStep: some View {
         ScrollView {
@@ -976,7 +1177,11 @@ struct OnboardingView: View {
             selectedCategoryIds: Array(selectedCategoryIds),
             categoryCaps: caps,
             customCategories: customInputs.isEmpty ? nil : customInputs,
-            excludedCategoryIds: excludedCategoryIds.isEmpty ? nil : Array(excludedCategoryIds)
+            excludedCategoryIds: excludedCategoryIds.isEmpty ? nil : Array(excludedCategoryIds),
+            budgetPeriodType: budgetPeriodType,
+            budgetMonthStartDay: budgetMonthStartDay,
+            budgetWeekStartDay: budgetWeekStartDay,
+            budgetBiweeklyAnchor: budgetBiweeklyAnchor
         )
 
         do {

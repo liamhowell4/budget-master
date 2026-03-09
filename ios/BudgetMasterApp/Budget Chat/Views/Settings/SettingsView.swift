@@ -15,6 +15,7 @@ struct SettingsView: View {
                     Text("Profile").tag(0)
                     Text("Appearance").tag(1)
                     Text("Categories").tag(2)
+                    Text("Budget").tag(3)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
@@ -30,6 +31,8 @@ struct SettingsView: View {
                         AppearanceTab()
                     case 2:
                         CategoriesTab()
+                    case 3:
+                        BudgetPeriodTab()
                     default:
                         ProfileTab()
                     }

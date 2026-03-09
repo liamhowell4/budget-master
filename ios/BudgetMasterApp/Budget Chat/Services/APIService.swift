@@ -13,6 +13,13 @@ struct BudgetAPIResponse: Codable {
     let total_percentage: Double
     let total_remaining: Double
     let excluded_categories: [String]?
+    let period_type: String?
+    let period_start: String?
+    let period_end: String?
+    let period_label: String?
+    let days_in_period: Int?
+    let days_elapsed: Int?
+    let monthly_total_cap: Double?
 }
 
 struct BudgetCategoryAPI: Codable {
@@ -187,12 +194,16 @@ actor APIService {
 
     // MARK: Budget
 
-    func fetchBudget(year: Int? = nil, month: Int? = nil) async throws -> BudgetAPIResponse {
+    func fetchBudget(year: Int? = nil, month: Int? = nil, periodOffset: Int? = nil) async throws -> BudgetAPIResponse {
         let headers = try await authHeaders()
         var urlString = "\(baseURL)/budget"
         var queryItems: [String] = []
-        if let year { queryItems.append("year=\(year)") }
-        if let month { queryItems.append("month=\(month)") }
+        if let periodOffset {
+            queryItems.append("period_offset=\(periodOffset)")
+        } else {
+            if let year { queryItems.append("year=\(year)") }
+            if let month { queryItems.append("month=\(month)") }
+        }
         if !queryItems.isEmpty { urlString += "?" + queryItems.joined(separator: "&") }
         guard let url = URL(string: urlString) else {
             throw APIError.networkError(URLError(.badURL))

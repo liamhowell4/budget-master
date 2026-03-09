@@ -56,10 +56,11 @@ public final class CertificatePinningDelegate: NSObject, URLSessionDelegate, Sen
         }
 
         // Walk the certificate chain and check each public key hash.
-        let chainLength = SecTrustGetCertificateCount(serverTrust)
-        for index in 0..<chainLength {
-            guard let certificate = SecTrustCopyCertificateChain(serverTrust)?[index] as? SecCertificate,
-                  let publicKey = SecCertificateCopyKey(certificate),
+        guard let chain = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate] else {
+            return (.cancelAuthenticationChallenge, nil)
+        }
+        for certificate in chain {
+            guard let publicKey = SecCertificateCopyKey(certificate),
                   let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as? Data else {
                 continue
             }
