@@ -157,9 +157,9 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
         })),
         excluded_category_ids: excludedCategoryIds,
         budget_period_type: budgetPeriodType,
-        month_start_day: monthStartDay,
-        week_start_day: weekStartDay,
-        biweekly_anchor: biweeklyAnchor,
+        budget_month_start_day: monthStartDay,
+        budget_week_start_day: weekStartDay,
+        budget_biweekly_anchor: biweeklyAnchor,
       })
 
       onComplete()

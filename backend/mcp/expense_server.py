@@ -794,8 +794,14 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
     from datetime import date as _date
     firebase = get_user_firebase(arguments)
     period_settings = firebase.get_budget_period_settings(firebase.user_id)
+    today = _date.today()
+    if year == today.year and month == today.month:
+        target_date = today
+    else:
+        target_date = _date(year, month, 15)
+
     budget_period = get_period_containing_date(
-        target_date=_date(year, month, 1),
+        target_date=target_date,
         period_type=period_settings.get("budget_period_type", "monthly"),
         month_start_day=period_settings.get("budget_month_start_day", 1),
         week_start_day=period_settings.get("budget_week_start_day", "Monday"),

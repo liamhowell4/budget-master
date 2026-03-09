@@ -1281,6 +1281,13 @@ class OnboardingCompleteRequest(BaseModel):
     budget_week_start_day: str = "Monday"
     budget_biweekly_anchor: str = "2024-01-01"
 
+    @field_validator("budget_period_type")
+    @classmethod
+    def validate_budget_period_type(cls, v: str) -> str:
+        if v not in ("monthly", "weekly", "biweekly"):
+            raise ValueError("budget_period_type must be 'monthly', 'weekly', or 'biweekly'")
+        return v
+
     @field_validator("budget_biweekly_anchor")
     @classmethod
     def validate_biweekly_anchor(cls, v: str) -> str:
