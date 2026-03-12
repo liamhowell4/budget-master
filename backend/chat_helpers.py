@@ -512,6 +512,17 @@ async def run_claude_tool_loop(
             "input_schema": {**schema, "properties": props, "required": required},
         })
 
+    # Intent-based tool filtering: only send relevant tools to reduce token usage
+    from .intent_classifier import classify_intent, filter_tools as filter_tools_by_intent
+
+    latest_msg = messages[-1].get("content", "") if messages else ""
+    if isinstance(latest_msg, list):
+        latest_msg = " ".join(
+            b.get("text", "") for b in latest_msg if isinstance(b, dict) and b.get("type") == "text"
+        )
+    intents = classify_intent(latest_msg)
+    available_tools = filter_tools_by_intent(available_tools, intents)
+
     provider = SUPPORTED_MODELS[model]["provider"]
 
     if provider == "anthropic":

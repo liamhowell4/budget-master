@@ -311,6 +311,10 @@ class ExpenseMCPClient:
             }
             available_tools.append(tool_schema)
 
+        # Intent-based tool filtering: process_expense is always SAVE (+EDIT for corrections)
+        from backend.intent_classifier import Intent, filter_tools as filter_tools_by_intent
+        available_tools = filter_tools_by_intent(available_tools, {Intent.SAVE, Intent.EDIT})
+
         # Build messages with conversation history
         messages = []
 
