@@ -55,9 +55,8 @@ struct DashboardView: View {
             .scrollContentBackground(.hidden)
             .background(backgroundTint.ignoresSafeArea())
             .toolbarBackground(backgroundTint, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.automatic, for: .navigationBar)
             .navigationTitle("Dashboard")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { settingsSheet = SettingsSheet(tab: 0) } label: {
@@ -502,17 +501,15 @@ class DashboardViewModel: ObservableObject {
         let cal = Calendar.current
 
         do {
-            let budgetFetch: BudgetAPIResponse
-            budgetFetch = try await api.fetchBudget(periodOffset: periodOffset)
+            // Fetch budget and categories in parallel
+            async let budgetTask = api.fetchBudget(periodOffset: periodOffset)
+            async let categoriesTask = api.fetchCategories()
 
-            let budget = budgetFetch
-            // Fetch categories list (independent of period)
-            let apiCategories = try await api.fetchCategories()
+            let budget = try await budgetTask
+            let apiCategories = try await categoriesTask
 
-            // Fetch expenses for the period's month/year
-            let targetYear = budget.year
-            let targetMonth = budget.month
-            let expenses = try await api.fetchExpenses(year: targetYear, month: targetMonth)
+            // Expenses depend on budget for the target month/year
+            let expenses = try await api.fetchExpenses(year: budget.year, month: budget.month)
 
             let catMap = Dictionary(uniqueKeysWithValues: apiCategories.map { ($0.category_id, $0) })
 

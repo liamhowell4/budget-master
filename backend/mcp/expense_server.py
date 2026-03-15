@@ -208,21 +208,20 @@ async def handle_list_tools() -> list[Tool]:
                         "type": "number",
                         "description": "Dollar amount of the expense - positive for spending, negative for refunds/reimbursements (e.g., 5.50, 15.00, -20.00)"
                     },
-                    "date": {**DATE_SCHEMA, "description": "Date of the expense"},
+                    "date": {**DATE_SCHEMA, "description": "Date of the expense as {day, month, year}. Defaults to today if omitted."},
                     "category": {
                         "type": "string",
                         "description": "Expense category key. Use get_categories to retrieve the exact valid values for this user. Always call get_categories first."
                     }
                 },
-                "required": ["auth_token", "name", "amount", "date", "category"]
+                "required": ["auth_token", "name", "amount", "category"]
             }
         ),
         Tool(
             name="get_budget_status",
             description=(
-                "Check budget status after saving an expense. "
-                "Returns budget warnings if user is approaching or over budget limits. "
-                "Call this after save_expense to inform the user about their budget status."
+                "Check budget status for a specific category or overall. "
+                "Only needed for standalone budget queries — save_expense already returns budget status automatically."
             ),
             inputSchema={
                 "type": "object",
@@ -665,15 +664,22 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
     # Parse arguments
     expense_name = arguments["name"]
     amount = float(arguments["amount"])
-    date_dict = arguments["date"]
     category_str = arguments["category"]
 
-    # Create Date object
-    expense_date = Date(
-        day=date_dict["day"],
-        month=date_dict["month"],
-        year=date_dict["year"]
-    )
+    # Default to today if date is omitted
+    date_dict = arguments.get("date")
+    if date_dict:
+        expense_date = Date(
+            day=date_dict["day"],
+            month=date_dict["month"],
+            year=date_dict["year"]
+        )
+    else:
+        import pytz
+        user_timezone = os.getenv("USER_TIMEZONE", "America/Chicago")
+        tz = pytz.timezone(user_timezone)
+        today = datetime.now(tz).date()
+        expense_date = Date(day=today.day, month=today.month, year=today.year)
 
     # Get user-scoped Firebase client
     firebase = get_user_firebase(arguments)

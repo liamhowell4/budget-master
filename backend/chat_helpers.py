@@ -34,7 +34,7 @@ class ToolLoopResult:
     had_error: bool = False
 
 
-MAX_CONVERSATION_MESSAGES = 50
+MAX_CONVERSATION_MESSAGES = 100
 
 
 def get_or_create_conversation(
@@ -101,13 +101,27 @@ def build_message_context(
     Build the messages list for the Claude API call.
 
     Prepends conversation history, appends the current user message.
+    Content fields that are JSON-encoded lists (structured tool_use / tool_result
+    blocks) are deserialized so the API receives proper content block arrays.
+    Plain-string content is passed through unchanged for backwards compatibility.
     """
     messages = []
 
     for msg in conversation_messages:
+        content = msg.get("content", "")
+
+        # Try to deserialize structured content blocks stored as JSON strings
+        if isinstance(content, str) and content.startswith("["):
+            try:
+                parsed = json.loads(content)
+                if isinstance(parsed, list):
+                    content = parsed
+            except (json.JSONDecodeError, TypeError):
+                pass  # keep as plain string
+
         messages.append({
             "role": msg.get("role", "user"),
-            "content": msg.get("content", ""),
+            "content": content,
         })
 
     messages.append({
@@ -512,17 +526,6 @@ async def run_claude_tool_loop(
             "input_schema": {**schema, "properties": props, "required": required},
         })
 
-    # Intent-based tool filtering: only send relevant tools to reduce token usage
-    from .intent_classifier import classify_intent, filter_tools as filter_tools_by_intent
-
-    latest_msg = messages[-1].get("content", "") if messages else ""
-    if isinstance(latest_msg, list):
-        latest_msg = " ".join(
-            b.get("text", "") for b in latest_msg if isinstance(b, dict) and b.get("type") == "text"
-        )
-    intents = classify_intent(latest_msg)
-    available_tools = filter_tools_by_intent(available_tools, intents)
-
     provider = SUPPORTED_MODELS[model]["provider"]
 
     if provider == "anthropic":
@@ -550,16 +553,66 @@ def save_conversation_history(
     """
     Persist user and assistant messages to the Firestore conversation.
 
+    When tool calls occurred, stores structured content blocks so that future
+    conversation replays present proper tool_use / tool_result turns instead of
+    flat strings (which can teach the model to hallucinate tool output as text).
+
+    Message sequence for a tool-using turn:
+      1. user  — plain text
+      2. assistant — JSON-serialized list of tool_use blocks
+      3. user  — JSON-serialized list of tool_result blocks
+      4. assistant — final plain-text response
+
+    When no tools were called, stores the normal 2 messages (user + assistant text).
+
     Sets the conversation summary from the first user message.
     """
+    # 1. Always store the user message
     user_firebase.add_message_to_conversation(
         conversation_id, "user", user_message
     )
 
-    if assistant_response:
+    if tool_calls:
+        # Build structured tool_use blocks for the assistant turn
+        tool_use_blocks = []
+        tool_result_blocks = []
+
+        for tc in tool_calls:
+            tool_use_blocks.append({
+                "type": "tool_use",
+                "id": tc["id"],
+                "name": tc["name"],
+                "input": tc.get("args", {}),
+            })
+            # Serialize tool result to string if it isn't already
+            result_content = tc.get("result", "")
+            if not isinstance(result_content, str):
+                result_content = json.dumps(result_content)
+            tool_result_blocks.append({
+                "type": "tool_result",
+                "tool_use_id": tc["id"],
+                "content": result_content,
+            })
+
+        # 2. Assistant message with tool_use blocks (JSON-serialized list)
         user_firebase.add_message_to_conversation(
-            conversation_id, "assistant", assistant_response,
-            tool_calls=tool_calls if tool_calls else None,
+            conversation_id, "assistant", json.dumps(tool_use_blocks)
+        )
+
+        # 3. User message with tool_result blocks (JSON-serialized list)
+        user_firebase.add_message_to_conversation(
+            conversation_id, "user", json.dumps(tool_result_blocks)
+        )
+
+        # 4. Final assistant text response
+        if assistant_response:
+            user_firebase.add_message_to_conversation(
+                conversation_id, "assistant", assistant_response
+            )
+    elif assistant_response:
+        # No tool calls — simple user + assistant pair
+        user_firebase.add_message_to_conversation(
+            conversation_id, "assistant", assistant_response
         )
 
     # Update conversation summary from first user message
