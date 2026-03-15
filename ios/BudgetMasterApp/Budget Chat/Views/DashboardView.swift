@@ -57,6 +57,7 @@ struct DashboardView: View {
             .toolbarBackground(backgroundTint, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .navigationTitle("Dashboard")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { settingsSheet = SettingsSheet(tab: 0) } label: {
