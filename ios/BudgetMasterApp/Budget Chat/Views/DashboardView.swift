@@ -6,7 +6,7 @@ private struct SettingsSheet: Identifiable {
 }
 
 struct DashboardView: View {
-    @StateObject private var viewModel = DashboardViewModel()
+    @ObservedObject var viewModel: DashboardViewModel
     @Environment(\.appAccent) private var appAccent
     @Environment(\.appBackgroundTint) private var backgroundTint
     @State private var selectedCategory: CategoryBreakdown?
@@ -71,7 +71,9 @@ struct DashboardView: View {
                 await viewModel.loadData(periodOffset: periodOffset)
             }
             .task {
-                await viewModel.loadData(periodOffset: periodOffset)
+                if viewModel.budgetSummary == nil {
+                    await viewModel.loadData(periodOffset: periodOffset)
+                }
             }
             .overlay {
                 if viewModel.isLoading && viewModel.budgetSummary == nil {
@@ -508,11 +510,9 @@ class DashboardViewModel: ObservableObject {
             let budget = try await budgetTask
             let apiCategories = try await categoriesTask
 
-            // Expenses depend on budget for the target month/year
-            let expenses = try await api.fetchExpenses(year: budget.year, month: budget.month)
-
             let catMap = Dictionary(uniqueKeysWithValues: apiCategories.map { ($0.category_id, $0) })
 
+            // Update budget UI immediately so progress bars appear fast
             budgetSummary = BudgetSummary(
                 totalSpent: budget.total_spending,
                 totalBudget: budget.total_cap,
@@ -545,6 +545,9 @@ class DashboardViewModel: ObservableObject {
                         icon: cat?.icon ?? budgetCat.emoji
                     )
                 }
+
+            // Fetch expenses after budget is ready (needs year/month)
+            let expenses = try await api.fetchExpenses(year: budget.year, month: budget.month)
 
             recentExpenses = expenses.prefix(3).compactMap { expense in
                 let components = DateComponents(
@@ -740,6 +743,6 @@ struct CategoryExpenseRow: Identifiable {
 }
 
 #Preview {
-    DashboardView()
+    DashboardView(viewModel: DashboardViewModel())
         .environmentObject(AuthenticationManager())
 }

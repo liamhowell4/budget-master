@@ -1,0 +1,22 @@
+{
+    "version": "1.02.0",
+    "title": "What's New",
+    "subtitle": "Here's what we've been working on.",
+    "features": [
+        {
+            "sfSymbol": "calendar.badge.clock",
+            "title": "Flexible Budget Periods",
+            "description": "Set a custom month start date, or switch to weekly or biweekly budget cycles in Settings."
+        },
+        {
+            "sfSymbol": "paintpalette.fill",
+            "title": "Theming",
+            "description": "Themes now tint the entire app background. Head to Settings to try a new look."
+        },
+        {
+            "sfSymbol": "chart.bar.fill",
+            "title": "Smarter Category Tracking",
+            "description": "Improved budget category inference so your expenses land in the right bucket automatically."
+        }
+    ]
+}

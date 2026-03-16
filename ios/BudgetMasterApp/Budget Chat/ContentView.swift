@@ -12,6 +12,11 @@ struct ContentView: View {
     /// Pending prompt to prefill in the chat input on the next chat tab appearance.
     @State private var pendingChatPrefill: String?
 
+    /// What's New modal data — non-nil means we should show the sheet.
+    @State private var whatsNewData: WhatsNewData?
+
+    @StateObject private var dashboardViewModel = DashboardViewModel()
+
     private let api = APIService()
 
     /// The full scheme resolved from system appearance (or manual override).
@@ -27,10 +32,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if authManager.isLoading {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .scaleEffect(1.5)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                launchImageView
             } else if authManager.isAuthenticated {
                 if let needsOnboarding {
                     if needsOnboarding {
@@ -43,10 +45,7 @@ struct ContentView: View {
                         authenticatedView
                     }
                 } else {
-                    // Checking onboarding status
-                    ProgressView("Setting up...")
-                        .progressViewStyle(.circular)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    launchImageView
                 }
             } else {
                 LoginView()
@@ -66,6 +65,19 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Launch Image
+
+    private var launchImageView: some View {
+        GeometryReader { geo in
+            Image("LaunchImage")
+                .resizable()
+                .scaledToFill()
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
+        }
+        .ignoresSafeArea()
+    }
+
     // MARK: - Authenticated Layout
 
     private var authenticatedView: some View {
@@ -80,7 +92,7 @@ struct ContentView: View {
                 .ignoresSafeArea()
 
             TabView(selection: $selectedTab) {
-                DashboardView()
+                DashboardView(viewModel: dashboardViewModel)
                     .tabItem { Label("Dashboard", systemImage: "chart.pie") }
                     .tag(0)
                     .toolbarBackground(resolvedScheme.backgroundTint, for: .tabBar)
@@ -115,6 +127,21 @@ struct ContentView: View {
         .environment(\.appAiBubbleText, resolvedScheme.aiBubbleText)
         .tint(resolvedAccent)
         .animation(.easeInOut(duration: 0.25), value: resolvedScheme.id)
+        .task {
+            await dashboardViewModel.loadData()
+        }
+        .onAppear {
+            if whatsNewData == nil {
+                whatsNewData = WhatsNewConfig.loadIfNeeded()
+            }
+        }
+        .sheet(item: $whatsNewData) { data in
+            WhatsNewView(data: data) {
+                WhatsNewConfig.markAsSeen(data)
+                whatsNewData = nil
+            }
+            .interactiveDismissDisabled()
+        }
     }
 
     // MARK: - Onboarding Check
