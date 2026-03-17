@@ -78,6 +78,27 @@ extension ThemeColorScheme {
         aiBubbleColor: Color(hex: 0xDCE3EE), aiBubbleText: Color(hex: 0x0F172A)
     )
 
+    private static let lightBlush = ThemeColorScheme(
+        id: "light-blush", label: "Blush", description: "Soft, rosy", mode: .light,
+        accentColor: Color(hex: 0xF87171), tintColor: Color(hex: 0xF87171),
+        backgroundTint: .clear, userBubbleColor: Color(hex: 0xF87171), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0xF2F2F7), aiBubbleText: .primary
+    )
+
+    private static let lightLemon = ThemeColorScheme(
+        id: "light-lemon", label: "Lemon", description: "Bright, cheerful", mode: .light,
+        accentColor: Color(hex: 0xFBBF24), tintColor: Color(hex: 0xFBBF24),
+        backgroundTint: .clear, userBubbleColor: Color(hex: 0xFBBF24), userBubbleText: Color(hex: 0x422006),
+        aiBubbleColor: Color(hex: 0xF2F2F7), aiBubbleText: .primary
+    )
+
+    private static let lightSky = ThemeColorScheme(
+        id: "light-sky", label: "Sky", description: "Light, breezy", mode: .light,
+        accentColor: Color(hex: 0x60A5FA), tintColor: Color(hex: 0x60A5FA),
+        backgroundTint: .clear, userBubbleColor: Color(hex: 0x60A5FA), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0xF2F2F7), aiBubbleText: .primary
+    )
+
     // MARK: Dark Themes
 
     private static let darkCharcoal = ThemeColorScheme(
@@ -143,9 +164,32 @@ extension ThemeColorScheme {
         aiBubbleColor: Color(hex: 0x201812), aiBubbleText: .primary
     )
 
+    private static let darkMagenta = ThemeColorScheme(
+        id: "dark-magenta", label: "Magenta", description: "Vivid, bold", mode: .dark,
+        accentColor: Color(hex: 0xE040FB), tintColor: Color(hex: 0xE040FB),
+        backgroundTint: Color(hex: 0x050005), userBubbleColor: Color(hex: 0x7B1FA2), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x100010), aiBubbleText: .primary
+    )
+
+    private static let darkCyan = ThemeColorScheme(
+        id: "dark-cyan", label: "Cyan", description: "Cool, sharp", mode: .dark,
+        accentColor: Color(hex: 0x22D3EE), tintColor: Color(hex: 0x22D3EE),
+        backgroundTint: Color(hex: 0x000305), userBubbleColor: Color(hex: 0x0E7490), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x000E14), aiBubbleText: .primary
+    )
+
+    private static let darkGreen = ThemeColorScheme(
+        id: "dark-green", label: "Green", description: "Lush, vivid", mode: .dark,
+        accentColor: Color(hex: 0x4ADE80), tintColor: Color(hex: 0x4ADE80),
+        backgroundTint: Color(hex: 0x000500), userBubbleColor: Color(hex: 0x15803D), userBubbleText: .white,
+        aiBubbleColor: Color(hex: 0x001000), aiBubbleText: .primary
+    )
+
     static let allSchemes: [ThemeColorScheme] = [
         lightClassic, lightCoral, lightEmerald, lightAmber, lightOcean, lightSoft, lightGlass,
+        lightBlush, lightLemon, lightSky,
         darkCharcoal, darkViolet, darkRose, darkSunset, darkOcean, darkNeon, darkCyber, darkMidnight, darkCocoa,
+        darkMagenta, darkCyan, darkGreen,
     ]
 
     static let lightSchemes: [ThemeColorScheme] = allSchemes.filter { $0.mode == .light }
@@ -160,7 +204,7 @@ extension ThemeColorScheme {
     /// is `.clear` (i.e., Classic light), since `Color` is not `Equatable`.
     var swatchCanvasColor: Color {
         // Classic light deliberately uses .clear — give the swatch a neutral fill.
-        if id == "light-classic" {
+        if ["light-classic", "light-blush", "light-lemon", "light-sky"].contains(id) {
             return Color(hex: 0xF2F2F7)
         }
         return backgroundTint
