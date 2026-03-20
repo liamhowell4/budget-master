@@ -285,6 +285,39 @@ actor APIService {
         try checkResponse(response, data: data)
     }
 
+    // MARK: Direct Expense Creation
+
+    func createExpense(
+        name: String,
+        amount: Double,
+        category: String,
+        date: Date
+    ) async throws {
+        let headers = try await authHeaders()
+        guard let url = URL(string: "\(baseURL)/expenses") else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+
+        let cal = Calendar.current
+        let body: [String: Any] = [
+            "expense_name": name,
+            "amount": amount,
+            "category": category,
+            "date": [
+                "day": cal.component(.day, from: date),
+                "month": cal.component(.month, from: date),
+                "year": cal.component(.year, from: date)
+            ]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try checkResponse(response, data: data)
+    }
+
     // MARK: MCP Expense
 
     func addExpenseViaMCP(text: String) async throws -> String {

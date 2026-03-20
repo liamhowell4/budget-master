@@ -703,9 +703,13 @@ class ExpensesViewModel: ObservableObject {
     }
 
     func addExpense(_ expense: Expense) async {
-        let text = "\(expense.description) $\(String(format: "%.2f", expense.amount))"
         do {
-            _ = try await api.addExpenseViaMCP(text: text)
+            try await api.createExpense(
+                name: expense.description,
+                amount: expense.amount,
+                category: expense.category,
+                date: expense.date
+            )
             await loadExpenses()
         } catch {
             errorMessage = error.localizedDescription

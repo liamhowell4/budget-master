@@ -41,7 +41,7 @@ from slowapi.errors import RateLimitExceeded
 
 from .firebase_client import FirebaseClient
 from .budget_manager import BudgetManager
-from .output_schemas import ExpenseType, Date, CategoryCreate, CategoryUpdate, CategoryReorder
+from .output_schemas import Expense, ExpenseType, Date, CategoryCreate, CategoryUpdate, CategoryReorder
 from .recurring_manager import RecurringManager
 from .auth import get_current_user, get_optional_user, AuthenticatedUser
 from .category_defaults import DEFAULT_CATEGORIES, MAX_CATEGORIES
@@ -573,6 +573,72 @@ async def get_expenses(
         raise
     except Exception as e:
         logger.error("Error in /expenses: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+class ExpenseCreateRequest(BaseModel):
+    """Request body for creating an expense directly."""
+    expense_name: str
+    amount: float
+    category: str
+    date: dict  # {day: int, month: int, year: int}
+
+
+@app.post("/expenses")
+async def create_expense(
+    expense_data: ExpenseCreateRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """
+    Create an expense directly without AI processing.
+
+    Requires authentication via Firebase Auth token.
+
+    Request Body:
+    - expense_name: Name of the expense
+    - amount: Amount in dollars
+    - category: Category ID string (e.g., "FOOD_OUT")
+    - date: {day, month, year}
+
+    Returns the created expense ID.
+    """
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+
+        try:
+            date_obj = Date(
+                day=expense_data.date["day"],
+                month=expense_data.date["month"],
+                year=expense_data.date["year"]
+            )
+        except (KeyError, TypeError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date format. Expected {{day, month, year}}: {e}")
+
+        # Use a dummy ExpenseType for the Expense model; pass category_str override
+        try:
+            expense_type = ExpenseType[expense_data.category.upper()]
+        except KeyError:
+            expense_type = list(ExpenseType)[0]  # fallback; overridden by category_str
+
+        expense = Expense(
+            expense_name=expense_data.expense_name,
+            amount=expense_data.amount,
+            date=date_obj,
+            category=expense_type
+        )
+
+        expense_id = user_firebase.save_expense(
+            expense,
+            input_type="manual",
+            category_str=expense_data.category.upper()
+        )
+
+        return {"success": True, "expense_id": expense_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error in POST /expenses: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
