@@ -110,6 +110,107 @@ def _format_timestamps(data: dict, fields: list = None) -> None:
             data[field] = val.isoformat()
 
 
+def _process_conversation_messages(messages: list[dict]) -> list[dict]:
+    """
+    Transform raw stored messages into frontend-friendly format.
+
+    The backend stores tool interactions as 3 separate messages:
+      1. assistant: content = JSON array of tool_use blocks
+      2. user:      content = JSON array of tool_result blocks
+      3. assistant: content = final text response
+
+    This function merges them into a single assistant message with:
+      - content: the final text response
+      - tool_calls: list of {id, name, args, result}
+
+    Synthetic user messages containing only tool_result blocks are dropped.
+    """
+    processed = []
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+
+        # Check if this assistant message contains tool_use blocks
+        if role == "assistant" and isinstance(content, str) and content.startswith("["):
+            try:
+                blocks = json.loads(content)
+                if isinstance(blocks, list) and blocks and blocks[0].get("type") == "tool_use":
+                    # Extract tool calls from tool_use blocks
+                    tool_calls = []
+                    for block in blocks:
+                        if block.get("type") == "tool_use":
+                            tool_calls.append({
+                                "id": block.get("id", ""),
+                                "name": block.get("name", ""),
+                                "args": block.get("input", {}),
+                                "result": None,
+                            })
+
+                    # Next message should be user with tool_result blocks
+                    if i + 1 < len(messages):
+                        next_msg = messages[i + 1]
+                        next_content = next_msg.get("content", "")
+                        if next_msg.get("role") == "user" and isinstance(next_content, str) and next_content.startswith("["):
+                            try:
+                                result_blocks = json.loads(next_content)
+                                if isinstance(result_blocks, list) and result_blocks and result_blocks[0].get("type") == "tool_result":
+                                    # Match results to tool calls
+                                    result_map = {
+                                        rb.get("tool_use_id"): rb.get("content", "")
+                                        for rb in result_blocks
+                                        if rb.get("type") == "tool_result"
+                                    }
+                                    for tc in tool_calls:
+                                        result_str = result_map.get(tc["id"], "")
+                                        try:
+                                            tc["result"] = json.loads(result_str) if result_str else {}
+                                        except (json.JSONDecodeError, TypeError):
+                                            tc["result"] = result_str
+                                    i += 1  # skip the tool_result user message
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+
+                    # Next message after tool_result should be final assistant text
+                    final_text = ""
+                    final_timestamp = msg.get("timestamp")
+                    if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
+                        next_assistant = messages[i + 1]
+                        next_content = next_assistant.get("content", "")
+                        # Only consume if it's plain text (not another tool_use block)
+                        if not (isinstance(next_content, str) and next_content.startswith("[")):
+                            final_text = next_content
+                            final_timestamp = next_assistant.get("timestamp", final_timestamp)
+                            i += 1  # skip the final text message (merged)
+
+                    processed.append({
+                        "role": "assistant",
+                        "content": final_text,
+                        "timestamp": final_timestamp,
+                        "tool_calls": tool_calls,
+                    })
+                    i += 1
+                    continue
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Pass through normal messages (strip any accidental tool_result user messages)
+        if role == "user" and isinstance(content, str) and content.startswith("["):
+            try:
+                blocks = json.loads(content)
+                if isinstance(blocks, list) and blocks and blocks[0].get("type") == "tool_result":
+                    i += 1
+                    continue  # skip orphaned tool_result messages
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        processed.append(msg)
+        i += 1
+
+    return processed
+
+
 # ==================== Shared MCP Processing Function ====================
 
 async def process_expense_with_mcp(
@@ -1663,6 +1764,13 @@ async def get_conversation(
 
         # Format timestamps for JSON serialization
         _format_timestamps(conversation)
+
+        # Process messages: merge tool_use/tool_result blocks into
+        # frontend-friendly format with separate content and tool_calls
+        if "messages" in conversation:
+            conversation["messages"] = _process_conversation_messages(
+                conversation["messages"]
+            )
 
         return conversation
     except HTTPException:
