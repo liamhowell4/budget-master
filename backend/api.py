@@ -184,15 +184,9 @@ def _process_conversation_messages(messages: list[dict]) -> list[dict]:
                             final_timestamp = next_assistant.get("timestamp", final_timestamp)
                             i += 1  # skip the final text message (merged)
 
-                    # For save_expense messages, the text is redundant with the
-                    # expense card (mirrors streaming hasBudgetPattern behavior).
-                    # For other tools (analytics, lists), keep the summary text.
-                    has_save_expense = any(
-                        tc["name"] == "save_expense" for tc in tool_calls
-                    )
                     processed.append({
                         "role": "assistant",
-                        "content": "" if has_save_expense else final_text,
+                        "content": final_text,
                         "timestamp": final_timestamp,
                         "tool_calls": tool_calls,
                     })
