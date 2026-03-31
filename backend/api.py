@@ -175,6 +175,7 @@ def _process_conversation_messages(messages: list[dict]) -> list[dict]:
                     # Next message after tool_result should be final assistant text
                     final_text = ""
                     final_timestamp = msg.get("timestamp")
+                    content_blocks = None
                     if i + 1 < len(messages) and messages[i + 1].get("role") == "assistant":
                         next_assistant = messages[i + 1]
                         next_content = next_assistant.get("content", "")
@@ -182,14 +183,31 @@ def _process_conversation_messages(messages: list[dict]) -> list[dict]:
                         if not (isinstance(next_content, str) and next_content.startswith("[")):
                             final_text = next_content
                             final_timestamp = next_assistant.get("timestamp", final_timestamp)
+                            content_blocks = next_assistant.get("content_blocks")
                             i += 1  # skip the final text message (merged)
 
-                    processed.append({
+                    # For old conversations without stored content_blocks,
+                    # synthesize them: tool cards first, then summary text.
+                    if not content_blocks and tool_calls:
+                        content_blocks = []
+                        for tc in tool_calls:
+                            content_blocks.append({
+                                "type": "tool_call",
+                                "name": tc["name"],
+                                "result": tc.get("result", {}),
+                            })
+                        if final_text:
+                            content_blocks.append({"type": "text", "text": final_text})
+
+                    merged = {
                         "role": "assistant",
                         "content": final_text,
                         "timestamp": final_timestamp,
                         "tool_calls": tool_calls,
-                    })
+                    }
+                    if content_blocks:
+                        merged["content_blocks"] = content_blocks
+                    processed.append(merged)
                     i += 1
                     continue
             except (json.JSONDecodeError, TypeError):
