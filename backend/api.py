@@ -184,9 +184,15 @@ def _process_conversation_messages(messages: list[dict]) -> list[dict]:
                             final_timestamp = next_assistant.get("timestamp", final_timestamp)
                             i += 1  # skip the final text message (merged)
 
+                    # For save_expense messages, the text is redundant with the
+                    # expense card (mirrors streaming hasBudgetPattern behavior).
+                    # For other tools (analytics, lists), keep the summary text.
+                    has_save_expense = any(
+                        tc["name"] == "save_expense" for tc in tool_calls
+                    )
                     processed.append({
                         "role": "assistant",
-                        "content": final_text,
+                        "content": "" if has_save_expense else final_text,
                         "timestamp": final_timestamp,
                         "tool_calls": tool_calls,
                     })
@@ -194,6 +200,13 @@ def _process_conversation_messages(messages: list[dict]) -> list[dict]:
                     continue
             except (json.JSONDecodeError, TypeError):
                 pass
+
+        # Check for new-format messages that already have content_blocks
+        # (stored by the updated save_conversation_history)
+        if role == "assistant" and msg.get("content_blocks"):
+            processed.append(msg)
+            i += 1
+            continue
 
         # Pass through normal messages (strip any accidental tool_result user messages)
         if role == "user" and isinstance(content, str) and content.startswith("["):
@@ -2505,6 +2518,7 @@ async def chat_stream(
                     "\n".join(result.final_response_text),
                     result.all_tool_calls,
                     conversation_messages,
+                    content_blocks=result.content_blocks or None,
                 )
 
             # Send done signal

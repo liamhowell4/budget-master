@@ -2149,11 +2149,33 @@ class ChatViewModel: ObservableObject {
             var loaded: [ChatMessage] = []
             for msg in detail.messages {
                 let date = msg.timestamp.flatMap { isoFull.date(from: $0) ?? isoBasic.date(from: $0) } ?? Date()
-                let toolCalls = msg.toolCalls.map { ToolCall(name: $0.name, resultJSON: $0.resultJSON) }
-                loaded.append(ChatMessage(
-                    content: msg.content, isUser: msg.role == "user",
-                    timestamp: date, toolCalls: toolCalls
-                ))
+
+                // New format: use content_blocks for proper interleaved rendering
+                if let contentBlocks = msg.contentBlocks, !contentBlocks.isEmpty {
+                    var blocks: [ContentBlock] = []
+                    for cb in contentBlocks {
+                        switch cb.type {
+                        case .text:
+                            if let text = cb.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                blocks.append(.text(content: text))
+                            }
+                        case .toolCall:
+                            if let name = cb.toolName {
+                                blocks.append(.toolCall(ToolCall(name: name, resultJSON: cb.toolResultJSON ?? "{}")))
+                            }
+                        }
+                    }
+                    var chatMsg = ChatMessage(content: "", isUser: msg.role == "user", timestamp: date)
+                    chatMsg.blocks = blocks
+                    loaded.append(chatMsg)
+                } else {
+                    // Old format: tool calls first, then text
+                    let toolCalls = msg.toolCalls.map { ToolCall(name: $0.name, resultJSON: $0.resultJSON) }
+                    loaded.append(ChatMessage(
+                        content: msg.content, isUser: msg.role == "user",
+                        timestamp: date, toolCalls: toolCalls
+                    ))
+                }
             }
             messages = loaded
             deletedExpenseIds = deletedIds

@@ -96,11 +96,22 @@ struct ConversationDetail {
     let deleted_expense_ids: [String]
 }
 
+struct RawContentBlock {
+    enum BlockType { case text, toolCall }
+    let type: BlockType
+    let text: String?           // for .text blocks
+    let toolName: String?       // for .toolCall blocks
+    let toolResultJSON: String? // for .toolCall blocks
+}
+
 struct ConversationMessage {
     let role: String
     let content: String
     let timestamp: String?
     let toolCalls: [RawToolCall]
+    /// Ordered content blocks preserving the interleaving of text and tool calls.
+    /// When present, should be used instead of content + toolCalls for rendering.
+    let contentBlocks: [RawContentBlock]?
 }
 
 struct RawToolCall {
@@ -489,7 +500,27 @@ actor APIService {
                     return RawToolCall(name: name, resultJSON: resultJSON)
                 }
             }
-            return ConversationMessage(role: role, content: content, timestamp: timestamp, toolCalls: toolCalls)
+
+            // Parse ordered content_blocks if present (new format)
+            var contentBlocks: [RawContentBlock]?
+            if let rawBlocks = raw["content_blocks"] as? [[String: Any]], !rawBlocks.isEmpty {
+                contentBlocks = rawBlocks.compactMap { block in
+                    let blockType = block["type"] as? String
+                    if blockType == "text", let text = block["text"] as? String {
+                        return RawContentBlock(type: .text, text: text, toolName: nil, toolResultJSON: nil)
+                    } else if blockType == "tool_call", let name = block["name"] as? String {
+                        var resultJSON = "{}"
+                        if let result = block["result"],
+                           (result is [String: Any] || result is [Any]),
+                           let d = try? JSONSerialization.data(withJSONObject: result),
+                           let s = String(data: d, encoding: .utf8) { resultJSON = s }
+                        return RawContentBlock(type: .toolCall, text: nil, toolName: name, toolResultJSON: resultJSON)
+                    }
+                    return nil
+                }
+            }
+
+            return ConversationMessage(role: role, content: content, timestamp: timestamp, toolCalls: toolCalls, contentBlocks: contentBlocks)
         }
 
         let deletedExpenseIds = json["deleted_expense_ids"] as? [String] ?? []

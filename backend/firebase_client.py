@@ -1512,7 +1512,8 @@ class FirebaseClient:
         conversation_id: str,
         role: str,
         content: str,
-        tool_calls: list = None
+        tool_calls: list = None,
+        **extra_fields,
     ) -> bool:
         """
         Add a message to a conversation.
@@ -1522,6 +1523,7 @@ class FirebaseClient:
             role: Message role ("user" or "assistant")
             content: Message content
             tool_calls: Optional list of tool call dicts with id, name, args, result
+            **extra_fields: Additional fields to store on the message (e.g. content_blocks)
 
         Returns:
             True if successful, False if conversation not found
@@ -1546,6 +1548,9 @@ class FirebaseClient:
 
         if tool_calls:
             message["tool_calls"] = tool_calls
+
+        # Add any extra fields (e.g. content_blocks for interleaved display)
+        message.update(extra_fields)
 
         # Use array union to add message
         doc_ref.update({

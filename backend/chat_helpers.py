@@ -31,6 +31,11 @@ class ToolLoopResult:
 
     final_response_text: list[str] = field(default_factory=list)
     all_tool_calls: list[dict] = field(default_factory=list)
+    # Ordered content blocks for display — interleaves text and tool calls
+    # in the order they occurred during streaming.
+    # Each entry: {"type": "text", "text": "..."} or
+    #             {"type": "tool_call", "id": "...", "name": "...", "result": ...}
+    content_blocks: list[dict] = field(default_factory=list)
     had_error: bool = False
 
 
@@ -262,12 +267,14 @@ async def _run_anthropic_streaming_loop(
             # Accumulate final text for history persistence
             if accumulated_text:
                 result.final_response_text.append(accumulated_text)
+                result.content_blocks.append({"type": "text", "text": accumulated_text})
             break
 
         elif stop_reason == "tool_use":
             # Accumulate any leading text before tool calls
             if accumulated_text:
                 result.final_response_text.append(accumulated_text)
+                result.content_blocks.append({"type": "text", "text": accumulated_text})
 
             # Build the assistant message content block list
             assistant_content = []
@@ -307,6 +314,14 @@ async def _run_anthropic_streaming_loop(
                     "id": tool_use_id,
                     "name": tool_name,
                     "args": safe_args,
+                    "result": parsed_result,
+                })
+
+                # Record ordered content block for display
+                result.content_blocks.append({
+                    "type": "tool_call",
+                    "id": tool_use_id,
+                    "name": tool_name,
                     "result": parsed_result,
                 })
 
@@ -381,6 +396,7 @@ async def _run_non_anthropic_tool_loop(
 
         if api_response.content:
             assistant_content.append({"type": "text", "text": api_response.content})
+            result.content_blocks.append({"type": "text", "text": api_response.content})
 
         for tc in api_response.tool_calls:
             tool_name = tc.name
@@ -411,6 +427,13 @@ async def _run_non_anthropic_tool_loop(
                 "id": tool_use_id,
                 "name": tool_name,
                 "args": {k: v for k, v in tool_args.items() if k != "auth_token"},
+                "result": parsed_result,
+            })
+
+            result.content_blocks.append({
+                "type": "tool_call",
+                "id": tool_use_id,
+                "name": tool_name,
                 "result": parsed_result,
             })
 
@@ -453,6 +476,7 @@ async def _run_non_anthropic_tool_loop(
     if api_response.content:
         text = api_response.content
         result.final_response_text.append(text)
+        result.content_blocks.append({"type": "text", "text": text})
         text_event = {"type": "text", "content": text}
         yield f"data: {json.dumps(text_event)}\n\n"
 
@@ -549,6 +573,7 @@ def save_conversation_history(
     assistant_response: str,
     tool_calls: list[dict],
     conversation_messages: list[dict],
+    content_blocks: list[dict] = None,
 ) -> None:
     """
     Persist user and assistant messages to the Firestore conversation.
@@ -561,7 +586,7 @@ def save_conversation_history(
       1. user  — plain text
       2. assistant — JSON-serialized list of tool_use blocks
       3. user  — JSON-serialized list of tool_result blocks
-      4. assistant — final plain-text response
+      4. assistant — final plain-text response (with content_blocks for display)
 
     When no tools were called, stores the normal 2 messages (user + assistant text).
 
@@ -604,10 +629,32 @@ def save_conversation_history(
             conversation_id, "user", json.dumps(tool_result_blocks)
         )
 
-        # 4. Final assistant text response
+        # 4. Final assistant text response with content_blocks for display
+        # content_blocks preserves the interleaved order of text and tool
+        # calls as they occurred during streaming, enabling proper rendering
+        # when the conversation is loaded later.
+        extra_fields = {}
+        if content_blocks:
+            extra_fields["content_blocks"] = content_blocks
+
         if assistant_response:
             user_firebase.add_message_to_conversation(
-                conversation_id, "assistant", assistant_response
+                conversation_id, "assistant", assistant_response,
+                tool_calls=[
+                    {"id": tc["id"], "name": tc["name"], "result": tc.get("result")}
+                    for tc in tool_calls
+                ],
+                **extra_fields,
+            )
+        elif content_blocks:
+            # No final text but we have content blocks (e.g., tools only)
+            user_firebase.add_message_to_conversation(
+                conversation_id, "assistant", "",
+                tool_calls=[
+                    {"id": tc["id"], "name": tc["name"], "result": tc.get("result")}
+                    for tc in tool_calls
+                ],
+                **extra_fields,
             )
     elif assistant_response:
         # No tool calls — simple user + assistant pair
