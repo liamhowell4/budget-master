@@ -50,13 +50,11 @@ struct ChatMessage: Identifiable {
 
     init(content: String, isUser: Bool, timestamp: Date = Date(), toolCalls: [ToolCall] = [], audioMetadata: AudioMetadata? = nil) {
         var blocks: [ContentBlock] = []
-        // Tool calls first, then text — matches streaming order where tools
-        // execute before the final summary text is generated.
-        for tc in toolCalls {
-            blocks.append(.toolCall(tc))
-        }
         if !content.isEmpty {
             blocks.append(.text(content: content))
+        }
+        for tc in toolCalls {
+            blocks.append(.toolCall(tc))
         }
         self.blocks = blocks
         self.isUser = isUser
