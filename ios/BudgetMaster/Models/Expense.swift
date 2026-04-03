@@ -10,13 +10,9 @@ public struct ExpenseDate: Codable, Sendable {
 
 // MARK: - Expense
 
-/// `APIClient` uses `keyDecodingStrategy = .convertFromSnakeCase`, which converts each
-/// incoming JSON key to camelCase before matching against `CodingKeys` raw values.
-///
-/// The `id` property is a genuine rename: the JSON field `"expense_id"` converts to
-/// `"expenseId"`, so we need `case id = "expenseId"` to redirect that into `id`.
-/// All other properties whose Swift names match the camelCase form of their JSON keys
-/// do not need explicit CodingKeys entries.
+/// `/expenses` responses have historically used `id`, while some mutation responses
+/// use `expense_id`. Decode both so shared callers like the watch app can consume
+/// either shape safely.
 public struct Expense: Codable, Sendable, Identifiable {
     public let id: String
     public let expenseName: String
@@ -25,13 +21,48 @@ public struct Expense: Codable, Sendable, Identifiable {
     public let category: String
     public let timestamp: String?
     public let inputType: String?
+    public let notes: String?
 
     enum CodingKeys: String, CodingKey {
-        // Rename: JSON "expense_id" → strategy converts to "expenseId" → mapped to Swift `id`
-        case id = "expenseId"
+        case id
+        case expenseId = "expenseId"
         case expenseName
-        case amount, date, category, timestamp
+        case amount, date, category, timestamp, notes
         case inputType
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let explicitId = try container.decodeIfPresent(String.self, forKey: .id) {
+            id = explicitId
+        } else if let expenseId = try container.decodeIfPresent(String.self, forKey: .expenseId) {
+            id = expenseId
+        } else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.id,
+                DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Expected id or expense_id")
+            )
+        }
+
+        expenseName = try container.decode(String.self, forKey: .expenseName)
+        amount = try container.decode(Double.self, forKey: .amount)
+        date = try container.decode(ExpenseDate.self, forKey: .date)
+        category = try container.decode(String.self, forKey: .category)
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp)
+        inputType = try container.decodeIfPresent(String.self, forKey: .inputType)
+        notes = try container.decodeIfPresent(String.self, forKey: .notes)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(expenseName, forKey: .expenseName)
+        try container.encode(amount, forKey: .amount)
+        try container.encode(date, forKey: .date)
+        try container.encode(category, forKey: .category)
+        try container.encodeIfPresent(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(inputType, forKey: .inputType)
+        try container.encodeIfPresent(notes, forKey: .notes)
     }
 }
 

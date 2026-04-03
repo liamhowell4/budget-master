@@ -75,13 +75,23 @@ struct DashboardView: View {
                     await viewModel.loadData(periodOffset: periodOffset)
                 }
             }
+            .onAppear {
+                Task { await viewModel.refresh(periodOffset: periodOffset) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .expensesDidChange)) { _ in
+                Task { await viewModel.refresh(periodOffset: periodOffset) }
+            }
             .overlay {
                 if viewModel.isLoading && viewModel.budgetSummary == nil {
                     ProgressView()
                 }
             }
             .sheet(item: $selectedCategory) { category in
-                CategoryDetailSheet(category: category)
+                CategoryDetailSheet(
+                    category: category,
+                    periodStart: viewModel.periodStartDate,
+                    periodEnd: viewModel.periodEndDate
+                )
             }
         }
     }
@@ -472,6 +482,8 @@ class DashboardViewModel: ObservableObject {
     @Published var recentExpenses: [RecentExpense] = []
     @Published var excludedCategories: [String]?
     @Published var periodLabel: String?
+    @Published var periodStartDate: Date?
+    @Published var periodEndDate: Date?
     @Published var daysElapsed: Int = 0
     @Published var daysInPeriod: Int = 30
     @Published var isLoading = false
@@ -524,6 +536,8 @@ class DashboardViewModel: ObservableObject {
             excludedCategories = budget.excluded_categories
             periodLabel = budget.period_label
             _monthName = budget.month_name
+            periodStartDate = parseISODateString(budget.period_start)
+            periodEndDate = parseISODateString(budget.period_end)
             daysElapsed = budget.days_elapsed ?? cal.component(.day, from: now)
             daysInPeriod = budget.days_in_period ?? (cal.range(of: .day, in: .month, for: now)?.count ?? 30)
 
@@ -547,7 +561,12 @@ class DashboardViewModel: ObservableObject {
                 }
 
             // Fetch expenses after budget is ready (needs year/month)
-            let expenses = try await api.fetchExpenses(year: budget.year, month: budget.month)
+            let expenses: [APIExpense]
+            if let periodStartDate, let periodEndDate {
+                expenses = try await api.fetchExpenses(startDate: periodStartDate, endDate: periodEndDate)
+            } else {
+                expenses = try await api.fetchExpenses(year: budget.year, month: budget.month)
+            }
 
             recentExpenses = expenses.prefix(3).compactMap { expense in
                 let components = DateComponents(
@@ -575,6 +594,20 @@ class DashboardViewModel: ObservableObject {
 
     func refresh(periodOffset: Int = 0) async {
         await loadData(periodOffset: periodOffset)
+    }
+
+    private func parseISODateString(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        if let date = ISO8601DateFormatter().date(from: value) {
+            return date
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: value)
     }
 }
 
@@ -615,9 +648,13 @@ struct CategoryDetailSheet: View {
     let category: CategoryBreakdown
     @StateObject private var vm: CategoryDetailViewModel
 
-    init(category: CategoryBreakdown) {
+    init(category: CategoryBreakdown, periodStart: Date? = nil, periodEnd: Date? = nil) {
         self.category = category
-        _vm = StateObject(wrappedValue: CategoryDetailViewModel(categoryId: category.categoryId))
+        _vm = StateObject(wrappedValue: CategoryDetailViewModel(
+            categoryId: category.categoryId,
+            periodStart: periodStart,
+            periodEnd: periodEnd
+        ))
     }
 
     var body: some View {
@@ -643,7 +680,7 @@ struct CategoryDetailSheet: View {
                 }
 
                 // Expense rows
-                Section("This Month") {
+                Section(vm.sectionTitle) {
                     if vm.isLoading {
                         HStack {
                             Spacer()
@@ -684,6 +721,9 @@ struct CategoryDetailSheet: View {
             }
         }
         .task { await vm.load() }
+        .onReceive(NotificationCenter.default.publisher(for: .expensesDidChange)) { _ in
+            Task { await vm.load() }
+        }
     }
 
     private func statCell(title: String, text: String, color: Color = .primary) -> some View {
@@ -703,24 +743,37 @@ struct CategoryDetailSheet: View {
 @MainActor
 class CategoryDetailViewModel: ObservableObject {
     let categoryId: String
+    let periodStart: Date?
+    let periodEnd: Date?
     @Published var expenses: [CategoryExpenseRow] = []
     @Published var isLoading = false
 
     private let api = APIService()
 
-    init(categoryId: String) {
+    init(categoryId: String, periodStart: Date? = nil, periodEnd: Date? = nil) {
         self.categoryId = categoryId
+        self.periodStart = periodStart
+        self.periodEnd = periodEnd
+    }
+
+    var sectionTitle: String {
+        periodStart != nil && periodEnd != nil ? "Current Period" : "This Month"
     }
 
     func load() async {
         isLoading = true
         let cal = Calendar.current
         let now = Date()
-        let year = cal.component(.year, from: now)
-        let month = cal.component(.month, from: now)
 
         do {
-            let raw = try await api.fetchExpenses(year: year, month: month, category: categoryId)
+            let raw: [APIExpense]
+            if let periodStart, let periodEnd {
+                raw = try await api.fetchExpenses(startDate: periodStart, endDate: periodEnd, category: categoryId)
+            } else {
+                let year = cal.component(.year, from: now)
+                let month = cal.component(.month, from: now)
+                raw = try await api.fetchExpenses(year: year, month: month, category: categoryId)
+            }
             expenses = raw.compactMap { e in
                 let comps = DateComponents(year: e.date.year, month: e.date.month, day: e.date.day)
                 let date = cal.date(from: comps) ?? now

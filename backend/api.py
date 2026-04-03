@@ -248,6 +248,45 @@ def _summarize_expense_text(text: Optional[str]) -> str:
     return f"{len(text)} chars: {normalized!r}"
 
 
+def _parse_date_query(value: Optional[str], field_name: str) -> Optional[date]:
+    """Parse YYYY-MM-DD query params into date objects."""
+    if value is None:
+        return None
+
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {field_name}. Expected YYYY-MM-DD."
+        ) from exc
+
+
+def _resolve_expense_category_filter(
+    user_firebase: FirebaseClient,
+    category: Optional[str],
+) -> Optional[str]:
+    """Resolve a category filter against user categories or legacy enum values."""
+    if not category:
+        return None
+
+    if user_firebase.has_categories_setup():
+        needle = category.lower()
+        for cat in user_firebase.get_user_categories():
+            category_id = cat.get("category_id", "")
+            display_name = cat.get("display_name", "")
+            if category_id.lower() == needle or display_name.lower() == needle:
+                return category_id
+
+    try:
+        return ExpenseType[category.upper()].name
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid category. Valid categories include your configured category IDs plus {[e.name for e in ExpenseType]}"
+        ) from exc
+
+
 async def _ensure_default_chat_server_connected() -> tuple[bool, str | None]:
     """
     Ensure the shared MCP connection is ready for chat requests.
@@ -693,7 +732,9 @@ async def get_expenses(
     current_user: AuthenticatedUser = Depends(get_current_user),
     year: Optional[int] = None,
     month: Optional[int] = None,
-    category: Optional[str] = None
+    category: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ):
     """
     Get expense history with optional filters.
@@ -704,6 +745,8 @@ async def get_expenses(
     - year: Filter by year (e.g., 2025)
     - month: Filter by month (1-12)
     - category: Filter by category (e.g., "FOOD_OUT")
+    - start_date/end_date: Optional YYYY-MM-DD date-range filter. When provided,
+      both must be present and take precedence over year/month.
 
     Returns list of expenses matching filters.
     """
@@ -711,30 +754,49 @@ async def get_expenses(
         # Create user-scoped Firebase client
         user_firebase = FirebaseClient.for_user(current_user.uid)
 
+        start_date_obj = _parse_date_query(start_date, "start_date")
+        end_date_obj = _parse_date_query(end_date, "end_date")
+
+        if (start_date_obj is None) != (end_date_obj is None):
+            raise HTTPException(
+                status_code=400,
+                detail="start_date and end_date must be provided together"
+            )
+
+        if start_date_obj and end_date_obj and start_date_obj > end_date_obj:
+            raise HTTPException(
+                status_code=400,
+                detail="start_date must be on or before end_date"
+            )
+
         # Default to current month if not specified
-        if year is None or month is None:
+        if start_date_obj is None and (year is None or month is None):
             now = datetime.now(USER_TIMEZONE)
             year = year or now.year
             month = month or now.month
 
-        # Validate category if provided
-        category_enum = None
-        if category:
-            try:
-                category_enum = ExpenseType[category.upper()]
-            except KeyError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid category. Valid categories: {[e.name for e in ExpenseType]}"
-                )
+        category_filter = _resolve_expense_category_filter(user_firebase, category)
 
         # Get expenses from Firebase (user-scoped)
-        expenses = user_firebase.get_monthly_expenses(year, month, category_enum)
+        if start_date_obj and end_date_obj:
+            expenses = user_firebase.get_expenses_in_date_range(
+                Date(day=start_date_obj.day, month=start_date_obj.month, year=start_date_obj.year),
+                Date(day=end_date_obj.day, month=end_date_obj.month, year=end_date_obj.year),
+                category_filter,
+            )
+            response_year = start_date_obj.year
+            response_month = start_date_obj.month
+        else:
+            expenses = user_firebase.get_monthly_expenses(year, month, category_filter)
+            response_year = year
+            response_month = month
 
         return {
-            "year": year,
-            "month": month,
+            "year": response_year,
+            "month": response_month,
             "category": category,
+            "start_date": start_date_obj.isoformat() if start_date_obj else None,
+            "end_date": end_date_obj.isoformat() if end_date_obj else None,
             "count": len(expenses),
             "expenses": expenses
         }
@@ -752,6 +814,7 @@ class ExpenseCreateRequest(BaseModel):
     amount: float
     category: str
     date: dict  # {day: int, month: int, year: int}
+    notes: Optional[str] = None
 
 
 @app.post("/expenses")
@@ -800,7 +863,8 @@ async def create_expense(
         expense_id = user_firebase.save_expense(
             expense,
             input_type="manual",
-            category_str=expense_data.category.upper()
+            category_str=expense_data.category.upper(),
+            notes=expense_data.notes,
         )
 
         return {"success": True, "expense_id": expense_id}
@@ -809,6 +873,25 @@ async def create_expense(
         raise
     except Exception as e:
         logger.error("Error in POST /expenses: %s", e)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/expenses/{expense_id}")
+async def get_expense(
+    expense_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
+    """Fetch a single expense by ID for live widget hydration/edit flows."""
+    try:
+        user_firebase = FirebaseClient.for_user(current_user.uid)
+        expense = user_firebase.get_expense_by_id(expense_id)
+        if not expense:
+            raise HTTPException(status_code=404, detail="Expense not found")
+        return {"expense": expense}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error in GET /expenses/%s: %s", expense_id, e)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -853,6 +936,7 @@ class ExpenseUpdateRequest(BaseModel):
     category: Optional[str] = None
     date: Optional[dict] = None  # {day: int, month: int, year: int}
     timestamp: Optional[str] = None  # ISO 8601 string
+    notes: Optional[str] = None
 
 
 @app.put("/expenses/{expense_id}")
@@ -913,7 +997,12 @@ async def update_expense(
                 amount=update_data.amount,
                 category_str=update_data.category,
                 date=date_obj,
-                timestamp=timestamp_dt
+                timestamp=timestamp_dt,
+                notes=(
+                    ""
+                    if "notes" in update_data.model_fields_set and update_data.notes is None
+                    else update_data.notes
+                ),
             )
         except DocumentNotFoundError:
             raise HTTPException(status_code=404, detail="Expense not found")

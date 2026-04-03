@@ -753,6 +753,11 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
         "expense_name": expense_name,
         "amount": amount,
         "category": category_str,
+        "date": {
+            "day": expense_date.day,
+            "month": expense_date.month,
+            "year": expense_date.year,
+        },
         "category_display_name": category_display_name,
         "budget_warning": budget_data["warning"],
         "category_remaining": budget_data["category_remaining"],
@@ -949,7 +954,9 @@ async def _update_expense(arguments: dict) -> list[TextContent]:
         "expense_id": expense_id,
         "expense_name": updated_expense.get("expense_name"),
         "amount": updated_expense.get("amount"),
-        "category": updated_expense.get("category")
+        "category": updated_expense.get("category"),
+        "date": updated_expense.get("date"),
+        "notes": updated_expense.get("notes"),
     }
 
     import json

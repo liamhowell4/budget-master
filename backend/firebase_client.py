@@ -102,7 +102,13 @@ class FirebaseClient:
 
     # ==================== Expense Operations ====================
 
-    def save_expense(self, expense: Expense, input_type: str = "text", category_str: Optional[str] = None) -> str:
+    def save_expense(
+        self,
+        expense: Expense,
+        input_type: str = "text",
+        category_str: Optional[str] = None,
+        notes: Optional[str] = None,
+    ) -> str:
         """
         Save an expense to Firestore.
 
@@ -128,6 +134,8 @@ class FirebaseClient:
             "timestamp": firestore.SERVER_TIMESTAMP,
             "input_type": input_type
         }
+        if notes is not None:
+            expense_data["notes"] = notes
 
         # Add to Firestore
         try:
@@ -178,7 +186,12 @@ class FirebaseClient:
 
         return expenses
 
-    def get_monthly_expenses(self, year: int, month: int, category: Optional[ExpenseType] = None) -> List[Dict]:
+    def get_monthly_expenses(
+        self,
+        year: int,
+        month: int,
+        category: Optional[str] = None,
+    ) -> List[Dict]:
         """
         Get all expenses for a specific month.
 
@@ -197,7 +210,7 @@ class FirebaseClient:
         query = query.where(filter=FieldFilter("date.month", "==", month))
 
         if category:
-            query = query.where(filter=FieldFilter("category", "==", category.name))
+            query = query.where(filter=FieldFilter("category", "==", category))
 
         docs = query.stream()
 
@@ -255,7 +268,8 @@ class FirebaseClient:
         date: Optional[Date] = None,
         category: Optional[ExpenseType] = None,
         category_str: Optional[str] = None,
-        timestamp: Optional[datetime] = None
+        timestamp: Optional[datetime] = None,
+        notes: Optional[str] = None,
     ) -> bool:
         """
         Update an expense's fields (partial update).
@@ -268,6 +282,7 @@ class FirebaseClient:
             category: New category as ExpenseType (optional, for backward compat)
             category_str: New category as string (optional, for custom categories)
             timestamp: New timestamp as datetime (optional)
+            notes: Notes to store with the expense (optional)
 
         Returns:
             True if updated, False if expense not found
@@ -297,6 +312,8 @@ class FirebaseClient:
             updates["category"] = category.name
         if timestamp is not None:
             updates["timestamp"] = timestamp
+        if notes is not None:
+            updates["notes"] = firestore.DELETE_FIELD if notes == "" else notes
 
         # Perform update
         if updates:
@@ -427,7 +444,7 @@ class FirebaseClient:
         self,
         start_date: Date,
         end_date: Date,
-        category: Optional[ExpenseType] = None
+        category: Optional[str] = None
     ) -> List[Dict]:
         """
         Get expenses within a date range using Date objects.
@@ -449,7 +466,7 @@ class FirebaseClient:
         query = query.where(filter=FieldFilter("date.year", "<=", end_date.year))
 
         if category:
-            query = query.where(filter=FieldFilter("category", "==", category.name))
+            query = query.where(filter=FieldFilter("category", "==", category))
 
         docs = query.stream()
 
@@ -480,6 +497,8 @@ class FirebaseClient:
             except ValueError:
                 # Invalid date, skip
                 continue
+
+        expenses.sort(key=lambda x: x.get("timestamp") or datetime.min, reverse=True)
 
         return expenses
 

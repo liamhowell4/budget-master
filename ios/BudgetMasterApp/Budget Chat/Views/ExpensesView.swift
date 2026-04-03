@@ -116,8 +116,10 @@ struct ExpensesView: View {
             .sheet(isPresented: $showingFilters) {
                 FiltersView(viewModel: viewModel)
             }
-            .task {
-                await viewModel.loadExpenses()
+            .task(id: viewModel.dateRangeQueryKey) {
+                if selectedTab == 0 {
+                    await viewModel.loadExpenses()
+                }
             }
             .task(id: selectedTab) {
                 if selectedTab == 1 {
@@ -130,6 +132,15 @@ struct ExpensesView: View {
                 } else {
                     await viewModel.loadRecurring()
                 }
+            }
+            .onAppear {
+                if selectedTab == 0 {
+                    Task { await viewModel.refresh() }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .expensesDidChange)) { _ in
+                guard selectedTab == 0 else { return }
+                Task { await viewModel.refresh() }
             }
             .overlay {
                 if selectedTab == 0 && viewModel.isLoading && viewModel.expenses.isEmpty {
@@ -626,21 +637,40 @@ class ExpensesViewModel: ObservableObject {
         }
     }
 
+    var dateRangeQueryKey: String {
+        let start = Calendar.current.startOfDay(for: filterStartDate).timeIntervalSinceReferenceDate
+        let end = normalizedFilterEndDate.timeIntervalSinceReferenceDate
+        return "\(start)-\(end)"
+    }
+
+    private var normalizedFilterStartDate: Date {
+        Calendar.current.startOfDay(for: filterStartDate)
+    }
+
+    private var normalizedFilterEndDate: Date {
+        Calendar.current.date(
+            bySettingHour: 23,
+            minute: 59,
+            second: 59,
+            of: filterEndDate
+        ) ?? filterEndDate
+    }
+
     func loadExpenses() async {
         isLoading = true
         errorMessage = nil
-
-        let now = Date()
         let cal = Calendar.current
-        let year = cal.component(.year, from: now)
-        let month = cal.component(.month, from: now)
+        let now = Date()
 
         // Fetch pending concurrently; failures are silently ignored
         let pendingTask = Task { try? await api.fetchPending() }
 
         do {
             async let categoriesFetch = api.fetchCategories()
-            async let expensesFetch = api.fetchExpenses(year: year, month: month)
+            async let expensesFetch = api.fetchExpenses(
+                startDate: normalizedFilterStartDate,
+                endDate: normalizedFilterEndDate
+            )
             let (cats, apiExpenses) = try await (categoriesFetch, expensesFetch)
 
             availableCategories = cats
@@ -662,7 +692,8 @@ class ExpensesViewModel: ObservableObject {
                     categoryDisplayName: cat?.display_name ?? apiExpense.category,
                     categoryEmoji: cat?.icon ?? "📦",
                     categoryHexColor: cat?.color ?? "#6B7280",
-                    date: date
+                    date: date,
+                    notes: apiExpense.notes
                 )
             }
         } catch {
@@ -708,7 +739,8 @@ class ExpensesViewModel: ObservableObject {
                 name: expense.description,
                 amount: expense.amount,
                 category: expense.category,
-                date: expense.date
+                date: expense.date,
+                notes: expense.notes
             )
             await loadExpenses()
         } catch {
@@ -735,7 +767,9 @@ class ExpensesViewModel: ObservableObject {
                 name: expense.description,
                 amount: expense.amount,
                 category: expense.category,
-                date: dateDict
+                date: dateDict,
+                notes: expense.notes,
+                notesProvided: true
             )
             if let index = expenses.firstIndex(where: { $0.id == expense.id }) {
                 expenses[index] = expense

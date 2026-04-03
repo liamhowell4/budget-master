@@ -39,12 +39,17 @@ struct ExpensesAPIResponse: Codable {
     let expenses: [APIExpense]
 }
 
+struct ExpenseDetailAPIResponse: Codable {
+    let expense: APIExpense
+}
+
 struct APIExpense: Codable, Identifiable {
     let id: String          // Firestore document ID — returned as "id" by the backend
     let expense_name: String
     let amount: Double
     let date: APIDate
     let category: String
+    let notes: String?
 }
 
 struct PendingExpense: Codable, Identifiable {
@@ -311,8 +316,38 @@ actor APIService {
         }
     }
 
+    func fetchExpenses(startDate: Date, endDate: Date, category: String? = nil) async throws -> [APIExpense] {
+        var queryItems = [
+            URLQueryItem(name: "start_date", value: isoDateString(startDate)),
+            URLQueryItem(name: "end_date", value: isoDateString(endDate)),
+        ]
+        if let category {
+            queryItems.append(URLQueryItem(name: "category", value: category))
+        }
+
+        let data = try await requestData(path: "/expenses", queryItems: queryItems)
+
+        do {
+            let decoded = try decoder.decode(ExpensesAPIResponse.self, from: data)
+            return decoded.expenses
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+
+    func fetchExpense(id: String) async throws -> APIExpense {
+        let data = try await requestData(path: "/expenses/\(id)")
+
+        do {
+            return try decoder.decode(ExpenseDetailAPIResponse.self, from: data).expense
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+
     func deleteExpense(id: String) async throws {
         _ = try await requestData(method: .delete, path: "/expenses/\(id)")
+        postExpensesDidChange(expenseId: id)
     }
 
     func updateExpense(
@@ -320,7 +355,9 @@ actor APIService {
         name: String?,
         amount: Double?,
         category: String?,
-        date: [String: Int]?
+        date: [String: Int]?,
+        notes: String? = nil,
+        notesProvided: Bool = false
     ) async throws {
         var body: [String: BudgetMaster.AnyCodable] = [:]
         if let name = name { body["expense_name"] = BudgetMaster.AnyCodable(name) }
@@ -329,12 +366,16 @@ actor APIService {
         if let date = date {
             body["date"] = BudgetMaster.AnyCodable(date.mapValues { $0 as Any })
         }
+        if notesProvided {
+            body["notes"] = BudgetMaster.AnyCodable(notes ?? "")
+        }
 
         _ = try await requestData(
             method: .put,
             path: "/expenses/\(id)",
             body: body
         )
+        postExpensesDidChange(expenseId: id)
     }
 
     // MARK: Direct Expense Creation
@@ -343,10 +384,11 @@ actor APIService {
         name: String,
         amount: Double,
         category: String,
-        date: Date
+        date: Date,
+        notes: String? = nil
     ) async throws {
         let cal = Calendar.current
-        let body: [String: BudgetMaster.AnyCodable] = [
+        var body: [String: BudgetMaster.AnyCodable] = [
             "expense_name": BudgetMaster.AnyCodable(name),
             "amount": BudgetMaster.AnyCodable(amount),
             "category": BudgetMaster.AnyCodable(category),
@@ -356,8 +398,12 @@ actor APIService {
                 "year": cal.component(.year, from: date),
             ] as [String: Any]),
         ]
+        if let notes {
+            body["notes"] = BudgetMaster.AnyCodable(notes)
+        }
 
         _ = try await requestData(method: .post, path: "/expenses", body: body)
+        postExpensesDidChange(expenseId: nil)
     }
 
     // MARK: MCP Expense
@@ -386,7 +432,7 @@ actor APIService {
                 conversationId: conversationId
             )
 
-            return MCPExpenseResponse(
+            let mapped = MCPExpenseResponse(
                 success: response.success,
                 message: response.message,
                 expense_id: response.expenseId,
@@ -396,6 +442,10 @@ actor APIService {
                 budget_warning: response.budgetWarning,
                 conversation_id: response.conversationId
             )
+            if mapped.expense_id != nil {
+                postExpensesDidChange(expenseId: mapped.expense_id)
+            }
+            return mapped
         } catch let error as BudgetMaster.APIError {
             throw mapBudgetMasterError(error)
         } catch {
@@ -529,10 +579,12 @@ actor APIService {
             path: "/pending/\(id)/confirm",
             body: [String: String]()
         )
+        postExpensesDidChange(expenseId: nil)
     }
 
     func skipPending(id: String) async throws {
         _ = try await requestData(method: .delete, path: "/pending/\(id)")
+        postExpensesDidChange(expenseId: nil)
     }
 
     // MARK: Recurring Expenses
@@ -577,6 +629,19 @@ actor APIService {
     func ensureServerConnected() async throws {
         try await syncClientConfiguration()
     }
+
+    private func isoDateString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    private func postExpensesDidChange(expenseId: String?) {
+        NotificationCenter.default.post(name: .expensesDidChange, object: expenseId)
+    }
 }
 
 // MARK: - Color Hex Extension
@@ -597,6 +662,10 @@ extension Color {
         }
         self.init(red: r, green: g, blue: b)
     }
+}
+
+extension Notification.Name {
+    static let expensesDidChange = Notification.Name("expensesDidChange")
 }
 
 // MARK: - SSE Streaming (nonisolated extension)
@@ -639,6 +708,12 @@ extension APIService {
                     } else if let string = result as? String {
                         resultJSON = string
                     }
+                    if ["save_expense", "update_expense", "delete_expense"].contains(name) {
+                        let expenseId = Self.extractExpenseId(from: result)
+                        await MainActor.run {
+                            NotificationCenter.default.post(name: .expensesDidChange, object: expenseId)
+                        }
+                    }
                     mapped = .toolEnd(id: id, tool: name, resultJSON: resultJSON)
                 case .done:
                     mapped = .done
@@ -651,5 +726,10 @@ extension APIService {
         } catch let error as BudgetMaster.APIError {
             throw mapBudgetMasterError(error)
         }
+    }
+
+    private static func extractExpenseId(from result: Any) -> String? {
+        guard let dict = result as? [String: Any] else { return nil }
+        return dict["expense_id"] as? String ?? dict["id"] as? String
     }
 }

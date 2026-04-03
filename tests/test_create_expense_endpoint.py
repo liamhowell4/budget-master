@@ -156,6 +156,79 @@ def test_create_expense_category_stored_as_provided():
     assert created["category"] == "RIDE_SHARE"
 
 
+def test_create_expense_notes_round_trip():
+    """Direct expense creation persists notes and returns them from GET routes."""
+    payload = {
+        "expense_name": "Annotated Expense",
+        "amount": 18.25,
+        "category": "OTHER",
+        "date": _today_dict(),
+        "notes": "split with Sam",
+    }
+    resp = client.post("/expenses", json=payload)
+    assert resp.status_code == 200, resp.text
+    expense_id = resp.json()["expense_id"]
+
+    detail = client.get(f"/expenses/{expense_id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["expense"]["notes"] == "split with Sam"
+
+
+def test_get_expenses_supports_date_range_queries():
+    """GET /expenses can return a custom date range instead of only a month slice."""
+    older_payload = {
+        "expense_name": "Range Start",
+        "amount": 11.00,
+        "category": "COFFEE",
+        "date": {"day": 2, "month": 1, "year": 2026},
+    }
+    newer_payload = {
+        "expense_name": "Range End",
+        "amount": 22.00,
+        "category": "COFFEE",
+        "date": {"day": 20, "month": 1, "year": 2026},
+    }
+    outside_payload = {
+        "expense_name": "Outside Range",
+        "amount": 33.00,
+        "category": "COFFEE",
+        "date": {"day": 5, "month": 2, "year": 2026},
+    }
+
+    for payload in (older_payload, newer_payload, outside_payload):
+        resp = client.post("/expenses", json=payload)
+        assert resp.status_code == 200, resp.text
+
+    resp = client.get("/expenses?start_date=2026-01-01&end_date=2026-01-31")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    names = {expense["expense_name"] for expense in data["expenses"]}
+    assert "Range Start" in names
+    assert "Range End" in names
+    assert "Outside Range" not in names
+    assert data["start_date"] == "2026-01-01"
+    assert data["end_date"] == "2026-01-31"
+
+
+def test_update_expense_notes_persist():
+    """PUT /expenses/{id} stores updated notes."""
+    create = client.post("/expenses", json={
+        "expense_name": "Update Notes",
+        "amount": 7.50,
+        "category": "COFFEE",
+        "date": _today_dict(),
+    })
+    assert create.status_code == 200, create.text
+    expense_id = create.json()["expense_id"]
+
+    update = client.put(f"/expenses/{expense_id}", json={"notes": "oat milk"})
+    assert update.status_code == 200, update.text
+
+    detail = client.get(f"/expenses/{expense_id}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["expense"]["notes"] == "oat milk"
+
+
 def test_unauthenticated_request_returns_401():
     """POST /expenses without an auth token returns 401."""
     # Temporarily remove the auth override to test real auth enforcement

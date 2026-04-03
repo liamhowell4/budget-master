@@ -270,7 +270,8 @@ struct ChatView: View {
                             let cal = Calendar.current
                             let comps = DateComponents(year: expense.date.year, month: expense.date.month, day: expense.date.day)
                             return cal.date(from: comps) ?? Date()
-                        }()
+                        }(),
+                        notes: expense.notes
                     ),
                     availableCategories: viewModel.availableCategories
                 ) { updated in
@@ -286,7 +287,9 @@ struct ChatView: View {
                         name: updated.description,
                         amount: updated.amount,
                         category: updated.category,
-                        date: dateDict
+                        date: dateDict,
+                        notes: updated.notes,
+                        notesProvided: true
                     )
                 }
             }
@@ -302,6 +305,11 @@ struct ChatView: View {
                 if let e = viewModel.errorMessage { Text(e) }
             }
             .task { await viewModel.loadInitialData() }
+            .onReceive(NotificationCenter.default.publisher(for: .expensesDidChange)) { notification in
+                Task {
+                    await viewModel.refreshExpenseWidgets(expenseId: notification.object as? String)
+                }
+            }
             .onChange(of: pendingPrefill) { _, newValue in
                 guard let text = newValue, !text.isEmpty else { return }
                 viewModel.inputText = text
@@ -1128,7 +1136,11 @@ struct ExpenseCardView: View {
     @State private var showDeleteConfirm = false
     @State private var isDeleting = false
     @State private var showEditSheet = false
+    @State private var currentName: String
+    @State private var currentAmount: Double
     @State private var currentCategory: String
+    @State private var currentDate: APIDate?
+    @State private var currentNotes: String?
 
     private var isDeleted: Bool {
         guard let eid = result.expense_id else { return false }
@@ -1140,7 +1152,11 @@ struct ExpenseCardView: View {
         self.budgetWarning = budgetWarning
         self.viewModel = viewModel
         self.onSelectExpense = onSelectExpense
+        _currentName = State(initialValue: result.expense_name)
+        _currentAmount = State(initialValue: result.amount)
         _currentCategory = State(initialValue: result.category ?? "")
+        _currentDate = State(initialValue: result.date)
+        _currentNotes = State(initialValue: result.notes)
     }
 
     var body: some View {
@@ -1152,13 +1168,15 @@ struct ExpenseCardView: View {
                 Text(currentCategory.replacingOccurrences(of: "_", with: " ").capitalized)
                     .font(.caption).fontWeight(.semibold).foregroundStyle(color)
                 Spacer()
-                Text("Today").font(.caption).foregroundStyle(.secondary)
+                if let currentDate {
+                    Text(formatAPIDate(currentDate)).font(.caption).foregroundStyle(.secondary)
+                }
             }
 
             HStack(alignment: .firstTextBaseline) {
-                Text(result.expense_name).font(.subheadline).fontWeight(.semibold)
+                Text(currentName).font(.subheadline).fontWeight(.semibold)
                 Spacer()
-                Text(result.amount, format: .currency(code: "USD"))
+                Text(currentAmount, format: .currency(code: "USD"))
                     .font(.subheadline).fontWeight(.bold)
             }
 
@@ -1210,13 +1228,14 @@ struct ExpenseCardView: View {
             let cat = viewModel.availableCategories.first { $0.category_id == currentCategory }
             let expense = Expense(
                 backendId: result.expense_id,
-                description: result.expense_name,
-                amount: result.amount,
+                description: currentName,
+                amount: currentAmount,
                 category: currentCategory,
                 categoryDisplayName: cat?.display_name ?? currentCategory,
                 categoryEmoji: cat?.icon ?? "📦",
                 categoryHexColor: cat?.color ?? "#6B7280",
-                date: Date()
+                date: dateFromAPIDate(currentDate) ?? Date(),
+                notes: currentNotes
             )
             EditExpenseView(expense: expense, availableCategories: viewModel.availableCategories) { updated in
                 guard let backendId = updated.backendId else { return }
@@ -1231,11 +1250,43 @@ struct ExpenseCardView: View {
                     name: updated.description,
                     amount: updated.amount,
                     category: updated.category,
-                    date: dateDict
+                    date: dateDict,
+                    notes: updated.notes,
+                    notesProvided: true
                 )
+                currentName = updated.description
+                currentAmount = updated.amount
                 currentCategory = updated.category
+                currentDate = APIDate(
+                    day: cal.component(.day, from: updated.date),
+                    month: cal.component(.month, from: updated.date),
+                    year: cal.component(.year, from: updated.date)
+                )
+                currentNotes = updated.notes
             }
         }
+        .onAppear { syncFromResult() }
+        .onChange(of: resultSnapshot) { _, _ in
+            syncFromResult()
+        }
+    }
+
+    private var resultSnapshot: String {
+        [
+            result.expense_name,
+            String(result.amount),
+            result.category ?? "",
+            "\(result.date?.year ?? 0)-\(result.date?.month ?? 0)-\(result.date?.day ?? 0)",
+            result.notes ?? ""
+        ].joined(separator: "|")
+    }
+
+    private func syncFromResult() {
+        currentName = result.expense_name
+        currentAmount = result.amount
+        currentCategory = result.category ?? ""
+        currentDate = result.date
+        currentNotes = result.notes
     }
 
     @ViewBuilder
@@ -1338,7 +1389,8 @@ struct ExpenseListCard: View {
                     Button {
                         let apiExpense = APIExpense(id: id, expense_name: e.name, amount: e.amount,
                                                    date: e.date ?? APIDate(day: 1, month: 1, year: 2025),
-                                                   category: e.category ?? "OTHER")
+                                                   category: e.category ?? "OTHER",
+                                                   notes: nil)
                         onSelectExpense(apiExpense)
                     } label: {
                         rowContent
@@ -2172,6 +2224,7 @@ class ChatViewModel: ObservableObject {
             messages = loaded
             deletedExpenseIds = deletedIds
             conversationId = id
+            await refreshExpenseWidgets(expenseId: nil)
         } catch { }
     }
 
@@ -2247,15 +2300,193 @@ class ChatViewModel: ObservableObject {
         } catch { }
         await fetchConversations()
     }
+
+    func refreshExpenseWidgets(expenseId: String?) async {
+        let targetIds = collectReferencedExpenseIds(filtering: expenseId)
+        guard !targetIds.isEmpty else { return }
+
+        var liveExpenses: [String: APIExpense?] = [:]
+        for id in targetIds {
+            let refresh = await fetchLiveExpense(id: id)
+            if refresh.didLoad {
+                liveExpenses[id] = refresh.expense
+            }
+            if refresh.isNotFound {
+                deletedExpenseIds.insert(id)
+                if let conversationId {
+                    try? await api.markExpenseDeleted(conversationId: conversationId, expenseId: id)
+                }
+            }
+        }
+
+        let encoder = JSONEncoder()
+
+        for messageIndex in messages.indices {
+            for blockIndex in messages[messageIndex].blocks.indices {
+                guard case .toolCall(let toolCall) = messages[messageIndex].blocks[blockIndex] else {
+                    continue
+                }
+
+                guard let updatedJSON = refreshedToolResultJSON(
+                    for: toolCall,
+                    liveExpenses: liveExpenses,
+                    encoder: encoder
+                ) else {
+                    continue
+                }
+
+                messages[messageIndex].blocks[blockIndex] = .toolCall(
+                    ToolCall(id: toolCall.id, name: toolCall.name, resultJSON: updatedJSON)
+                )
+            }
+        }
+    }
+
+    private func collectReferencedExpenseIds(filtering expenseId: String?) -> [String] {
+        var ids = Set<String>()
+
+        for message in messages {
+            for toolCall in message.toolCalls {
+                let data = toolCall.resultJSON.data(using: .utf8) ?? Data()
+
+                if let saveResult = try? JSONDecoder().decode(SaveExpenseResult.self, from: data),
+                   let id = saveResult.expense_id {
+                    ids.insert(id)
+                }
+
+                if let expenseList = try? JSONDecoder().decode(ExpenseListResult.self, from: data) {
+                    for expense in expenseList.expenses ?? [] {
+                        if let id = expense.id {
+                            ids.insert(id)
+                        }
+                    }
+                }
+
+                if let largestExpenses = try? JSONDecoder().decode(LargestExpensesResult.self, from: data) {
+                    for expense in largestExpenses.largest_expenses {
+                        if let id = expense.id {
+                            ids.insert(id)
+                        }
+                    }
+                }
+            }
+        }
+
+        if let expenseId {
+            return ids.contains(expenseId) ? [expenseId] : []
+        }
+
+        return Array(ids)
+    }
+
+    private func fetchLiveExpense(id: String) async -> ExpenseRefreshResult {
+        do {
+            return ExpenseRefreshResult(
+                expense: try await api.fetchExpense(id: id),
+                didLoad: true,
+                isNotFound: false
+            )
+        } catch let apiError as APIError {
+            if case .serverError(let statusCode, _) = apiError, statusCode == 404 {
+                return ExpenseRefreshResult(expense: nil, didLoad: true, isNotFound: true)
+            }
+            return ExpenseRefreshResult(expense: nil, didLoad: false, isNotFound: false)
+        } catch {
+            return ExpenseRefreshResult(expense: nil, didLoad: false, isNotFound: false)
+        }
+    }
+
+    private func refreshedToolResultJSON(
+        for toolCall: ToolCall,
+        liveExpenses: [String: APIExpense?],
+        encoder: JSONEncoder
+    ) -> String? {
+        let data = toolCall.resultJSON.data(using: .utf8) ?? Data()
+
+        switch toolCall.name {
+        case "save_expense":
+            guard var result = try? JSONDecoder().decode(SaveExpenseResult.self, from: data),
+                  let expenseId = result.expense_id,
+                  let liveExpense = liveExpenses[expenseId] ?? nil else {
+                return nil
+            }
+
+            result.expense_name = liveExpense.expense_name
+            result.amount = liveExpense.amount
+            result.category = liveExpense.category
+            result.date = liveExpense.date
+            result.notes = liveExpense.notes
+            return encodeToolResult(result, encoder: encoder)
+
+        case "get_recent_expenses", "search_expenses", "query_expenses":
+            guard var result = try? JSONDecoder().decode(ExpenseListResult.self, from: data),
+                  let expenses = result.expenses else {
+                return nil
+            }
+
+            var changed = false
+            result.expenses = expenses.compactMap { expense in
+                guard let expenseId = expense.id, let liveExpense = liveExpenses[expenseId] else {
+                    return expense
+                }
+
+                changed = true
+                guard let liveExpense else { return nil }
+                return ExpenseResultItem(
+                    id: liveExpense.id,
+                    name: liveExpense.expense_name,
+                    amount: liveExpense.amount,
+                    category: liveExpense.category,
+                    date: liveExpense.date
+                )
+            }
+
+            return changed ? encodeToolResult(result, encoder: encoder) : nil
+
+        case "get_largest_expenses":
+            guard var result = try? JSONDecoder().decode(LargestExpensesResult.self, from: data) else {
+                return nil
+            }
+
+            var changed = false
+            result.largest_expenses = result.largest_expenses.compactMap { expense in
+                guard let expenseId = expense.id, let liveExpense = liveExpenses[expenseId] else {
+                    return expense
+                }
+
+                changed = true
+                guard let liveExpense else { return nil }
+                return ExpenseResultItem(
+                    id: liveExpense.id,
+                    name: liveExpense.expense_name,
+                    amount: liveExpense.amount,
+                    category: liveExpense.category,
+                    date: liveExpense.date
+                )
+            }
+
+            return changed ? encodeToolResult(result, encoder: encoder) : nil
+
+        default:
+            return nil
+        }
+    }
+
+    private func encodeToolResult<T: Encodable>(_ value: T, encoder: JSONEncoder) -> String? {
+        guard let data = try? encoder.encode(value) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
 }
 
 // MARK: - Tool Result Models
 
-struct SaveExpenseResult: Decodable {
+struct SaveExpenseResult: Codable {
     let expense_id: String?
-    let expense_name: String
-    let amount: Double
-    let category: String?
+    var expense_name: String
+    var amount: Double
+    var category: String?
+    var date: APIDate?
+    var notes: String?
 }
 
 struct BudgetStatusResult: Decodable {
@@ -2308,8 +2539,8 @@ struct SpendingSummaryResult: Decodable {
     let end_date: APIDate?
 }
 
-struct ExpenseListResult: Decodable {
-    let expenses: [ExpenseResultItem]?
+struct ExpenseListResult: Codable {
+    var expenses: [ExpenseResultItem]?
     let count: Int?
     let total: Double?
     let query: String?
@@ -2317,7 +2548,7 @@ struct ExpenseListResult: Decodable {
     let end_date: APIDate?
 }
 
-struct ExpenseResultItem: Decodable {
+struct ExpenseResultItem: Codable {
     let id: String?
     let name: String
     let amount: Double
@@ -2325,11 +2556,17 @@ struct ExpenseResultItem: Decodable {
     let date: APIDate?
 }
 
-struct LargestExpensesResult: Decodable {
-    let largest_expenses: [ExpenseResultItem]
+struct LargestExpensesResult: Codable {
+    var largest_expenses: [ExpenseResultItem]
     let start_date: APIDate?
     let end_date: APIDate?
     let category: String?
+}
+
+private struct ExpenseRefreshResult {
+    let expense: APIExpense?
+    let didLoad: Bool
+    let isNotFound: Bool
 }
 
 struct PeriodComparisonResult: Decodable {
@@ -2396,4 +2633,9 @@ private func formatDateRange(_ start: APIDate?, _ end: APIDate?) -> String {
     let ed = cal.date(from: DateComponents(year: e.year, month: e.month, day: e.day))
     guard let sd, let ed else { return "" }
     return "\(f.string(from: sd)) \u{2013} \(f.string(from: ed))"
+}
+
+private func dateFromAPIDate(_ date: APIDate?) -> Date? {
+    guard let date else { return nil }
+    return Calendar.current.date(from: DateComponents(year: date.year, month: date.month, day: date.day))
 }
