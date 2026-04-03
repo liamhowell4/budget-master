@@ -8,10 +8,16 @@ import Foundation
 public struct ChatRequest: Codable, Sendable {
     public let message: String
     public let conversationId: String?
+    public let modelOverride: String?
 
-    public init(message: String, conversationId: String? = nil) {
+    public init(
+        message: String,
+        conversationId: String? = nil,
+        modelOverride: String? = nil
+    ) {
         self.message = message
         self.conversationId = conversationId
+        self.modelOverride = modelOverride
     }
 }
 

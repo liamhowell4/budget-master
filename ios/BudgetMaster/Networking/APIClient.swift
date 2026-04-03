@@ -123,12 +123,41 @@ public actor APIClient {
         return try await session.bytes(for: request)
     }
 
+    /// Perform a request and return the raw response data.
+    public func responseData(
+        for endpoint: APIEndpoint
+    ) async throws -> Data {
+        let request = try await buildRequest(endpoint: endpoint)
+        return try await executeData(request)
+    }
+
+    /// Perform a JSON request body and return the raw response data.
+    public func responseData<Body: Encodable & Sendable>(
+        for endpoint: APIEndpoint,
+        body: Body
+    ) async throws -> Data {
+        var request = try await buildRequest(endpoint: endpoint)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+        return try await executeData(request)
+    }
+
     // MARK: - Execution
 
     private func execute<T: Decodable>(
         _ request: URLRequest,
         as type: T.Type
     ) async throws -> T {
+        let data = try await executeData(request)
+
+        do {
+            return try decoder.decode(type, from: data)
+        } catch {
+            throw APIError.decodingFailed(error)
+        }
+    }
+
+    private func executeData(_ request: URLRequest) async throws -> Data {
         let data: Data
         let response: URLResponse
 
@@ -139,12 +168,7 @@ public actor APIClient {
         }
 
         try validateResponse(response, data: data)
-
-        do {
-            return try decoder.decode(type, from: data)
-        } catch {
-            throw APIError.decodingFailed(error)
-        }
+        return data
     }
 
     private func validateResponse(_ response: URLResponse, data: Data) throws {

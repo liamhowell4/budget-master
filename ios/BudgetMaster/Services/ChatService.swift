@@ -6,9 +6,14 @@ public enum ChatService {
     /// Returns an `AsyncThrowingStream` of `ChatStreamEvent` values.
     public static func streamChat(
         message: String,
-        conversationId: String? = nil
+        conversationId: String? = nil,
+        modelOverride: String? = nil
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
-        SSEClient.stream(message: message, conversationId: conversationId)
+        SSEClient.stream(
+            message: message,
+            conversationId: conversationId,
+            modelOverride: modelOverride
+        )
     }
 
     /// POST /mcp/process_expense (multipart form-data)

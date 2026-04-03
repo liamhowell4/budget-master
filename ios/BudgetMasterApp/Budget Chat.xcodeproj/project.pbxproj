@@ -60,7 +60,7 @@
 
 /* Begin PBXFileReference section */
 		AA000000000000000004 /* Budget Chat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Budget Chat.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		AF0AACF32F536969008B17C7 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS26.4.sdk/System/Library/Frameworks/WatchConnectivity.framework; sourceTree = DEVELOPER_DIR; };
+		AF0AACF32F536969008B17C7 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS.sdk/System/Library/Frameworks/WatchConnectivity.framework; sourceTree = DEVELOPER_DIR; };
 		AF181F9D2F5365CC00913089 /* BudgetWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "BudgetWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF181FA92F5365D000913089 /* BudgetWatch Watch AppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "BudgetWatch Watch AppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF181FB32F5365D000913089 /* BudgetWatch Watch AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "BudgetWatch Watch AppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -681,7 +681,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BudgetWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BudgetWatch Watch App";
-				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Debug;
 		};
@@ -704,7 +704,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BudgetWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BudgetWatch Watch App";
-				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Release;
 		};
@@ -726,7 +726,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				TEST_TARGET_NAME = "BudgetWatch Watch App";
-				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Debug;
 		};
@@ -748,7 +748,7 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				TEST_TARGET_NAME = "BudgetWatch Watch App";
-				WATCHOS_DEPLOYMENT_TARGET = 26.4;
+				WATCHOS_DEPLOYMENT_TARGET = 26.2;
 			};
 			name = Release;
 		};

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import BudgetMaster
 
 // MARK: - Response Models
 
@@ -184,50 +185,106 @@ enum APIError: LocalizedError {
 
 actor APIService {
     private let tokenProvider = FirebaseTokenProvider()
+    private let decoder = JSONDecoder()
 
-    private var baseURL: String {
-        AppConfiguration.shared.resolvedBaseURL
+    private func syncClientConfiguration() async throws {
+        guard let url = URL(string: AppConfiguration.shared.resolvedBaseURL) else {
+            throw APIError.networkError(URLError(.badURL))
+        }
+
+        await BudgetMaster.APIClient.shared.setBaseURL(url)
+        await BudgetMaster.APIClient.shared.setTokenProvider(tokenProvider)
     }
 
-    // MARK: Auth
-
-    func authHeaders() async throws -> [String: String] {
-        let token = try await tokenProvider.getToken()
-        return [
-            "Authorization": "Bearer \(token)",
-            "Content-Type": "application/json"
-        ]
+    private func mapBudgetMasterError(_ error: BudgetMaster.APIError) -> APIError {
+        switch error {
+        case .invalidURL:
+            return .networkError(URLError(.badURL))
+        case .unauthorized:
+            return .unauthorized
+        case .serverError(let code, let message):
+            return .serverError(code, message ?? "Unknown server error")
+        case .decodingFailed(let error):
+            return .decodingError(error)
+        case .networkError(let error):
+            return .networkError(error)
+        case .badRequest(let message):
+            return .serverError(400, message)
+        case .notFound:
+            return .serverError(404, "Not found")
+        case .noToken:
+            return .unauthorized
+        case .sseParsingError(let message):
+            return .serverError(500, message)
+        }
     }
 
-    private func tokenHeader() async throws -> String {
-        try await tokenProvider.getToken()
+    private func requestData(
+        method: BudgetMaster.HTTPMethod = .get,
+        path: String,
+        queryItems: [URLQueryItem]? = nil,
+        requiresAuth: Bool = true
+    ) async throws -> Data {
+        try await syncClientConfiguration()
+
+        let endpoint = BudgetMaster.APIEndpoint(
+            method: method,
+            path: path,
+            queryItems: queryItems,
+            requiresAuth: requiresAuth
+        )
+
+        do {
+            return try await BudgetMaster.APIClient.shared.responseData(for: endpoint)
+        } catch let error as BudgetMaster.APIError {
+            throw mapBudgetMasterError(error)
+        } catch {
+            throw APIError.networkError(error)
+        }
+    }
+
+    private func requestData<Body: Encodable & Sendable>(
+        method: BudgetMaster.HTTPMethod,
+        path: String,
+        queryItems: [URLQueryItem]? = nil,
+        body: Body,
+        requiresAuth: Bool = true
+    ) async throws -> Data {
+        try await syncClientConfiguration()
+
+        let endpoint = BudgetMaster.APIEndpoint(
+            method: method,
+            path: path,
+            queryItems: queryItems,
+            requiresAuth: requiresAuth
+        )
+
+        do {
+            return try await BudgetMaster.APIClient.shared.responseData(for: endpoint, body: body)
+        } catch let error as BudgetMaster.APIError {
+            throw mapBudgetMasterError(error)
+        } catch {
+            throw APIError.networkError(error)
+        }
     }
 
     // MARK: Budget
 
     func fetchBudget(year: Int? = nil, month: Int? = nil, periodOffset: Int? = nil) async throws -> BudgetAPIResponse {
-        let headers = try await authHeaders()
-        var urlString = "\(baseURL)/budget"
-        var queryItems: [String] = []
+        var queryItems: [URLQueryItem] = []
         if let periodOffset {
-            queryItems.append("period_offset=\(periodOffset)")
+            queryItems.append(URLQueryItem(name: "period_offset", value: "\(periodOffset)"))
         } else {
-            if let year { queryItems.append("year=\(year)") }
-            if let month { queryItems.append("month=\(month)") }
+            if let year { queryItems.append(URLQueryItem(name: "year", value: "\(year)")) }
+            if let month { queryItems.append(URLQueryItem(name: "month", value: "\(month)")) }
         }
-        if !queryItems.isEmpty { urlString += "?" + queryItems.joined(separator: "&") }
-        guard let url = URL(string: urlString) else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        let data = try await requestData(
+            path: "/budget",
+            queryItems: queryItems.isEmpty ? nil : queryItems
+        )
 
         do {
-            return try JSONDecoder().decode(BudgetAPIResponse.self, from: data)
+            return try decoder.decode(BudgetAPIResponse.self, from: data)
         } catch {
             throw APIError.decodingError(error)
         }
@@ -236,21 +293,18 @@ actor APIService {
     // MARK: Expenses
 
     func fetchExpenses(year: Int, month: Int, category: String? = nil) async throws -> [APIExpense] {
-        let headers = try await authHeaders()
-        var urlString = "\(baseURL)/expenses?year=\(year)&month=\(month)"
-        if let category { urlString += "&category=\(category)" }
-        guard let url = URL(string: urlString) else {
-            throw APIError.networkError(URLError(.badURL))
+        var queryItems = [
+            URLQueryItem(name: "year", value: "\(year)"),
+            URLQueryItem(name: "month", value: "\(month)"),
+        ]
+        if let category {
+            queryItems.append(URLQueryItem(name: "category", value: category))
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        let data = try await requestData(path: "/expenses", queryItems: queryItems)
 
         do {
-            let decoded = try JSONDecoder().decode(ExpensesAPIResponse.self, from: data)
+            let decoded = try decoder.decode(ExpensesAPIResponse.self, from: data)
             return decoded.expenses
         } catch {
             throw APIError.decodingError(error)
@@ -258,16 +312,7 @@ actor APIService {
     }
 
     func deleteExpense(id: String) async throws {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/expenses/\(id)") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        _ = try await requestData(method: .delete, path: "/expenses/\(id)")
     }
 
     func updateExpense(
@@ -277,23 +322,19 @@ actor APIService {
         category: String?,
         date: [String: Int]?
     ) async throws {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/expenses/\(id)") else {
-            throw APIError.networkError(URLError(.badURL))
+        var body: [String: BudgetMaster.AnyCodable] = [:]
+        if let name = name { body["expense_name"] = BudgetMaster.AnyCodable(name) }
+        if let amount = amount { body["amount"] = BudgetMaster.AnyCodable(amount) }
+        if let category = category { body["category"] = BudgetMaster.AnyCodable(category) }
+        if let date = date {
+            body["date"] = BudgetMaster.AnyCodable(date.mapValues { $0 as Any })
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
 
-        var body: [String: Any] = [:]
-        if let name = name { body["expense_name"] = name }
-        if let amount = amount { body["amount"] = amount }
-        if let category = category { body["category"] = category }
-        if let date = date { body["date"] = date }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        _ = try await requestData(
+            method: .put,
+            path: "/expenses/\(id)",
+            body: body
+        )
     }
 
     // MARK: Direct Expense Creation
@@ -304,57 +345,25 @@ actor APIService {
         category: String,
         date: Date
     ) async throws {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/expenses") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
         let cal = Calendar.current
-        let body: [String: Any] = [
-            "expense_name": name,
-            "amount": amount,
-            "category": category,
-            "date": [
+        let body: [String: BudgetMaster.AnyCodable] = [
+            "expense_name": BudgetMaster.AnyCodable(name),
+            "amount": BudgetMaster.AnyCodable(amount),
+            "category": BudgetMaster.AnyCodable(category),
+            "date": BudgetMaster.AnyCodable([
                 "day": cal.component(.day, from: date),
                 "month": cal.component(.month, from: date),
-                "year": cal.component(.year, from: date)
-            ]
+                "year": cal.component(.year, from: date),
+            ] as [String: Any]),
         ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        _ = try await requestData(method: .post, path: "/expenses", body: body)
     }
 
     // MARK: MCP Expense
 
     func addExpenseViaMCP(text: String) async throws -> String {
-        let token = try await tokenHeader()
-        guard let url = URL(string: "\(baseURL)/mcp/process_expense") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-
-        let boundary = UUID().uuidString
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-        var body = Data()
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"text\"\r\n\r\n".data(using: .utf8)!)
-        body.append(text.data(using: .utf8)!)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        request.httpBody = body
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
-
-        let decoded = try JSONDecoder().decode(MCPExpenseResponse.self, from: data)
-        return decoded.message
+        return try await processExpenseMultipart(text: text).message
     }
 
     // MARK: Multipart Expense Processing
@@ -365,78 +374,42 @@ actor APIService {
         audioData: Data? = nil,
         conversationId: String? = nil
     ) async throws -> MCPExpenseResponse {
-        let token = try await tokenHeader()
-        guard let url = URL(string: "\(baseURL)/mcp/process_expense") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-
-        let boundary = UUID().uuidString
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-        var body = Data()
-
-        if let text = text {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"text\"\r\n\r\n".data(using: .utf8)!)
-            body.append(text.data(using: .utf8)!)
-            body.append("\r\n".data(using: .utf8)!)
-        }
-
-        if let imageData = imageData {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"image\"; filename=\"receipt.jpg\"\r\n".data(using: .utf8)!)
-            body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-            body.append(imageData)
-            body.append("\r\n".data(using: .utf8)!)
-        }
-
-        if let audioData = audioData {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"audio\"; filename=\"voice.m4a\"\r\n".data(using: .utf8)!)
-            body.append("Content-Type: audio/mp4\r\n\r\n".data(using: .utf8)!)
-            body.append(audioData)
-            body.append("\r\n".data(using: .utf8)!)
-        }
-
-        if let conversationId = conversationId {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"conversation_id\"\r\n\r\n".data(using: .utf8)!)
-            body.append(conversationId.data(using: .utf8)!)
-            body.append("\r\n".data(using: .utf8)!)
-        }
-
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        request.httpBody = body
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        try await syncClientConfiguration()
 
         do {
-            return try JSONDecoder().decode(MCPExpenseResponse.self, from: data)
+            let response = try await BudgetMaster.ChatService.processExpense(
+                text: text,
+                imageData: imageData,
+                imageMimeType: imageData == nil ? nil : "image/jpeg",
+                audioData: audioData,
+                audioFileName: audioData == nil ? nil : "voice.m4a",
+                conversationId: conversationId
+            )
+
+            return MCPExpenseResponse(
+                success: response.success,
+                message: response.message,
+                expense_id: response.expenseId,
+                expense_name: response.expenseName,
+                amount: response.amount,
+                category: response.category,
+                budget_warning: response.budgetWarning,
+                conversation_id: response.conversationId
+            )
+        } catch let error as BudgetMaster.APIError {
+            throw mapBudgetMasterError(error)
         } catch {
-            throw APIError.decodingError(error)
+            throw APIError.networkError(error)
         }
     }
 
     // MARK: Categories
 
     func fetchCategories() async throws -> [APICategory] {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/categories") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        let data = try await requestData(path: "/categories")
 
         do {
-            let decoded = try JSONDecoder().decode(CategoriesAPIResponse.self, from: data)
+            let decoded = try decoder.decode(CategoriesAPIResponse.self, from: data)
             return decoded.categories
         } catch {
             throw APIError.decodingError(error)
@@ -446,35 +419,20 @@ actor APIService {
     // MARK: Conversations
 
     func fetchConversations(limit: Int = 10) async throws -> [ConversationSummary] {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/conversations?limit=\(limit)") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        let data = try await requestData(
+            path: "/conversations",
+            queryItems: [URLQueryItem(name: "limit", value: "\(limit)")]
+        )
 
         do {
-            return try JSONDecoder().decode(ConversationListResponse.self, from: data).conversations
+            return try decoder.decode(ConversationListResponse.self, from: data).conversations
         } catch {
             throw APIError.decodingError(error)
         }
     }
 
     func fetchConversation(id: String) async throws -> ConversationDetail {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/conversations/\(id)") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        let data = try await requestData(path: "/conversations/\(id)")
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw APIError.decodingError(NSError(domain: "parse", code: 0))
@@ -528,18 +486,11 @@ actor APIService {
     }
 
     func verifyExpenses(ids: [String]) async throws -> [String] {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/expenses/verify") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["expense_ids": ids])
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        let data = try await requestData(
+            method: .post,
+            path: "/expenses/verify",
+            body: ["expense_ids": BudgetMaster.AnyCodable(ids)]
+        )
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let existingIds = json["existing_ids"] as? [String] else {
@@ -549,108 +500,52 @@ actor APIService {
     }
 
     func markExpenseDeleted(conversationId: String, expenseId: String) async throws {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/conversations/\(conversationId)/deleted-expenses") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["expense_id": expenseId])
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        _ = try await requestData(
+            method: .post,
+            path: "/conversations/\(conversationId)/deleted-expenses",
+            body: ["expense_id": BudgetMaster.AnyCodable(expenseId)]
+        )
     }
 
     func deleteConversation(id: String) async throws {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/conversations/\(id)") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        _ = try await requestData(method: .delete, path: "/conversations/\(id)")
     }
 
     // MARK: Pending Expenses
 
     func fetchPending() async throws -> [PendingExpense] {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/pending") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        let data = try await requestData(path: "/pending")
 
         do {
-            return try JSONDecoder().decode(PendingExpensesResponse.self, from: data).pending_expenses
+            return try decoder.decode(PendingExpensesResponse.self, from: data).pending_expenses
         } catch {
             throw APIError.decodingError(error)
         }
     }
 
     func confirmPending(id: String) async throws {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/pending/\(id)/confirm") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        _ = try await requestData(
+            method: .post,
+            path: "/pending/\(id)/confirm",
+            body: [String: String]()
+        )
     }
 
     func skipPending(id: String) async throws {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/pending/\(id)") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        _ = try await requestData(method: .delete, path: "/pending/\(id)")
     }
 
     // MARK: Recurring Expenses
 
     func deleteRecurring(id: String) async throws {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/recurring/\(id)") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        _ = try await requestData(method: .delete, path: "/recurring/\(id)")
     }
 
     func fetchRecurring() async throws -> [RecurringExpenseAPI] {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/recurring") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        let data = try await requestData(path: "/recurring")
 
         do {
-            return try JSONDecoder().decode(RecurringExpensesAPIResponse.self, from: data).recurring_expenses
+            return try decoder.decode(RecurringExpensesAPIResponse.self, from: data).recurring_expenses
         } catch {
             throw APIError.decodingError(error)
         }
@@ -659,23 +554,15 @@ actor APIService {
     // MARK: Feedback
 
     func submitFeedback(type: String, message: String, userEmail: String) async throws {
-        let headers = try await authHeaders()
-        guard let url = URL(string: "\(baseURL)/feedback") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let body: [String: Any] = [
-            "type": type,
-            "message": message,
-            "user_email": userEmail
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
+        let data = try await requestData(
+            method: .post,
+            path: "/feedback",
+            body: [
+                "type": BudgetMaster.AnyCodable(type),
+                "message": BudgetMaster.AnyCodable(message),
+                "user_email": BudgetMaster.AnyCodable(userEmail),
+            ]
+        )
 
         // Expect { "status": "ok" } — no further decoding needed beyond a success check.
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -688,52 +575,7 @@ actor APIService {
     // MARK: Server Connection
 
     func ensureServerConnected() async throws {
-        let token = try await tokenHeader()
-        guard let url = URL(string: "\(baseURL)/connect/expense-server") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try checkResponse(response, data: data)
-    }
-
-    // MARK: Chat Stream Request Builder
-
-    func makeChatStreamRequest(message: String, conversationId: String?, modelOverride: String? = nil) async throws -> URLRequest {
-        let token = try await tokenHeader()
-        guard let url = URL(string: "\(baseURL)/chat/stream") else {
-            throw APIError.networkError(URLError(.badURL))
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        var body: [String: Any] = ["message": message]
-        if let conversationId = conversationId {
-            body["conversation_id"] = conversationId
-        }
-        if let modelOverride = modelOverride {
-            body["model_override"] = modelOverride
-        }
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        return request
-    }
-
-    // MARK: Private Helpers
-
-    private func checkResponse(_ response: URLResponse, data: Data) throws {
-        guard let http = response as? HTTPURLResponse else { return }
-        if http.statusCode == 401 {
-            throw APIError.unauthorized
-        }
-        if http.statusCode >= 400 {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw APIError.serverError(http.statusCode, message)
-        }
+        try await syncClientConfiguration()
     }
 }
 
@@ -760,68 +602,54 @@ extension Color {
 // MARK: - SSE Streaming (nonisolated extension)
 
 extension APIService {
-    nonisolated func streamChat(
+    func streamChat(
         message: String,
         conversationId: String?,
         modelOverride: String? = nil,
         onEvent: @escaping @MainActor (SSEEvent) -> Void
     ) async throws {
-        let request = try await makeChatStreamRequest(message: message, conversationId: conversationId, modelOverride: modelOverride)
+        try await syncClientConfiguration()
 
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        do {
+            let stream = BudgetMaster.ChatService.streamChat(
+                message: message,
+                conversationId: conversationId,
+                modelOverride: modelOverride
+            )
 
-        if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
-            await MainActor.run { onEvent(.error("HTTP \(http.statusCode)")) }
-            return
-        }
+            for try await event in stream {
+                let mapped: SSEEvent
+                switch event {
+                case .conversationId(let id):
+                    mapped = .conversationId(id)
+                case .text(let content):
+                    mapped = .text(content)
+                case .toolStart(let id, let name, _):
+                    mapped = .toolStart(id: id, tool: name)
+                case .toolEnd(let id, let name, let result):
+                    var resultJSON = "{}"
+                    if let dict = result as? [String: Any],
+                       let data = try? JSONSerialization.data(withJSONObject: dict),
+                       let json = String(data: data, encoding: .utf8) {
+                        resultJSON = json
+                    } else if let array = result as? [Any],
+                              let data = try? JSONSerialization.data(withJSONObject: array),
+                              let json = String(data: data, encoding: .utf8) {
+                        resultJSON = json
+                    } else if let string = result as? String {
+                        resultJSON = string
+                    }
+                    mapped = .toolEnd(id: id, tool: name, resultJSON: resultJSON)
+                case .done:
+                    mapped = .done
+                case .error(let message):
+                    mapped = .error(message)
+                }
 
-        for try await line in bytes.lines {
-            guard line.hasPrefix("data: ") else { continue }
-            let payload = String(line.dropFirst(6))
-
-            if payload == "[DONE]" {
-                await MainActor.run { onEvent(.done) }
-                break
+                await MainActor.run { onEvent(mapped) }
             }
-
-            if payload.hasPrefix("[ERROR]") {
-                let msg = String(payload.dropFirst(7)).trimmingCharacters(in: .whitespaces)
-                await MainActor.run { onEvent(.error(msg)) }
-                break
-            }
-
-            guard
-                let jsonData = payload.data(using: .utf8),
-                let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                let type = json["type"] as? String
-            else { continue }
-
-            let event: SSEEvent
-            switch type {
-            case "conversation_id":
-                let id = json["conversation_id"] as? String ?? ""
-                event = .conversationId(id)
-            case "text":
-                let content = json["content"] as? String ?? ""
-                event = .text(content)
-            case "tool_start":
-                let id = json["id"] as? String ?? UUID().uuidString
-                let tool = json["name"] as? String ?? ""
-                event = .toolStart(id: id, tool: tool)
-            case "tool_end":
-                let id = json["id"] as? String ?? UUID().uuidString
-                let tool = json["name"] as? String ?? ""
-                var resultJSON = "{}"
-                if let result = json["result"],
-                   (result is [String: Any] || result is [Any]),
-                   let d = try? JSONSerialization.data(withJSONObject: result),
-                   let s = String(data: d, encoding: .utf8) { resultJSON = s }
-                event = .toolEnd(id: id, tool: tool, resultJSON: resultJSON)
-            default:
-                continue
-            }
-
-            await MainActor.run { onEvent(event) }
+        } catch let error as BudgetMaster.APIError {
+            throw mapBudgetMasterError(error)
         }
     }
 }

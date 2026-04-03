@@ -70,6 +70,6 @@ public struct SuccessResponse: Codable, Sendable {
 
 public struct HealthResponse: Codable, Sendable {
     public let status: String
-    public let version: String
-    public let endpoints: [String]
+    public let version: String?
+    public let endpoints: [String]?
 }

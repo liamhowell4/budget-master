@@ -1973,10 +1973,6 @@ class ChatViewModel: ObservableObject {
     }
 
     private func streamResponse(for query: String, modelOverride: String? = nil) async {
-        do { try await api.ensureServerConnected() } catch {
-            errorMessage = "Could not connect to server: \(error.localizedDescription)"
-            return
-        }
         do {
             try await api.streamChat(message: query, conversationId: conversationId, modelOverride: modelOverride) { [weak self] event in
                 guard let self else { return }
@@ -2053,7 +2049,6 @@ class ChatViewModel: ObservableObject {
         isStreaming = true
 
         do {
-            try await api.ensureServerConnected()
             let response = try await api.processExpenseMultipart(
                 text: displayText.isEmpty ? nil : displayText,
                 audioData: audioData,
@@ -2082,7 +2077,6 @@ class ChatViewModel: ObservableObject {
         isStreaming = true
 
         do {
-            try await api.ensureServerConnected()
             let response = try await api.processExpenseMultipart(
                 text: displayText.isEmpty ? nil : displayText,
                 imageData: data,

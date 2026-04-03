@@ -6,7 +6,8 @@ public enum SSEClient {
     /// Stream chat events from the backend SSE endpoint.
     public static func stream(
         message: String,
-        conversationId: String? = nil
+        conversationId: String? = nil,
+        modelOverride: String? = nil
     ) -> AsyncThrowingStream<ChatStreamEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -15,7 +16,11 @@ public enum SSEClient {
                         method: .post,
                         path: "/chat/stream"
                     )
-                    let body = ChatRequest(message: message, conversationId: conversationId)
+                    let body = ChatRequest(
+                        message: message,
+                        conversationId: conversationId,
+                        modelOverride: modelOverride
+                    )
                     let (bytes, response) = try await APIClient.shared.streamRequest(endpoint, body: body)
 
                     // Validate HTTP status

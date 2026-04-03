@@ -5,7 +5,7 @@ import Foundation
 public struct MCPServer: Codable, Sendable, Identifiable {
     public let id: String
     public let name: String
-    public let path: String
+    public let path: String?
     public let description: String
 }
 

@@ -42,6 +42,8 @@ backups/
 
 # Swift Package Manager
 .build/
+**/build/
+**/DerivedData/
 .swiftpm/
 *.xcodeproj/xcuserdata/
 **/*.xcworkspace/xcuserdata/

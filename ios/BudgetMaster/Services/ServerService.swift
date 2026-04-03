@@ -2,44 +2,44 @@ import Foundation
 
 public enum ServerService {
 
-    /// GET /servers (no auth required)
+    /// GET /servers
     public static func listServers() async throws -> [MCPServer] {
         let endpoint = APIEndpoint(
             method: .get,
             path: "/servers",
-            requiresAuth: false
+            requiresAuth: true
         )
         return try await APIClient.shared.request(endpoint)
     }
 
-    /// POST /connect/{server_id} (no auth required)
+    /// POST /connect/{server_id}
     public static func connect(serverId: String) async throws -> ServerConnectResponse {
         let endpoint = APIEndpoint(
             method: .post,
             path: "/connect/\(serverId)",
-            requiresAuth: false
+            requiresAuth: true
         )
         // POST with empty body
         let emptyBody: [String: String] = [:]
         return try await APIClient.shared.request(endpoint, body: emptyBody)
     }
 
-    /// GET /status (no auth required)
+    /// GET /status
     public static func getStatus() async throws -> ServerStatus {
         let endpoint = APIEndpoint(
             method: .get,
             path: "/status",
-            requiresAuth: false
+            requiresAuth: true
         )
         return try await APIClient.shared.request(endpoint)
     }
 
-    /// POST /disconnect (no auth required)
+    /// POST /disconnect
     public static func disconnect() async throws -> SuccessResponse {
         let endpoint = APIEndpoint(
             method: .post,
             path: "/disconnect",
-            requiresAuth: false
+            requiresAuth: true
         )
         let emptyBody: [String: String] = [:]
         return try await APIClient.shared.request(endpoint, body: emptyBody)

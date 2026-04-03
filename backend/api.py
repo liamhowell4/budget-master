@@ -236,6 +236,44 @@ def _process_conversation_messages(messages: list[dict]) -> list[dict]:
     return processed
 
 
+def _summarize_expense_text(text: Optional[str]) -> str:
+    """Return a log-safe summary without storing full user-entered expense text."""
+    if not text:
+        return "empty"
+
+    normalized = " ".join(text.split())
+    if len(normalized) > 32:
+        normalized = f"{normalized[:32]}..."
+
+    return f"{len(text)} chars: {normalized!r}"
+
+
+async def _ensure_default_chat_server_connected() -> tuple[bool, str | None]:
+    """
+    Ensure the shared MCP connection is ready for chat requests.
+
+    The mobile apps should not need to manage this shared process themselves.
+    """
+    from .mcp.connection_manager import get_connection_manager
+    from .mcp.server_config import get_server_by_id
+
+    conn_manager = get_connection_manager()
+    client = conn_manager.get_client()
+    if conn_manager.is_connected and client and client.session:
+        return True, None
+
+    server_config = get_server_by_id("expense-server")
+    if not server_config:
+        return False, "Default expense server is not configured"
+
+    success, _tools, error = await conn_manager.connect(
+        server_id=server_config.id,
+        server_name=server_config.name,
+        server_path=server_config.path,
+    )
+    return success, error
+
+
 # ==================== Shared MCP Processing Function ====================
 
 async def process_expense_with_mcp(
@@ -273,7 +311,13 @@ async def process_expense_with_mcp(
     if not auth_token:
         raise ValueError("auth_token is required for authentication")
 
-    logger.info("Processing with MCP: user_id='%s', text='%s', has_image=%s, conversation_id=%s", user_id, text, image_base64 is not None, conversation_id)
+    logger.info(
+        "Processing with MCP: user_id='%s', text_summary=%s, has_image=%s, conversation_id=%s",
+        user_id,
+        _summarize_expense_text(text),
+        image_base64 is not None,
+        conversation_id,
+    )
 
     # Call MCP client - pass auth_token for MCP server verification
     result = await _mcp_client.process_expense_message(
@@ -2309,13 +2353,22 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
+        "version": app.version,
+        "endpoints": [
+            "/health",
+            "/mcp/process_expense",
+            "/chat/stream",
+            "/ws/realtime",
+        ],
     }
 
 
 # ==================== MCP Chat Frontend Endpoints ====================
 
 @app.get("/servers")
-async def list_servers():
+async def list_servers(
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
     """
     List all available MCP servers.
 
@@ -2330,7 +2383,6 @@ async def list_servers():
         {
             "id": server.id,
             "name": server.name,
-            "path": server.path,
             "description": server.description
         }
         for server in servers
@@ -2338,7 +2390,10 @@ async def list_servers():
 
 
 @app.post("/connect/{server_id}")
-async def connect_to_server(server_id: str):
+async def connect_to_server(
+    server_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
     """
     Connect to a specific MCP server.
 
@@ -2394,7 +2449,9 @@ async def connect_to_server(server_id: str):
 
 
 @app.get("/status")
-async def get_connection_status():
+async def get_connection_status(
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
     """
     Get current MCP server connection status.
 
@@ -2421,7 +2478,10 @@ async def get_connection_status():
 
 
 @app.post("/disconnect")
-async def disconnect_from_server():
+async def disconnect_from_server(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    x_api_key: Optional[str] = Header(None),
+):
     """
     Disconnect from current MCP server.
 
@@ -2431,16 +2491,23 @@ async def disconnect_from_server():
 
     conn_manager = get_connection_manager()
 
-    # Disconnect
-    await conn_manager.disconnect()
+    # Only admin callers may tear down the shared MCP process.
+    if ADMIN_API_KEY and x_api_key and hmac.compare_digest(x_api_key, ADMIN_API_KEY):
+        await conn_manager.disconnect()
+        return {"success": True, "message": "Shared MCP server disconnected"}
 
-    return {"success": True}
+    logger.info("Ignoring non-admin disconnect request for shared MCP server: uid=%s", current_user.uid)
+    return {
+        "success": True,
+        "message": "Shared MCP server remains connected",
+    }
 
 
 class ChatMessage(BaseModel):
     """Request model for chat messages."""
     message: str
     conversation_id: Optional[str] = None
+    model_override: Optional[str] = None
 
 
 @app.post("/chat/stream")
@@ -2469,10 +2536,11 @@ async def chat_stream(
 
     conn_manager = get_connection_manager()
 
-    # Check if connected
-    if not conn_manager.is_connected:
+    # Ensure the default shared chat server is ready.
+    success, error = await _ensure_default_chat_server_connected()
+    if not success:
         async def error_stream():
-            yield "data: [ERROR] Not connected to any server. Use POST /connect/{server_id} first.\n\n"
+            yield f"data: [ERROR] {error or 'MCP server unavailable'}\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
     # Get client and tools
@@ -2490,6 +2558,17 @@ async def chat_stream(
     selected_model = user_settings.get("selected_model", DEFAULT_MODEL)
     if selected_model not in SUPPORTED_MODELS:
         selected_model = DEFAULT_MODEL
+
+    if chat_message.model_override is not None:
+        if chat_message.model_override not in SUPPORTED_MODELS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unsupported model '{chat_message.model_override}'. "
+                    f"Supported models: {', '.join(sorted(SUPPORTED_MODELS))}"
+                ),
+            )
+        selected_model = chat_message.model_override
 
     # Step 1: Resolve conversation
     conversation_id, conversation_messages = get_or_create_conversation(
