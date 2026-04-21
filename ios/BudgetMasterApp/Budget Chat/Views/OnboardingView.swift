@@ -283,8 +283,6 @@ struct OnboardingView: View {
 
     // MARK: - Step 2: Budget Period
 
-    private let periodDayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
     private var budgetPeriodStep: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -293,182 +291,23 @@ struct OnboardingView: View {
                 VStack(spacing: 8) {
                     Text("Budget Period")
                         .font(.title2.bold())
-                    Text("How would you like to track your spending? You can always change this later in Settings.")
+                    Text("Choose which day of the month your budget period starts. You can change this later in Settings.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 16)
                 }
 
-                // Period type radio cards
-                VStack(spacing: 8) {
-                    periodRadioCard(
-                        type: "monthly",
-                        icon: "calendar",
-                        label: "Monthly",
-                        description: "Track spending over a calendar-style month."
-                    )
-                    periodRadioCard(
-                        type: "weekly",
-                        icon: "calendar.day.timeline.left",
-                        label: "Weekly",
-                        description: "Your monthly budget will be automatically split into weekly windows."
-                    )
-                    periodRadioCard(
-                        type: "biweekly",
-                        icon: "calendar.badge.clock",
-                        label: "Biweekly",
-                        description: "Your monthly budget will be automatically split into biweekly windows."
-                    )
-                }
+                MonthStartDayPicker(
+                    selection: $budgetMonthStartDay,
+                    specificDay: $budgetSpecificDay
+                )
                 .padding(.horizontal, 24)
-
-                // Conditional sub-options
-                if budgetPeriodType == "monthly" {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("What day does your budget month start?")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Text("Align with your pay day.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        HStack {
-                            TextField("Day", value: $budgetMonthStartDay, format: .number)
-                                .keyboardType(.numberPad)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 80)
-                                .onChange(of: budgetMonthStartDay) { _, newValue in
-                                    budgetMonthStartDay = max(1, min(28, newValue))
-                                }
-                            Stepper("", value: $budgetMonthStartDay, in: 1...28)
-                                .labelsHidden()
-                        }
-                        Text("Day 1-28 (max 28 to work every month)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(16)
-                    .glassCard()
-                    .padding(.horizontal, 24)
-                } else if budgetPeriodType == "weekly" {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("What day does your week start?")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        FlowLayout(spacing: 8) {
-                            ForEach(periodDayNames, id: \.self) { day in
-                                let isSelected = budgetWeekStartDay == day
-                                Button {
-                                    budgetWeekStartDay = day
-                                } label: {
-                                    Text(String(day.prefix(3)))
-                                        .font(.caption.weight(.medium))
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(isSelected ? appAccent.opacity(0.15) : Color(uiColor: .secondarySystemFill))
-                                        .foregroundStyle(isSelected ? appAccent : .primary)
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .stroke(isSelected ? appAccent : .clear, lineWidth: 1.5)
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(16)
-                    .glassCard()
-                    .padding(.horizontal, 24)
-                } else if budgetPeriodType == "biweekly" {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("When does your next pay period start?")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Text("Future pay periods will repeat every 14 days from this date.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        DatePicker(
-                            "Anchor date",
-                            selection: Binding(
-                                get: {
-                                    let formatter = DateFormatter()
-                                    formatter.dateFormat = "yyyy-MM-dd"
-                                    return formatter.date(from: budgetBiweeklyAnchor) ?? Date()
-                                },
-                                set: { newDate in
-                                    let formatter = DateFormatter()
-                                    formatter.dateFormat = "yyyy-MM-dd"
-                                    budgetBiweeklyAnchor = formatter.string(from: newDate)
-                                }
-                            ),
-                            displayedComponents: .date
-                        )
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                    }
-                    .padding(16)
-                    .glassCard()
-                    .padding(.horizontal, 24)
-                }
 
                 Spacer()
             }
         }
         .scrollDismissesKeyboard(.interactively)
-    }
-
-    private func periodRadioCard(type: String, icon: String, label: String, description: String) -> some View {
-        let isSelected = budgetPeriodType == type
-
-        return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                budgetPeriodType = type
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? appAccent : .secondary)
-                    .frame(width: 36, height: 36)
-                    .background((isSelected ? appAccent : Color(uiColor: .secondarySystemFill)).opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isSelected ? appAccent : .primary)
-                    Text(description)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-
-                Spacer()
-
-                Circle()
-                    .fill(isSelected ? appAccent : .clear)
-                    .frame(width: 20, height: 20)
-                    .overlay(
-                        Circle()
-                            .stroke(isSelected ? appAccent : Color(uiColor: .systemGray3), lineWidth: 2)
-                    )
-                    .overlay(
-                        Circle()
-                            .fill(.white)
-                            .frame(width: 8, height: 8)
-                            .opacity(isSelected ? 1 : 0)
-                    )
-            }
-            .padding(16)
-            .background(isSelected ? appAccent.opacity(0.08) : Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(isSelected ? appAccent : Color(uiColor: .separator), lineWidth: isSelected ? 2 : 1)
-            )
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Step 3: Total Budget
@@ -1173,10 +1012,7 @@ struct OnboardingView: View {
             categoryCaps: caps,
             customCategories: customInputs.isEmpty ? nil : customInputs,
             excludedCategoryIds: excludedCategoryIds.isEmpty ? nil : Array(excludedCategoryIds),
-            budgetPeriodType: budgetPeriodType,
-            budgetMonthStartDay: budgetMonthStartDay,
-            budgetWeekStartDay: budgetWeekStartDay,
-            budgetBiweeklyAnchor: budgetBiweeklyAnchor
+            budgetMonthStartDay: budgetMonthStartDay
         )
 
         do {

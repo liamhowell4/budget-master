@@ -14,7 +14,6 @@ struct BudgetAPIResponse: Codable {
     let total_percentage: Double
     let total_remaining: Double
     let excluded_categories: [String]?
-    let period_type: String?
     let period_start: String?
     let period_end: String?
     let period_label: String?
