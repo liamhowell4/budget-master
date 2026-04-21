@@ -12,7 +12,7 @@ import { CategoriesStep, type CustomCategory } from './CategoriesStep'
 import { CapsStep } from './CapsStep'
 import { ExclusionsStep } from './ExclusionsStep'
 import { ReviewStep } from './ReviewStep'
-import { BudgetPeriodStep, type BudgetPeriodType } from './BudgetPeriodStep'
+import { BudgetPeriodStep } from './BudgetPeriodStep'
 import { categoryService } from '@/services/categoryService'
 import { ArrowLeft, X } from 'lucide-react'
 
@@ -55,10 +55,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
   const [excludedCategoryIds, setExcludedCategoryIds] = useState<string[]>([])
 
   // Budget period state
-  const [budgetPeriodType, setBudgetPeriodType] = useState<BudgetPeriodType>('monthly')
-  const [monthStartDay, setMonthStartDay] = useState(1)
-  const [weekStartDay, setWeekStartDay] = useState("Monday")
-  const [biweeklyAnchor, setBiweeklyAnchor] = useState(() => new Date().toISOString().split('T')[0])
+  const [monthStartDay, setMonthStartDay] = useState<number | 'last'>(1)
 
   // Lock body scroll
   useEffect(() => {
@@ -156,10 +153,7 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
           monthly_cap: categoryCaps[c.id] || 0,
         })),
         excluded_category_ids: excludedCategoryIds,
-        budget_period_type: budgetPeriodType,
         budget_month_start_day: monthStartDay,
-        budget_week_start_day: weekStartDay,
-        budget_biweekly_anchor: biweeklyAnchor,
       })
 
       onComplete()
@@ -282,14 +276,8 @@ export function OnboardingWizard({ onComplete, onSkip }: OnboardingWizardProps) 
                 {currentStep === 'welcome' && <WelcomeStep />}
                 {currentStep === 'budgetPeriod' && (
                   <BudgetPeriodStep
-                    periodType={budgetPeriodType}
                     monthStartDay={monthStartDay}
-                    weekStartDay={weekStartDay}
-                    biweeklyAnchor={biweeklyAnchor}
-                    onPeriodTypeChange={setBudgetPeriodType}
                     onMonthStartDayChange={setMonthStartDay}
-                    onWeekStartDayChange={setWeekStartDay}
-                    onBiweeklyAnchorChange={setBiweeklyAnchor}
                   />
                 )}
                 {currentStep === 'incomePlanner' && (

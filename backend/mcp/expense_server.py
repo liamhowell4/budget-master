@@ -730,10 +730,7 @@ async def _save_expense(arguments: dict) -> list[TextContent]:
     period_settings = firebase.get_budget_period_settings(firebase.user_id)
     expense_period = get_period_containing_date(
         target_date=_date(expense_date.year, expense_date.month, expense_date.day),
-        period_type=period_settings.get("budget_period_type", "monthly"),
         month_start_day=period_settings.get("budget_month_start_day", 1),
-        week_start_day=period_settings.get("budget_week_start_day", "Monday"),
-        biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
     )
 
     # Get budget status (warning + remaining amounts) in the same call
@@ -813,10 +810,7 @@ async def _get_budget_status(arguments: dict) -> list[TextContent]:
 
     budget_period = get_period_containing_date(
         target_date=target_date,
-        period_type=period_settings.get("budget_period_type", "monthly"),
         month_start_day=period_settings.get("budget_month_start_day", 1),
-        week_start_day=period_settings.get("budget_week_start_day", "Monday"),
-        biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
     )
 
     # Get user-scoped budget manager and get structured budget status
@@ -1614,10 +1608,7 @@ async def _get_budget_remaining(arguments: dict) -> list[TextContent]:
     # Load user period settings and compute current period
     period_settings = firebase.get_budget_period_settings(firebase.user_id)
     current_period = get_current_period(
-        period_type=period_settings.get("budget_period_type", "monthly"),
         month_start_day=period_settings.get("budget_month_start_day", 1),
-        week_start_day=period_settings.get("budget_week_start_day", "Monday"),
-        biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
         as_of=_date(now.year, now.month, now.day),
     )
 
@@ -1659,7 +1650,6 @@ async def _get_budget_remaining(arguments: dict) -> list[TextContent]:
             "percentage": percentage,
             "remaining": remaining,
             "period_label": current_period.label,
-            "period_type": current_period.period_type,
         }
         return [TextContent(type="text", text=json.dumps(result))]
 
@@ -1692,7 +1682,6 @@ async def _get_budget_remaining(arguments: dict) -> list[TextContent]:
             "remaining": total_remaining
         },
         "period_label": current_period.label,
-        "period_type": current_period.period_type,
         "period_start": current_period.start_date.isoformat(),
         "period_end": current_period.end_date.isoformat(),
     }

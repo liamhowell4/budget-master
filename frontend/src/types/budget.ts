@@ -19,7 +19,6 @@ export interface BudgetStatus {
   total_percentage: number
   total_remaining: number
   excluded_categories: string[]  // Category IDs excluded from total calculation
-  period_type: string       // "monthly" | "weekly" | "biweekly"
   period_start: string      // ISO date
   period_end: string        // ISO date
   period_label: string      // "Mar 15 – Apr 14, 2026"

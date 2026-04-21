@@ -3,7 +3,6 @@ import { cn } from '@/utils/cn'
 import { Check, Loader2, AlertCircle, Info } from 'lucide-react'
 import { getUserSettings, updateUserSettings } from '@/services/userSettingsService'
 import { invalidateBudgetCache } from '@/hooks/useBudget'
-import type { BudgetPeriodType } from '@/components/onboarding/BudgetPeriodStep'
 import { BudgetPeriodStep } from '@/components/onboarding/BudgetPeriodStep'
 
 export function BudgetPeriodTab() {
@@ -12,10 +11,7 @@ export function BudgetPeriodTab() {
   const [error, setError] = useState('')
   const [saveSuccess, setSaveSuccess] = useState(false)
 
-  const [periodType, setPeriodType] = useState<BudgetPeriodType>('monthly')
-  const [monthStartDay, setMonthStartDay] = useState(1)
-  const [weekStartDay, setWeekStartDay] = useState("Monday")
-  const [biweeklyAnchor, setBiweeklyAnchor] = useState(() => new Date().toISOString().split('T')[0])
+  const [monthStartDay, setMonthStartDay] = useState<number | 'last'>(1)
 
   useEffect(() => {
     let cancelled = false
@@ -24,10 +20,7 @@ export function BudgetPeriodTab() {
       try {
         const settings = await getUserSettings()
         if (!cancelled) {
-          setPeriodType((settings.budget_period_type as BudgetPeriodType) ?? 'monthly')
           setMonthStartDay(settings.budget_month_start_day ?? 1)
-          setWeekStartDay(settings.budget_week_start_day ?? "Monday")
-          setBiweeklyAnchor(settings.budget_biweekly_anchor ?? new Date().toISOString().split('T')[0])
         }
       } catch {
         if (!cancelled) {
@@ -53,10 +46,7 @@ export function BudgetPeriodTab() {
 
     try {
       await updateUserSettings({
-        budget_period_type: periodType,
         budget_month_start_day: monthStartDay,
-        budget_week_start_day: weekStartDay,
-        budget_biweekly_anchor: biweeklyAnchor,
       })
       // Invalidate budget cache so dashboard refetches with new period settings
       invalidateBudgetCache()
@@ -76,7 +66,7 @@ export function BudgetPeriodTab() {
           Budget Period
         </h2>
         <p className="text-sm text-[var(--text-muted)]">
-          Choose how your budget is split and tracked over time
+          Choose which day of the month your budget period starts
         </p>
       </div>
 
@@ -88,7 +78,7 @@ export function BudgetPeriodTab() {
       )}>
         <Info className="h-4 w-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
         <p className="text-sm text-blue-700 dark:text-blue-300">
-          Changing your period only changes how your budget is tracked. Your monthly caps stay the same.
+          Your budget runs monthly. Pick which day of the month it starts — this does not affect your monthly caps.
         </p>
       </div>
 
@@ -99,14 +89,8 @@ export function BudgetPeriodTab() {
       ) : (
         <div className="space-y-6">
           <BudgetPeriodStep
-            periodType={periodType}
             monthStartDay={monthStartDay}
-            weekStartDay={weekStartDay}
-            biweeklyAnchor={biweeklyAnchor}
-            onPeriodTypeChange={setPeriodType}
             onMonthStartDayChange={setMonthStartDay}
-            onWeekStartDayChange={setWeekStartDay}
-            onBiweeklyAnchorChange={setBiweeklyAnchor}
           />
 
           {error && (

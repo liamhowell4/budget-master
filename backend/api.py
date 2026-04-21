@@ -13,7 +13,7 @@ import os
 import hmac
 import logging
 from datetime import datetime, date
-from typing import Optional, List
+from typing import Literal, Optional, List, Union
 import pytz
 import base64
 import json
@@ -559,8 +559,7 @@ class BudgetStatusResponse(BaseModel):
     total_percentage: float
     total_remaining: float
     excluded_categories: List[str] = []  # Category IDs excluded from total calculation
-    # Flexible budget period fields (all optional for backward compat)
-    period_type: str = "monthly"
+    # Monthly budget period fields
     period_start: Optional[str] = None   # ISO date string
     period_end: Optional[str] = None     # ISO date string
     period_label: Optional[str] = None
@@ -1056,20 +1055,12 @@ async def get_budget_status(
 
         # Load period settings
         period_settings = user_firebase.get_budget_period_settings(current_user.uid)
-        period_type = period_settings.get("budget_period_type", "monthly")
         month_start_day = period_settings.get("budget_month_start_day", 1)
-        week_start_day = period_settings.get("budget_week_start_day", "Monday")
-        biweekly_anchor = period_settings.get("budget_biweekly_anchor", "2024-01-01")
 
         if period_offset is not None:
             # Use period-aware navigation
             now = datetime.now(USER_TIMEZONE)
-            current_period = get_current_period(
-                period_type=period_type,
-                month_start_day=month_start_day,
-                week_start_day=week_start_day,
-                biweekly_anchor=biweekly_anchor,
-            )
+            current_period = get_current_period(month_start_day=month_start_day)
             # Navigate period_offset steps
             budget_period = current_period
             for _ in range(abs(period_offset)):
@@ -1078,8 +1069,6 @@ async def get_budget_status(
                     budget_period,
                     direction=direction,
                     month_start_day=month_start_day,
-                    week_start_day=week_start_day,
-                    biweekly_anchor=biweekly_anchor,
                 )
             year = budget_period.start_date.year
             month = budget_period.start_date.month
@@ -1095,11 +1084,7 @@ async def get_budget_status(
             # Build a calendar-month period for consistent spending queries
             from .period_calculator import get_current_period as _gcp
             from datetime import date as _date
-            budget_period = _gcp(
-                period_type="monthly",
-                month_start_day=1,
-                as_of=_date(year, month, 15),
-            )
+            budget_period = _gcp(month_start_day=1, as_of=_date(year, month, 15))
 
         # Get user's custom categories
         user_categories = user_firebase.get_user_categories()
@@ -1174,7 +1159,6 @@ async def get_budget_status(
             total_percentage=total_percentage,
             total_remaining=total_remaining,
             excluded_categories=excluded_categories,
-            period_type=budget_period.period_type,
             period_start=budget_period.start_date.isoformat(),
             period_end=budget_period.end_date.isoformat(),
             period_label=budget_period.label,
@@ -1600,26 +1584,18 @@ class OnboardingCompleteRequest(BaseModel):
     category_caps: dict  # Dict[str, float] - category_id -> cap
     custom_categories: Optional[List[CustomCategoryInput]] = None
     excluded_category_ids: List[str] = []
-    # Budget period settings (all optional, default to monthly)
-    budget_period_type: str = "monthly"
-    budget_month_start_day: int = Field(default=1, ge=1, le=28)
-    budget_week_start_day: str = "Monday"
-    budget_biweekly_anchor: str = "2024-01-01"
+    # Monthly start day: int 1..28 or the literal "last"
+    budget_month_start_day: Union[int, Literal["last"]] = 1
 
-    @field_validator("budget_period_type")
+    @field_validator("budget_month_start_day")
     @classmethod
-    def validate_budget_period_type(cls, v: str) -> str:
-        if v not in ("monthly", "weekly", "biweekly"):
-            raise ValueError("budget_period_type must be 'monthly', 'weekly', or 'biweekly'")
-        return v
-
-    @field_validator("budget_biweekly_anchor")
-    @classmethod
-    def validate_biweekly_anchor(cls, v: str) -> str:
-        try:
-            datetime.strptime(v, "%Y-%m-%d")
-        except ValueError:
-            raise ValueError("budget_biweekly_anchor must be a valid date in YYYY-MM-DD format")
+    def validate_budget_month_start_day(cls, v):
+        if isinstance(v, str):
+            if v != "last":
+                raise ValueError("budget_month_start_day string must be 'last'")
+            return v
+        if not isinstance(v, int) or not (1 <= v <= 28):
+            raise ValueError("budget_month_start_day must be an int 1-28 or 'last'")
         return v
 
 
@@ -1697,10 +1673,7 @@ async def complete_onboarding(
 
         # Save budget period settings
         user_firebase.set_budget_period_settings(current_user.uid, {
-            "budget_period_type": request.budget_period_type,
             "budget_month_start_day": request.budget_month_start_day,
-            "budget_week_start_day": request.budget_week_start_day,
-            "budget_biweekly_anchor": request.budget_biweekly_anchor,
         })
 
         return {
@@ -2320,29 +2293,25 @@ async def admin_chat(
 class UserSettingsResponse(BaseModel):
     """Response model for user settings."""
     selected_model: str
-    budget_period_type: str = "monthly"
-    budget_month_start_day: int = 1
-    budget_week_start_day: str = "Monday"
-    budget_biweekly_anchor: str = "2024-01-01"
+    budget_month_start_day: Union[int, Literal["last"]] = 1
 
 
 class UserSettingsUpdateRequest(BaseModel):
     """Request model for updating user settings."""
     selected_model: Optional[str] = None
-    budget_period_type: Optional[str] = None
-    budget_month_start_day: Optional[int] = Field(default=None, ge=1, le=28)
-    budget_week_start_day: Optional[str] = None
-    budget_biweekly_anchor: Optional[str] = None
+    budget_month_start_day: Optional[Union[int, Literal["last"]]] = None
 
-    @field_validator("budget_biweekly_anchor")
+    @field_validator("budget_month_start_day")
     @classmethod
-    def validate_biweekly_anchor(cls, v: Optional[str]) -> Optional[str]:
+    def validate_budget_month_start_day(cls, v):
         if v is None:
             return v
-        try:
-            datetime.strptime(v, "%Y-%m-%d")
-        except ValueError:
-            raise ValueError("budget_biweekly_anchor must be a valid date in YYYY-MM-DD format")
+        if isinstance(v, str):
+            if v != "last":
+                raise ValueError("budget_month_start_day string must be 'last'")
+            return v
+        if not isinstance(v, int) or not (1 <= v <= 28):
+            raise ValueError("budget_month_start_day must be an int 1-28 or 'last'")
         return v
 
 
@@ -2364,10 +2333,7 @@ async def get_user_settings(
         period_settings = user_firebase.get_budget_period_settings(current_user.uid)
         return UserSettingsResponse(
             selected_model=selected_model,
-            budget_period_type=period_settings.get("budget_period_type", "monthly"),
             budget_month_start_day=period_settings.get("budget_month_start_day", 1),
-            budget_week_start_day=period_settings.get("budget_week_start_day", "Monday"),
-            budget_biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
         )
     except Exception as e:
         logger.exception("Error in GET /user/settings")
@@ -2398,19 +2364,8 @@ async def update_user_settings(
             updates["selected_model"] = body.selected_model
 
         period_updates: dict = {}
-        if body.budget_period_type is not None:
-            if body.budget_period_type not in ("monthly", "weekly", "biweekly"):
-                raise HTTPException(
-                    status_code=400,
-                    detail="budget_period_type must be 'monthly', 'weekly', or 'biweekly'"
-                )
-            period_updates["budget_period_type"] = body.budget_period_type
         if body.budget_month_start_day is not None:
             period_updates["budget_month_start_day"] = body.budget_month_start_day
-        if body.budget_week_start_day is not None:
-            period_updates["budget_week_start_day"] = body.budget_week_start_day
-        if body.budget_biweekly_anchor is not None:
-            period_updates["budget_biweekly_anchor"] = body.budget_biweekly_anchor
 
         if updates:
             user_firebase.update_user_settings(current_user.uid, updates)
@@ -2425,10 +2380,7 @@ async def update_user_settings(
         period_settings = user_firebase.get_budget_period_settings(current_user.uid)
         return UserSettingsResponse(
             selected_model=selected_model,
-            budget_period_type=period_settings.get("budget_period_type", "monthly"),
             budget_month_start_day=period_settings.get("budget_month_start_day", 1),
-            budget_week_start_day=period_settings.get("budget_week_start_day", "Monday"),
-            budget_biweekly_anchor=period_settings.get("budget_biweekly_anchor", "2024-01-01"),
         )
     except HTTPException:
         raise

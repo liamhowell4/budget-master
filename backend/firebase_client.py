@@ -666,31 +666,30 @@ class FirebaseClient:
             uid: Firebase Auth UID
 
         Returns:
-            Dict with keys: budget_period_type, budget_month_start_day,
-            budget_week_start_day, budget_biweekly_anchor
+            Dict with key: budget_month_start_day (int 1..28 or "last")
         """
         doc = self.db.collection("users").document(uid).get()
         if not doc.exists:
             return {}
         data = doc.to_dict() or {}
         return {
-            "budget_period_type": data.get("budget_period_type", "monthly"),
             "budget_month_start_day": data.get("budget_month_start_day", 1),
-            "budget_week_start_day": data.get("budget_week_start_day", "Monday"),
-            "budget_biweekly_anchor": data.get("budget_biweekly_anchor", "2024-01-01"),
         }
 
     def set_budget_period_settings(self, uid: str, settings: dict) -> None:
         """
-        Merge budget period settings into the user's document.
+        Merge budget period settings into the user's document. Also opportunistically
+        deletes any retired period-type fields (budget_period_type, budget_week_start_day,
+        budget_biweekly_anchor) so legacy data is cleaned up lazily.
 
         Args:
             uid: Firebase Auth UID
-            settings: Dict with any subset of: budget_period_type,
-                      budget_month_start_day, budget_week_start_day,
-                      budget_biweekly_anchor
+            settings: Dict with key: budget_month_start_day
         """
-        self.db.collection("users").document(uid).set(settings, merge=True)
+        payload = dict(settings)
+        for retired in ("budget_period_type", "budget_week_start_day", "budget_biweekly_anchor"):
+            payload[retired] = firestore.DELETE_FIELD
+        self.db.collection("users").document(uid).set(payload, merge=True)
 
     # ==================== Category Operations ====================
 

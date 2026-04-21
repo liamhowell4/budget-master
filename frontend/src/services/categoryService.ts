@@ -96,10 +96,7 @@ export const categoryService = {
       monthly_cap: number
     }>
     excluded_category_ids?: string[]
-    budget_period_type?: string
-    budget_month_start_day?: number
-    budget_week_start_day?: string
-    budget_biweekly_anchor?: string
+    budget_month_start_day?: number | 'last'
   }): Promise<{
     success: boolean
     total_budget: number

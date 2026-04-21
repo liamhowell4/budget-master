@@ -289,7 +289,7 @@ class BudgetManager:
                 should_warn = current_threshold >= 100 or current_threshold not in warned_thresholds
 
                 if should_warn:
-                    budget_type_label = "budget" if period and period.period_type != "monthly" else "monthly total budget"
+                    budget_type_label = "monthly total budget"
                     total_warning = self._format_warning(
                         percentage=total_percentage,
                         remaining=total_remaining,

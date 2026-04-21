@@ -5,8 +5,6 @@ struct BudgetPeriodTab: View {
     @StateObject private var viewModel = BudgetPeriodViewModel()
     @Environment(\.appAccent) private var appAccent
 
-    private let dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -15,7 +13,7 @@ struct BudgetPeriodTab: View {
                     Image(systemName: "info.circle.fill")
                         .foregroundStyle(appAccent)
                         .font(.body)
-                    Text("Changing your period only changes how your budget is tracked. Your monthly caps stay the same.")
+                    Text("Your budget runs monthly. Pick which day of the month it starts.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -37,50 +35,11 @@ struct BudgetPeriodTab: View {
                     .transition(.opacity)
                 }
 
-                // Period type selection
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("Period Type")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 4)
-
-                    VStack(spacing: 0) {
-                        periodOption(
-                            type: "monthly",
-                            icon: "calendar",
-                            label: "Monthly",
-                            description: "Track spending over a calendar-style month."
-                        )
-                        Divider().padding(.leading, 52)
-                        periodOption(
-                            type: "weekly",
-                            icon: "calendar.day.timeline.left",
-                            label: "Weekly",
-                            description: "Monthly budget automatically split into weekly windows."
-                        )
-                        Divider().padding(.leading, 52)
-                        periodOption(
-                            type: "biweekly",
-                            icon: "calendar.badge.clock",
-                            label: "Biweekly",
-                            description: "Monthly budget automatically split into biweekly windows."
-                        )
-                    }
-                    .glassCard()
-                }
-
-                // Conditional sub-options
-                if viewModel.periodType == "monthly" {
-                    monthStartDayPicker
-                } else if viewModel.periodType == "weekly" {
-                    weekStartDayPicker
-                } else if viewModel.periodType == "biweekly" {
-                    biweeklyAnchorPicker
-                }
+                // 3-way segment picker: First / Last / Specific
+                MonthStartDayPicker(
+                    selection: $viewModel.monthStartDay,
+                    specificDay: $viewModel.specificDay
+                )
 
                 // Save button
                 Button {
@@ -116,145 +75,6 @@ struct BudgetPeriodTab: View {
         }
     }
 
-    // MARK: - Period Option Row
-
-    private func periodOption(type: String, icon: String, label: String, description: String) -> some View {
-        let isSelected = viewModel.periodType == type
-
-        return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                viewModel.periodType = type
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.body)
-                    .foregroundStyle(isSelected ? appAccent : .secondary)
-                    .frame(width: 36, height: 36)
-                    .background((isSelected ? appAccent : Color(uiColor: .secondarySystemFill)).opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(label)
-                        .font(.subheadline)
-                        .fontWeight(isSelected ? .medium : .regular)
-                        .foregroundStyle(.primary)
-                    Text(description)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-
-                Spacer()
-
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(appAccent)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Monthly: Start Day Picker
-
-    private var monthStartDayPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("What day does your budget month start?")
-                .font(.subheadline)
-                .fontWeight(.medium)
-            Text("Align with your pay day. (1-28)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack {
-                TextField("Day", value: $viewModel.monthStartDay, format: .number)
-                    .keyboardType(.numberPad)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 80)
-                    .onChange(of: viewModel.monthStartDay) { _, newValue in
-                        viewModel.monthStartDay = max(1, min(28, newValue))
-                    }
-
-                Stepper("", value: $viewModel.monthStartDay, in: 1...28)
-                    .labelsHidden()
-            }
-        }
-        .padding(16)
-        .glassCard()
-    }
-
-    // MARK: - Weekly: Start Day Picker
-
-    private var weekStartDayPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("What day does your week start?")
-                .font(.subheadline)
-                .fontWeight(.medium)
-
-            FlowLayout(spacing: 8) {
-                ForEach(dayNames, id: \.self) { day in
-                    let isSelected = viewModel.weekStartDay == day
-                    Button {
-                        viewModel.weekStartDay = day
-                    } label: {
-                        Text(String(day.prefix(3)))
-                            .font(.caption.weight(.medium))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(isSelected ? appAccent.opacity(0.15) : Color(uiColor: .secondarySystemFill))
-                            .foregroundStyle(isSelected ? appAccent : .primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(isSelected ? appAccent : .clear, lineWidth: 1.5)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(16)
-        .glassCard()
-    }
-
-    // MARK: - Biweekly: Anchor Date Picker
-
-    private var biweeklyAnchorPicker: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("When does your next pay period start?")
-                .font(.subheadline)
-                .fontWeight(.medium)
-            Text("Future pay periods will repeat every 14 days from this date.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            DatePicker(
-                "Anchor date",
-                selection: Binding(
-                    get: {
-                        let formatter = DateFormatter()
-                        formatter.dateFormat = "yyyy-MM-dd"
-                        return formatter.date(from: viewModel.biweeklyAnchor) ?? Date()
-                    },
-                    set: { newDate in
-                        let formatter = DateFormatter()
-                        formatter.dateFormat = "yyyy-MM-dd"
-                        viewModel.biweeklyAnchor = formatter.string(from: newDate)
-                    }
-                ),
-                displayedComponents: .date
-            )
-            .datePickerStyle(.compact)
-            .labelsHidden()
-        }
-        .padding(16)
-        .glassCard()
-    }
-
     // MARK: - Error Banner
 
     private func errorBanner(_ message: String) -> some View {
@@ -270,7 +90,7 @@ struct BudgetPeriodTab: View {
             } label: {
                 Text("Retry")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(appAccent)
+                    .foregroundStyle(viewModel.errorMessage != nil ? Color.accentColor : .secondary)
             }
         }
         .padding(12)
@@ -278,14 +98,155 @@ struct BudgetPeriodTab: View {
     }
 }
 
+// MARK: - MonthStartDayPicker
+
+/// Shared 3-segment picker used in both Settings and Onboarding.
+/// `selection` is the live MonthStartDay binding; `specificDay` is a scratch
+/// value that persists the user's last chosen day number so switching away from
+/// "Specific" and back restores it.
+struct MonthStartDayPicker: View {
+    @Binding var selection: MonthStartDay
+    /// Retained "specific" day value — persists across mode switches, 1...28.
+    @Binding var specificDay: Int
+
+    @Environment(\.appAccent) private var appAccent
+
+    /// Which segment is currently highlighted.
+    private enum Segment: Int, CaseIterable {
+        case first, last, specific
+
+        var label: String {
+            switch self {
+            case .first: return "First"
+            case .last: return "Last"
+            case .specific: return "Specific"
+            }
+        }
+    }
+
+    private var activeSegment: Segment {
+        switch selection {
+        case .day(1): return .first
+        case .last:   return .last
+        default:      return .specific
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Budget month starts on")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+
+            // Segmented control
+            Picker("Start Day Mode", selection: segmentBinding) {
+                ForEach(Segment.allCases, id: \.self) { seg in
+                    Text(seg.label).tag(seg)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            // Specific day sub-picker — only visible when Specific is selected
+            if activeSegment == .specific {
+                HStack(spacing: 12) {
+                    Text("Day:")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    TextField("", value: $specificDay, format: .number)
+                        .keyboardType(.numberPad)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 60)
+                        .multilineTextAlignment(.center)
+                        .onChange(of: specificDay) { _, newValue in
+                            let clamped = max(1, min(28, newValue))
+                            if clamped != newValue { specificDay = clamped }
+                            selection = .day(clamped)
+                        }
+
+                    Stepper("", value: $specificDay, in: 1...28)
+                        .labelsHidden()
+                        .onChange(of: specificDay) { _, newValue in
+                            selection = .day(newValue)
+                        }
+
+                    Spacer()
+
+                    Text("(1–28)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            // Contextual description
+            Text(descriptionText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .glassCard()
+        .animation(.easeInOut(duration: 0.2), value: activeSegment)
+    }
+
+    private var segmentBinding: Binding<Segment> {
+        Binding(
+            get: { activeSegment },
+            set: { newSeg in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    switch newSeg {
+                    case .first:
+                        selection = .day(1)
+                    case .last:
+                        selection = .last
+                    case .specific:
+                        // Restore the last specific value (default 15 if none set yet)
+                        let day = specificDay == 1 ? 15 : specificDay
+                        specificDay = day
+                        selection = .day(day)
+                    }
+                }
+            }
+        )
+    }
+
+    private var descriptionText: String {
+        switch selection {
+        case .day(1):
+            return "Your budget period begins on the 1st of each calendar month."
+        case .last:
+            return "Your budget period begins on the last day of each calendar month."
+        case .day(let n):
+            return "Your budget period begins on the \(ordinal(n)) of each calendar month."
+        }
+    }
+
+    private func ordinal(_ n: Int) -> String {
+        let suffix: String
+        switch n % 100 {
+        case 11, 12, 13: suffix = "th"
+        default:
+            switch n % 10 {
+            case 1: suffix = "st"
+            case 2: suffix = "nd"
+            case 3: suffix = "rd"
+            default: suffix = "th"
+            }
+        }
+        return "\(n)\(suffix)"
+    }
+}
+
 // MARK: - ViewModel
 
 @MainActor
 class BudgetPeriodViewModel: ObservableObject {
-    @Published var periodType: String = "monthly"
-    @Published var monthStartDay: Int = 1
-    @Published var weekStartDay: String = "Monday"
-    @Published var biweeklyAnchor: String = ""
+    @Published var monthStartDay: MonthStartDay = .day(1)
+    /// Retained specific-day scratch value so switching modes preserves the user's pick.
+    @Published var specificDay: Int = 15
     @Published var isLoading = false
     @Published var isSaving = false
     @Published var saveSuccess = false
@@ -296,10 +257,11 @@ class BudgetPeriodViewModel: ObservableObject {
         errorMessage = nil
         do {
             let settings = try await UserSettingsService.getSettings()
-            periodType = settings.budgetPeriodType
             monthStartDay = settings.budgetMonthStartDay
-            weekStartDay = settings.budgetWeekStartDay
-            biweeklyAnchor = settings.budgetBiweeklyAnchor
+            // Seed specificDay from the loaded value if it's a concrete day number.
+            if case .day(let n) = settings.budgetMonthStartDay, n != 1 {
+                specificDay = n
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -311,12 +273,7 @@ class BudgetPeriodViewModel: ObservableObject {
         errorMessage = nil
         saveSuccess = false
         do {
-            let request = UserSettingsUpdateRequest(
-                budgetPeriodType: periodType,
-                budgetMonthStartDay: monthStartDay,
-                budgetWeekStartDay: weekStartDay,
-                budgetBiweeklyAnchor: biweeklyAnchor
-            )
+            let request = UserSettingsUpdateRequest(budgetMonthStartDay: monthStartDay)
             let _ = try await UserSettingsService.updateSettings(request)
             saveSuccess = true
             // Auto-hide success after 2.5s

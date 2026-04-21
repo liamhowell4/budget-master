@@ -22,15 +22,10 @@ struct OnboardingView: View {
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var showAddCustomSheet = false
-    // Budget period settings
-    @State private var budgetPeriodType: String = "monthly"
-    @State private var budgetMonthStartDay: Int = 1
-    @State private var budgetWeekStartDay: String = "Monday"
-    @State private var budgetBiweeklyAnchor: String = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
-    }()
+    // Budget period settings (monthly only)
+    @State private var budgetMonthStartDay: MonthStartDay = .day(1)
+    /// Scratch value retaining the user's last explicit day choice for the "Specific" segment.
+    @State private var budgetSpecificDay: Int = 15
 
     // Step indices:
     // 0 = welcome, 1 = income planner, 2 = budget period, 3 = budget,

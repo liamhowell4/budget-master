@@ -9,11 +9,8 @@ export type SupportedModel =
   | 'gemini-3-flash'
 
 export interface UserSettings {
-  selected_model: SupportedModel
-  budget_period_type?: string
-  budget_month_start_day?: number
-  budget_week_start_day?: string
-  budget_biweekly_anchor?: string
+  selected_model?: SupportedModel
+  budget_month_start_day?: number | 'last'
 }
 
 export async function getUserSettings(): Promise<UserSettings> {
