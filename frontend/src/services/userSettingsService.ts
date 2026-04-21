@@ -9,7 +9,7 @@ export type SupportedModel =
   | 'gemini-3-flash'
 
 export interface UserSettings {
-  selected_model?: SupportedModel
+  selected_model: SupportedModel
   budget_month_start_day?: number | 'last'
 }
 
